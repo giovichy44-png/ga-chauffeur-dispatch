@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ga-chauffeur-dispatch
+    env: python
+    buildCommand: "python3 db.py"
+    startCommand: "python3 server.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: FROM_EMAIL
+        value: enquiries@gachauffeurs.co.uk

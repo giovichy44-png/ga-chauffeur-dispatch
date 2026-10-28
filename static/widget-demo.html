@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GA Chauffeur Services Limited | Online Booking Test Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #080b10;
+      color: #e2e8f0;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .demo-header {
+      background: #0d121c;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+      padding: 16px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .demo-title {
+      font-family: 'Cinzel', serif;
+      color: #d4af37;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+    }
+    .demo-badge {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      border: 1px solid #10b981;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .hero-banner {
+      text-align: center;
+      padding: 40px 20px 20px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .hero-banner h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 32px;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+    .hero-banner p {
+      color: #94a3b8;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .widget-container {
+      max-width: 680px;
+      margin: 0 auto 50px;
+      padding: 0 16px;
+    }
+    .back-nav {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .back-nav a {
+      color: #d4af37;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid rgba(212,175,55,0.4);
+      padding: 8px 16px;
+      border-radius: 6px;
+      display: inline-block;
+      transition: all 0.2s ease;
+    }
+    .back-nav a:hover {
+      background: #d4af37;
+      color: #0b0e14;
+    }
+  </style>
+</head>
+<body>
+  <header class="demo-header">
+    <div class="demo-title">GA CHAUFFEUR SERVICES LIMITED</div>
+    <div class="demo-badge">LIVE WEBSITE BOOKING INTEGRATION (gachauffeurs.co.uk)</div>
+  </header>
+
+  <div class="hero-banner">
+    <h1>Executive Chauffeur Booking</h1>
+    <p>Simulating the customer booking experience on <strong>gachauffeurs.co.uk</strong>. Submitting this form directly creates a dispatch job with a reference number and fires an automated email confirmation to the customer.</p>
+  </div>
+
+  <div class="widget-container">
+    <!-- Drop-in widget placeholder -->
+    <div id="ga-chauffeur-booking-widget"></div>
+  </div>
+
+  <div class="back-nav">
+    <a href="/">← Return to Dispatch Management Console</a>
+  </div>
+
+  <!-- Embed Widget Script -->
+  <script src="/embed-booking-widget.js"></script>
+</body>
+</html>
