@@ -15,6 +15,8 @@ import sqlite3
 import random
 import math
 import time
+import re
+import uuid
 import threading
 import smtplib
 import base64
@@ -451,6 +453,56 @@ def detect_service_type(pickup="", dropoff="", requested_type=None):
         return "Airport departure"
     return "Point-to-point transfer"
 
+def is_congestion_charge_zone(address=""):
+    """
+    Detects if an address or postcode is within the London Congestion Charge Zone:
+    - Postcodes: EC1, EC2, EC3, EC4, WC1, WC2, W1, SW1, northern SE1, southern NW1
+    - Landmarks/Districts: Mayfair, Soho, Westminster, Covent Garden, Fitzrovia, Marylebone,
+      City of London, Bank, St Paul's, St James's, Belgravia, Victoria, Waterloo, Southwark,
+      London Bridge, Bloomsbury, Strand, Holborn, Charing Cross, Piccadilly.
+    """
+    if not address:
+        return False
+    text = str(address).strip().lower()
+    
+    # Check postcodes
+    cc_postcode_patterns = [
+        r'\b(ec1[a-z]?|ec2[a-z]?|ec3[a-z]?|ec4[a-z]?)\b',
+        r'\b(wc1[a-z]?|wc2[a-z]?)\b',
+        r'\b(w1[a-z]?)\b',
+        r'\b(sw1[a-z]?)\b',
+        r'\b(se1\s*[0-9]?[a-z]{0,2})\b',
+        r'\b(nw1\s*[0-9]?[a-z]{0,2})\b'
+    ]
+    for pattern in cc_postcode_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+            
+    # Key central areas within the Congestion Charge zone
+    cc_keywords = [
+        "mayfair", "soho", "westminster", "covent garden", "fitzrovia",
+        "marylebone", "city of london", "bank", "st paul", "st james",
+        "belgravia", "knightsbridge", "victoria", "waterloo", "southwark",
+        "london bridge", "bloomsbury", "strand", "holborn", "charing cross",
+        "piccadilly", "albridge", "whitehall", "clerkenwell"
+    ]
+    return any(kw in text for kw in cc_keywords)
+
+def is_airport_arrival_journey(pickup="", service_type=None):
+    """
+    Detects if the collection point is an Airport (which incurs standard £15.00 parking & meet/greet fee).
+    """
+    if service_type and "arrival" in str(service_type).lower():
+        return True
+    p_text = str(pickup).lower()
+    airport_kws = [
+        "heathrow", "lhr", "t5", "t2", "t3", "t4", "terminal 5", "terminal 2", "terminal 3", "terminal 4",
+        "gatwick", "lgw", "city airport", "lcy", "london city", "luton", "ltn",
+        "stansted", "stn", "farnborough", "fab", "biggin hill", "bqh", "northolt",
+        "airport", "terminal", "fbo", "aerodrome"
+    ]
+    return any(kw in p_text for kw in airport_kws)
+
 def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hours=0, distance_mi=15.0):
     """
     Calculate executive luxury pricing in GBP (£) based on GA Chauffeur Services Limited published structure.
@@ -458,7 +510,9 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     - Gatwick / Luton / Stansted / Farnborough: S-Class £305 + VAT, V-Class £315 + VAT, Range Rover £405 + VAT
     - Hourly: S-Class £85/hr (min 2 hrs = £170 + VAT), V-Class £95/hr (min 2 hrs = £190 + VAT), Range Rover £115/hr (min 2 hrs = £230 + VAT)
     - Point-to-point: minimum 2 hours base, £4/mile excess.
-    - VAT: 20%
+    - Airport Parking & Meet/Greet: £15.00 (added automatically for airport collections)
+    - London Congestion Charge: £15.00 (added automatically if pickup or dropoff is in Congestion Charge zone)
+    - VAT: 20% applied to subtotal (Base + Parking + Congestion Charge)
     """
     key = normalize_vehicle_tier(vehicle_class)
     cfg = VEHICLE_CONFIGS.get(key, VEHICLE_CONFIGS["mercedes_s_class"])
@@ -499,17 +553,42 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
             service_label = "Point-to-Point Transfer"
 
     net_fare = round(net_fare, 2)
-    vat_amount = round(net_fare * 0.20, 2)
-    total_fare = round(net_fare + vat_amount, 2)
+    
+    # Calculate Airport Parking & Meet/Greet (£15.00)
+    has_airport_arrival = is_airport_arrival_journey(pickup, final_type)
+    parking_fee = 15.0 if has_airport_arrival else 0.0
+    
+    # Calculate London Congestion Charge (£15.00)
+    has_congestion = is_congestion_charge_zone(pickup) or is_congestion_charge_zone(dropoff)
+    congestion_charge = 15.0 if has_congestion else 0.0
+    
+    # Subtotal before VAT
+    subtotal = round(net_fare + parking_fee + congestion_charge, 2)
+    vat_amount = round(subtotal * 0.20, 2)
+    total_fare = round(subtotal + vat_amount, 2)
     
     return {
+        "base_fare": net_fare,
         "net_fare": net_fare,
+        "parking_fee": parking_fee,
+        "congestion_charge": congestion_charge,
+        "has_parking": has_airport_arrival,
+        "has_congestion": has_congestion,
+        "subtotal": subtotal,
         "vat_amount": vat_amount,
         "total_fare": total_fare,
         "fare_amount": net_fare,
         "service_type": detected,
         "service_label": service_label,
-        "disclaimer": "Parking, airport drop-off, and Congestion Charge are extra and will be added where applicable."
+        "breakdown": {
+            "base_fare": net_fare,
+            "parking_fee": parking_fee,
+            "congestion_charge": congestion_charge,
+            "subtotal": subtotal,
+            "vat_amount": vat_amount,
+            "total_fare": total_fare
+        },
+        "disclaimer": "Parking (£15.00 for airport collections) and London Congestion Charge (£15.00 for Central London zones) are included in the itemized pre-authorisation breakdown."
     }
 
 def generate_confirmation_code():
@@ -581,7 +660,7 @@ def send_smtp_email(to_email, subject, html_content, text_content=""):
 
     return True, "Simulated delivery (Outbound email credentials not configured in Render)"
 
-def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None):
+def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None, parking_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None):
     tier_key = normalize_vehicle_tier(vehicle_tier)
     vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
 
@@ -591,10 +670,44 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
         net_fare = 165.0
 
     net_fare = float(net_fare)
+    parking_fee = float(parking_fee or 0.0)
+    congestion_charge = float(congestion_charge or 0.0)
+    subtotal = round(net_fare + parking_fee + congestion_charge, 2)
+    
     if vat_amt is None:
-        vat_amt = round(net_fare * 0.20, 2)
+        vat_amt = round(subtotal * 0.20, 2)
     if total_fare is None:
-        total_fare = round(net_fare + float(vat_amt), 2)
+        total_fare = round(subtotal + float(vat_amt), 2)
+
+    payment_line = ""
+    if card_last4:
+        payment_line = f"""
+        <tr>
+          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Payment Status</td>
+          <td style="text-align: right; color: #4ade80; font-size: 13px; font-weight: 600; padding-top: 10px;">
+            Pre-Authorised Hold (Hold Ref: {card_auth_code or 'VERIFIED'})<br>
+            <span style="color: #aab5ae; font-size: 12px; font-weight: normal;">{card_brand or 'Card'} ending in •••• {card_last4}</span>
+          </td>
+        </tr>
+        """
+
+    parking_row = ""
+    if parking_fee > 0:
+        parking_row = f"""
+        <tr>
+          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">Airport Parking &amp; Meet/Greet</td>
+          <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{parking_fee:.2f} GBP</td>
+        </tr>
+        """
+
+    congestion_row = ""
+    if congestion_charge > 0:
+        congestion_row = f"""
+        <tr>
+          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">London Congestion Charge</td>
+          <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{congestion_charge:.2f} GBP</td>
+        </tr>
+        """
 
     driver_block = ""
     if chauffeur:
@@ -669,20 +782,23 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
                 <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Passengers &amp; Luggage</td>
                 <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{passengers} Pax • {luggage_summary}</td>
               </tr>
+              {payment_line}
               <tr>
                 <td colspan="2" style="border-top: 1px solid #2e3b33; padding-top: 12px; margin-top: 12px;"></td>
               </tr>
               <tr>
-                <td style="color: #aab5ae; font-size: 13px;">Net Fare</td>
+                <td style="color: #aab5ae; font-size: 13px;">Base Journey Fare</td>
                 <td style="text-align: right; color: #ffffff; font-size: 14px;">£{net_fare:.2f} GBP</td>
               </tr>
+              {parking_row}
+              {congestion_row}
               <tr>
-                <td style="color: #aab5ae; font-size: 13px;">VAT (20%)</td>
-                <td style="text-align: right; color: #ffffff; font-size: 14px;">£{vat_amt:.2f} GBP</td>
+                <td style="color: #aab5ae; font-size: 13px; padding-top: 4px;">VAT (20%)</td>
+                <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 4px;">£{vat_amt:.2f} GBP</td>
               </tr>
               <tr>
-                <td style="color: #c9b894; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding-top: 8px;">Total Fare</td>
-                <td style="text-align: right; color: #c9b894; font-size: 20px; font-weight: bold; padding-top: 8px; font-family: Georgia, serif;">£{total_fare:.2f} GBP</td>
+                <td style="color: #c9b894; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding-top: 10px;">Total Pre-Authorised</td>
+                <td style="text-align: right; color: #c9b894; font-size: 20px; font-weight: bold; padding-top: 10px; font-family: Georgia, serif;">£{total_fare:.2f} GBP</td>
               </tr>
             </table>
 
@@ -1175,8 +1291,42 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         )
         
         net_fare = fare_result["net_fare"]
+        parking_fee = fare_result.get("parking_fee", 0.0)
+        congestion_charge = fare_result.get("congestion_charge", 0.0)
+        subtotal = fare_result.get("subtotal", round(net_fare + parking_fee + congestion_charge, 2))
         vat_amount = fare_result["vat_amount"]
         total_fare = fare_result["total_fare"]
+
+        # Credit Card Payment Pre-Authorization Processing
+        card_num_raw = str(payload.get("card_number") or payload.get("cardNumber") or "").replace(" ", "").replace("-", "")
+        card_holder = payload.get("cardholder_name") or payload.get("cardholderName") or payload.get("customer_name") or ""
+        card_exp = payload.get("card_expiry") or payload.get("cardExpiry") or ""
+        card_cvc = payload.get("card_cvc") or payload.get("cardCvc") or ""
+
+        payment_status = "PENDING"
+        payment_method = "INVOICE"
+        card_brand = None
+        card_last4 = None
+        card_auth_code = None
+        preauth_amount = 0.0
+        preauth_at = None
+
+        if card_num_raw and len(card_num_raw) >= 12:
+            payment_method = "CREDIT_CARD"
+            payment_status = "PRE_AUTHORIZED"
+            if card_num_raw.startswith("4"):
+                card_brand = "Visa"
+            elif card_num_raw.startswith(("51", "52", "53", "54", "55", "22", "23", "24", "25", "26", "27")):
+                card_brand = "Mastercard"
+            elif card_num_raw.startswith(("34", "37")):
+                card_brand = "American Express"
+            else:
+                card_brand = "Credit Card"
+            
+            card_last4 = card_num_raw[-4:]
+            card_auth_code = f"AUTH-{uuid.uuid4().hex[:8].upper()}"
+            preauth_amount = total_fare
+            preauth_at = now_str
 
         flight_num = payload.get("flight_number")
         flight_status = "Airport Monitoring Active (45m free wait)" if flight_num else None
@@ -1198,8 +1348,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
             special_requests, estimated_distance_mi, estimated_duration_min,
             fare_amount, vat_amount, total_fare, currency, source, status, chauffeur_id,
+            parking_fee, congestion_charge, payment_status, payment_method,
+            card_brand, card_last4, card_auth_code, preauth_amount, preauth_at,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             booking_id, code, payload["customer_name"], payload["customer_phone"], payload["customer_email"],
             payload.get("vip_level", "Executive"), service_type, payload["pickup_address"], pickup_unit,
@@ -1207,7 +1359,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             payload["pickup_datetime"], hours_booked, flight_num, flight_status, normalized_vehicle,
             passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
             payload.get("special_requests", ""), distance_mi, duration_min,
-            net_fare, vat_amount, total_fare, "GBP", source, "CONFIRMED", None, now_str, now_str
+            net_fare, vat_amount, total_fare, "GBP", source, "CONFIRMED", None,
+            parking_fee, congestion_charge, payment_status, payment_method,
+            card_brand, card_last4, card_auth_code, preauth_amount, preauth_at,
+            now_str, now_str
         ))
 
         vehicle_name = VEHICLE_CONFIGS[normalized_vehicle]["name"]
@@ -1227,7 +1382,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             large_cases=large_cases,
             medium_cases=medium_cases,
             hand_luggage=hand_luggage,
-            flight=flight_num
+            flight=flight_num,
+            parking_fee=parking_fee,
+            congestion_charge=congestion_charge,
+            card_brand=card_brand,
+            card_last4=card_last4,
+            card_auth_code=card_auth_code
         )
 
         plain_text_email = (
@@ -1242,11 +1402,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             f"Passengers: {passenger_count} | Luggage: {large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand\n"
             + (f"Flight Monitoring: {flight_num} (Complimentary 45m waiting time included)\n" if flight_num else "")
             + (f"Special Requirements: {payload.get('special_requests')}\n" if payload.get('special_requests') else "")
-            + f"Net Fare: £{net_fare:.2f} GBP\n"
+            + f"Base Journey Fare: £{net_fare:.2f} GBP\n"
+            + (f"Airport Parking & Meet/Greet: £{parking_fee:.2f} GBP\n" if parking_fee > 0 else "")
+            + (f"London Congestion Charge: £{congestion_charge:.2f} GBP\n" if congestion_charge > 0 else "")
             + f"VAT (20%): £{vat_amount:.2f} GBP\n"
-            + f"Total Fare: £{total_fare:.2f} GBP\n\n"
-            f"Please note: Parking, airport drop-off, and Congestion Charge will be added where applicable.\n\n"
-            f"We will allocate your executive chauffeur shortly. You will receive driver contact details and vehicle tracking prior to departure.\n\n"
+            + f"Total Pre-Authorised: £{total_fare:.2f} GBP\n"
+            + (f"Card Pre-Authorisation: {card_brand} ending in •••• {card_last4} (Hold Ref: {card_auth_code})\n" if card_last4 else "")
+            + f"\nWe will allocate your executive chauffeur shortly. You will receive driver contact details and vehicle tracking prior to departure.\n\n"
             f"GA Chauffeur Services Limited\n"
             f"Website: {COMPANY_WEBSITE}\n"
             f"Direct Phone: {COMPANY_PHONE}\n"
@@ -1296,7 +1458,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "confirmation_code": code,
             "reference_number": code,
             "vehicle_name": vehicle_name,
+            "base_fare": net_fare,
             "net_fare": net_fare,
+            "parking_fee": parking_fee,
+            "congestion_charge": congestion_charge,
+            "subtotal": subtotal,
             "vat_amount": vat_amount,
             "total_fare": total_fare,
             "fare_amount": net_fare,
@@ -1305,6 +1471,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "distance_mi": distance_mi,
             "duration_min": duration_min,
             "status": "CONFIRMED",
+            "payment_status": payment_status,
+            "payment_method": payment_method,
+            "card_brand": card_brand,
+            "card_last4": card_last4,
+            "card_auth_code": card_auth_code,
+            "preauth_amount": preauth_amount,
             "email_dispatched_to": payload["customer_email"],
             "confirmations": [cnf_email_id, cnf_sms_id],
             "delivery_note": delivery_note

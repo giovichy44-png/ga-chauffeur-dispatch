@@ -48,12 +48,14 @@ def run_tests():
     # 2. Test GBP Pricing Engine & Auto Service Detection
     print("\n[TEST 2] Testing UK Published Tariffs & VAT Calculator (GBP £)...")
     
-    # 2a. Heathrow Airport to Central London (£165 + VAT for S-Class)
+    # 2a. Heathrow Airport to Central London (£165 Base + £15 Parking + £15 Congestion Charge + 20% VAT = £234.00)
     fare_s_class = server.calculate_fare("mercedes_s_class", pickup="Heathrow Airport (LHR) Terminal 5", dropoff="The Connaught, Mayfair")
-    print(f"  ✓ Mercedes S-Class Heathrow to Mayfair: Net £{fare_s_class['net_fare']:.2f} + £{fare_s_class['vat_amount']:.2f} VAT (20%) = £{fare_s_class['total_fare']:.2f} Total")
-    assert fare_s_class["net_fare"] == 165.0, f"Expected Heathrow net fare £165, got {fare_s_class['net_fare']}"
-    assert fare_s_class["vat_amount"] == 33.0, f"Expected VAT £33, got {fare_s_class['vat_amount']}"
-    assert fare_s_class["total_fare"] == 198.0, f"Expected total £198, got {fare_s_class['total_fare']}"
+    print(f"  ✓ Mercedes S-Class Heathrow to Mayfair: Base £{fare_s_class['base_fare']:.2f} + £{fare_s_class['parking_fee']:.2f} Parking + £{fare_s_class['congestion_charge']:.2f} Congestion + £{fare_s_class['vat_amount']:.2f} VAT (20%) = £{fare_s_class['total_fare']:.2f} Total")
+    assert fare_s_class["base_fare"] == 165.0, f"Expected Heathrow base fare £165, got {fare_s_class['base_fare']}"
+    assert fare_s_class["parking_fee"] == 15.0, f"Expected parking fee £15, got {fare_s_class['parking_fee']}"
+    assert fare_s_class["congestion_charge"] == 15.0, f"Expected congestion charge £15, got {fare_s_class['congestion_charge']}"
+    assert fare_s_class["vat_amount"] == 39.0, f"Expected VAT £39, got {fare_s_class['vat_amount']}"
+    assert fare_s_class["total_fare"] == 234.0, f"Expected total £234, got {fare_s_class['total_fare']}"
 
     # 2b. Range Rover to Gatwick / Farnborough (£405 + VAT)
     fare_range_rover = server.calculate_fare("range_rover_autobiography", pickup="Canary Wharf", dropoff="Farnborough Airport (FAB)")

@@ -100,7 +100,16 @@ def init_db():
         ("medium_cases", "INTEGER DEFAULT 0"),
         ("hand_luggage", "INTEGER DEFAULT 0"),
         ("vat_amount", "REAL DEFAULT 0.0"),
-        ("total_fare", "REAL DEFAULT 0.0")
+        ("total_fare", "REAL DEFAULT 0.0"),
+        ("parking_fee", "REAL DEFAULT 0.0"),
+        ("congestion_charge", "REAL DEFAULT 0.0"),
+        ("payment_status", "TEXT DEFAULT 'PENDING'"),
+        ("payment_method", "TEXT DEFAULT 'INVOICE'"),
+        ("card_brand", "TEXT"),
+        ("card_last4", "TEXT"),
+        ("card_auth_code", "TEXT"),
+        ("preauth_amount", "REAL DEFAULT 0.0"),
+        ("preauth_at", "TEXT")
     ]
     for col_name, col_def in cols_to_add:
         if col_name not in existing_cols:

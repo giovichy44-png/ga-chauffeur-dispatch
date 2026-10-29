@@ -261,11 +261,16 @@ function renderJobsList() {
         ` : ''}
 
         <div class="job-card-footer">
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <span class="job-car-tag">
               ${b.chauffeur_name ? `🚗 ${escapeHtml(b.vehicle_model)} [${escapeHtml(b.license_plate)}]` : '⚠️ No car assigned yet'}
             </span>
-            <div class="job-fare">£${parseFloat(b.fare_amount).toFixed(2)}</div>
+            <div class="job-fare">£${parseFloat(b.total_fare || b.fare_amount).toFixed(2)}</div>
+            ${b.payment_status === 'PRE_AUTHORIZED' ? `
+              <span style="background: rgba(74, 222, 128, 0.15); border: 1px solid rgba(74, 222, 128, 0.4); color: #4ade80; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+                💳 PRE-AUTH (${escapeHtml(b.card_brand || 'Card')} •••• ${escapeHtml(b.card_last4 || '')})
+              </span>
+            ` : ''}
           </div>
 
           <div class="action-btn-group">
@@ -720,6 +725,39 @@ async function viewVoucher(bookingId) {
           <div style="color: #fff; margin-bottom: 6px;">${escapeHtml(b.pickup_address)} (${escapeHtml(b.pickup_datetime)})</div>
           <div style="color: #38bdf8; font-size: 11px; font-weight: 700;">DESTINATION:</div>
           <div style="color: #fff;">${escapeHtml(b.dropoff_address)}</div>
+        </div>
+
+        <!-- Pricing Breakdown -->
+        <div style="background: #141418; padding: 12px; border-radius: 6px; font-size: 12px; display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; justify-content: space-between; color: var(--text-muted);">
+            <span>Base Journey Fare:</span>
+            <span style="color: #fff;">£${parseFloat(b.fare_amount || 0).toFixed(2)}</span>
+          </div>
+          ${parseFloat(b.parking_fee || 0) > 0 ? `
+            <div style="display: flex; justify-content: space-between; color: #38bdf8;">
+              <span>Airport Parking &amp; Meet/Greet:</span>
+              <span>+£${parseFloat(b.parking_fee).toFixed(2)}</span>
+            </div>
+          ` : ''}
+          ${parseFloat(b.congestion_charge || 0) > 0 ? `
+            <div style="display: flex; justify-content: space-between; color: #facc15;">
+              <span>London Congestion Charge:</span>
+              <span>+£${parseFloat(b.congestion_charge).toFixed(2)}</span>
+            </div>
+          ` : ''}
+          <div style="display: flex; justify-content: space-between; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 4px;">
+            <span>VAT (20%):</span>
+            <span style="color: #fff;">£${parseFloat(b.vat_amount || 0).toFixed(2)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; color: var(--gold-accent); font-weight: bold; font-size: 14px; border-top: 1px solid var(--border-light); padding-top: 6px;">
+            <span>Total Pre-Authorised:</span>
+            <span>£${parseFloat(b.total_fare || b.fare_amount || 0).toFixed(2)} GBP</span>
+          </div>
+          ${b.payment_status === 'PRE_AUTHORIZED' ? `
+            <div style="background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.3); border-radius: 4px; padding: 6px 10px; margin-top: 6px; font-size: 11px; color: #4ade80;">
+              💳 <strong>Pre-Authorised Hold:</strong> ${escapeHtml(b.card_brand || 'Card')} ending in •••• ${escapeHtml(b.card_last4 || '')} (Ref: ${escapeHtml(b.card_auth_code || 'VERIFIED')})
+            </div>
+          ` : ''}
         </div>
 
         <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted);">

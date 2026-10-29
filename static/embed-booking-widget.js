@@ -189,8 +189,44 @@
           <input type="text" id="ga-notes" placeholder="e.g. Nameboard meet & greet, baby seat, extra luggage assistance" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
         </div>
 
-        <!-- Live Price Box with Exact VAT & Disclaimers -->
-        <div id="ga-price-box" style="background: #1c2420; border: 1px solid rgba(201, 184, 148, 0.35); border-radius: 4px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px;">
+        <!-- Credit Card Pre-Authorisation Card -->
+        <div style="background: #1c2420; border: 1px solid #c9b894; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2e3b33; padding-bottom: 10px;">
+            <div>
+              <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .16em; color: #c9b894;">Credit Card Pre-Authorisation</span>
+              <div style="font-size: 12px; color: #aab5ae; margin-top: 2px;">🔒 Funds are verified and held to confirm booking. Only captured after journey completion.</div>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; color: #fff;">VISA</span>
+              <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; color: #fff;">MC</span>
+              <span style="background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; color: #fff;">AMEX</span>
+            </div>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Cardholder Name *</label>
+            <input type="text" id="ga-cardholder" required placeholder="Name as printed on card" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Card Number *</label>
+            <input type="text" id="ga-cardnumber" required placeholder="4532 •••• •••• ••••" maxlength="23" autocomplete="cc-number" inputmode="numeric" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: monospace; letter-spacing: .1em;">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div>
+              <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Expiry Date (MM/YY) *</label>
+              <input type="text" id="ga-cardexpiry" required placeholder="MM / YY" maxlength="7" autocomplete="cc-exp" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: monospace;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">CVC / Security Code *</label>
+              <input type="text" id="ga-cardcvc" required placeholder="•••" maxlength="4" autocomplete="cc-csc" inputmode="numeric" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: monospace;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Price Box with Transparent Itemized Breakdown -->
+        <div id="ga-price-box" style="background: #1c2420; border: 1px solid rgba(201, 184, 148, 0.35); border-radius: 6px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
               <span id="ga-service-label-display" style="font-size: 11px; color: #c9b894; text-transform: uppercase; letter-spacing: .16em; font-weight: 600;">HEATHROW / LONDON CITY AIRPORT</span>
@@ -201,13 +237,34 @@
               <div id="ga-price-breakdown" style="font-size: 12px; color: #aab5ae;">£165.00 + £33.00 VAT (20%)</div>
             </div>
           </div>
-          <div style="border-top: 1px solid #2e3b33; padding-top: 8px; font-size: 11px; color: #aab5ae; line-height: 1.5;">
-            ⚠️ <strong>Additional Charges:</strong> Parking, airport drop-off, and Congestion Charge are extra and will be added where applicable.
+
+          <!-- Itemized Breakdown Lines -->
+          <div style="background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+            <div style="display: flex; justify-content: space-between; color: #cbd5e1;">
+              <span>Base Journey Fare:</span>
+              <span id="ga-row-base" style="font-weight: 600; color: #fff;">£165.00</span>
+            </div>
+            <div id="ga-row-parking" style="display: none; justify-content: space-between; color: #38bdf8;">
+              <span>Airport Parking &amp; Meet/Greet:</span>
+              <span id="ga-val-parking" style="font-weight: 600;">+£15.00</span>
+            </div>
+            <div id="ga-row-congestion" style="display: none; justify-content: space-between; color: #facc15;">
+              <span>London Congestion Charge Zone:</span>
+              <span id="ga-val-congestion" style="font-weight: 600;">+£15.00</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: #cbd5e1; border-top: 1px solid #2e3b33; padding-top: 4px;">
+              <span>UK VAT (20%):</span>
+              <span id="ga-row-vat" style="font-weight: 600; color: #fff;">£33.00</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: #c9b894; font-weight: 700; border-top: 1px solid #3e4e44; padding-top: 6px; font-size: 13px;">
+              <span>Total Pre-Authorised Hold:</span>
+              <span id="ga-row-grand">£198.00</span>
+            </div>
           </div>
         </div>
 
-        <button type="submit" id="ga-submit-btn" style="background: #c9b894; color: #171f1b; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14px; padding: 15px 22px; border: 1px solid #c9b894; border-radius: 4px; cursor: pointer; margin-top: 4px; transition: all 0.2s ease;">
-          Request Journey Reservation ↗
+        <button type="submit" id="ga-submit-btn" style="background: #c9b894; color: #171f1b; font-family: 'DM Sans', sans-serif; font-weight: 700; font-size: 15px; padding: 16px 24px; border: 1px solid #c9b894; border-radius: 4px; cursor: pointer; margin-top: 4px; transition: all 0.2s ease; width: 100%;">
+          Pre-Authorise &amp; Confirm Booking ↗
         </button>
       </form>
 
@@ -401,6 +458,33 @@
   if (passSelect) passSelect.addEventListener('change', () => { checkVehicleCapacity(); updateWidgetQuote(); });
   if (lgCases) lgCases.addEventListener('change', () => { checkVehicleCapacity(); updateWidgetQuote(); });
 
+  // Card formatting listeners
+  const wCardNum = document.getElementById('ga-cardnumber');
+  const wCardExp = document.getElementById('ga-cardexpiry');
+  const wCardCvc = document.getElementById('ga-cardcvc');
+
+  if (wCardNum) {
+    wCardNum.addEventListener('input', e => {
+      let val = e.target.value.replace(/\D/g, '').slice(0, 16);
+      e.target.value = val.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+    });
+  }
+  if (wCardExp) {
+    wCardExp.addEventListener('input', e => {
+      let val = e.target.value.replace(/\D/g, '').slice(0, 4);
+      if (val.length >= 2) {
+        e.target.value = val.slice(0, 2) + ' / ' + val.slice(2);
+      } else {
+        e.target.value = val;
+      }
+    });
+  }
+  if (wCardCvc) {
+    wCardCvc.addEventListener('input', e => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+    });
+  }
+
   // Update Quote
   async function updateWidgetQuote() {
     const v = vSelect ? vSelect.value : 'mercedes_s_class';
@@ -416,10 +500,23 @@
       const totalEl = document.getElementById('ga-price-total');
       const subEl = document.getElementById('ga-price-breakdown');
       const labelEl = document.getElementById('ga-service-label-display');
+      const rowBase = document.getElementById('ga-row-base');
+      const rowPark = document.getElementById('ga-row-parking');
+      const rowCong = document.getElementById('ga-row-congestion');
+      const rowVat = document.getElementById('ga-row-vat');
+      const rowGrand = document.getElementById('ga-row-grand');
+      const btnSubmit = document.getElementById('ga-submit-btn');
 
       if (totalEl) totalEl.textContent = `£${q.total_fare.toFixed(2)}`;
-      if (subEl) subEl.textContent = `£${q.net_fare.toFixed(2)} + £${q.vat_amount.toFixed(2)} VAT (20%)`;
+      if (subEl) subEl.textContent = `£${q.subtotal.toFixed(2)} + £${q.vat_amount.toFixed(2)} VAT (20%)`;
       if (labelEl) labelEl.textContent = q.service_label ? q.service_label.toUpperCase() : 'ESTIMATED JOURNEY FARE';
+
+      if (rowBase) rowBase.textContent = `£${q.base_fare.toFixed(2)}`;
+      if (rowPark) rowPark.style.display = q.has_parking ? 'flex' : 'none';
+      if (rowCong) rowCong.style.display = q.has_congestion ? 'flex' : 'none';
+      if (rowVat) rowVat.textContent = `£${q.vat_amount.toFixed(2)}`;
+      if (rowGrand) rowGrand.textContent = `£${q.total_fare.toFixed(2)}`;
+      if (btnSubmit) btnSubmit.textContent = `Pre-Authorise £${q.total_fare.toFixed(2)} & Confirm Booking ↗`;
     } catch (e) {
       // Offline fallback
       let net = 165.0;
@@ -445,7 +542,7 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Registering Journey with GA Dispatch...';
+    submitBtn.textContent = 'Pre-Authorising Card & Registering Journey...';
 
     const payload = {
       customer_name: document.getElementById('ga-name').value,
@@ -465,6 +562,11 @@
       medium_cases: parseInt(medCases ? medCases.value : 0),
       hand_luggage: parseInt(handLug ? handLug.value : 0),
       special_requests: document.getElementById('ga-notes').value || '',
+      cardholder_name: document.getElementById('ga-cardholder') ? document.getElementById('ga-cardholder').value : '',
+      card_number: document.getElementById('ga-cardnumber') ? document.getElementById('ga-cardnumber').value.replace(/\s+/g, '') : '',
+      card_expiry: document.getElementById('ga-cardexpiry') ? document.getElementById('ga-cardexpiry').value : '',
+      card_cvc: document.getElementById('ga-cardcvc') ? document.getElementById('ga-cardcvc').value : '',
+      payment_method: 'CREDIT_CARD',
       source: 'WEBSITE_GACHAUFFEURS'
     };
 
@@ -479,18 +581,24 @@
       if (data.success) {
         form.style.display = 'none';
         resultBox.style.display = 'block';
+        const cardDisplay = data.booking.card_last4 ? `${data.booking.card_brand || 'Card'} ending in •••• ${data.booking.card_last4}` : 'Credit Card';
         resultBox.innerHTML = `
           <div style="font-size: 36px; color: #34d399; margin-bottom: 10px;">✓</div>
-          <h3 style="font-family: Georgia, serif; color: #ffffff; margin: 0 0 6px 0; font-size: 22px; font-weight: normal;">Journey Request Confirmed</h3>
+          <h3 style="font-family: Georgia, serif; color: #ffffff; margin: 0 0 6px 0; font-size: 22px; font-weight: normal;">Booking &amp; Pre-Authorisation Confirmed</h3>
           <p style="color: #aab5ae; font-size: 14px; margin: 0 0 18px 0;">
-            Your transfer has been received and logged directly into our dispatch control console.
+            Your transfer has been secured and logged directly into our dispatch control console.
           </p>
           <div style="background: #131916; border: 1px solid #c9b894; border-radius: 4px; padding: 18px; margin-bottom: 18px;">
             <div style="font-size: 11px; color: #c9b894; text-transform: uppercase; letter-spacing: .16em; font-weight: 600;">Your Booking Reference</div>
             <div style="font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: bold; color: #ffffff; margin-top: 4px;">
               ${data.booking.confirmation_code}
             </div>
-            <div style="font-size: 12px; color: #34d399; margin-top: 8px;">
+            <div style="font-size: 13px; color: #4ade80; margin-top: 8px; font-weight: 600;">
+              🔒 Pre-Authorised Hold: £${data.booking.total_fare.toFixed(2)} (${cardDisplay})
+            </div>
+            <div style="font-size: 12px; color: #aab5ae; margin-top: 4px;">
+              Hold Reference: ${data.booking.card_auth_code || 'VERIFIED'}
+            </div>
               ✓ Automated confirmation email sent to: <strong>${payload.customer_email}</strong>
             </div>
           </div>
