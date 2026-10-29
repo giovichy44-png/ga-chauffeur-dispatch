@@ -22,6 +22,8 @@ import smtplib
 import base64
 import hashlib
 import urllib.request
+import urllib.parse
+import urllib.error
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
@@ -80,7 +82,6 @@ def stripe_api_request(endpoint, method="POST", data=None):
     }
     encoded = None
     if data:
-        import urllib.parse
         encoded = urllib.parse.urlencode(data).encode("utf-8")
     req = urllib.request.Request(url, data=encoded, headers=headers, method=method)
     try:
