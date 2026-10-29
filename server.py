@@ -769,6 +769,24 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.send_json({"booking": booking, "confirmations": confirmations, "actions": logs})
 
     def handle_create_booking(self, payload):
+        # Normalize field names to accept both dispatch schema and website form submissions
+        if "customer_name" not in payload and "name" in payload:
+            payload["customer_name"] = payload["name"]
+        if "customer_phone" not in payload and "phone" in payload:
+            payload["customer_phone"] = payload["phone"]
+        if "customer_email" not in payload and "email" in payload:
+            payload["customer_email"] = payload["email"]
+        if "pickup_address" not in payload and "pickup" in payload:
+            payload["pickup_address"] = payload["pickup"]
+        if "dropoff_address" not in payload:
+            payload["dropoff_address"] = payload.get("destination") or payload.get("dropoff") or ("As directed" if "hourly" in str(payload.get("service_type","")).lower() else "")
+        if "pickup_datetime" not in payload and "datetime" in payload:
+            payload["pickup_datetime"] = str(payload["datetime"]).replace("T", " ")
+        if "vehicle_class" not in payload and "vehicle" in payload:
+            payload["vehicle_class"] = payload["vehicle"]
+        if "passenger_count" not in payload and "passengers" in payload:
+            payload["passenger_count"] = payload["passengers"]
+
         required = ["customer_name", "customer_phone", "customer_email", "pickup_address", "dropoff_address", "pickup_datetime", "vehicle_class"]
         for field in required:
             if not payload.get(field):
