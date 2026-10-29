@@ -134,6 +134,13 @@ def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, cu
     res = stripe_api_request("payment_intents", method="POST", data=data)
     if "error" in res:
         return res
+
+    status = res.get("status")
+    if status not in ("requires_capture", "succeeded"):
+        return {
+            "error": f"Stripe pre-authorisation failed: status is '{status}', expected 'requires_capture'",
+            "status": status
+        }
     
     brand = "Card"
     last4 = "••••"
@@ -231,9 +238,23 @@ PUBLIC_PATHS = {
 def is_public_request(method, path):
     if method == "OPTIONS":
         return True
-    if method == "POST" and path in ("/api/bookings", "/api/login"):
+    clean_path = path.split("?")[0].rstrip("/") or "/"
+    if clean_path in (
+        "/api/stripe-config",
+        "/embed-booking-widget.js",
+        "/api/quote",
+        "/api/suggestions",
+        "/api/lookup-postcode",
+        "/favicon.ico",
+        "/manifest.json",
+        "/sw.js",
+        "/icon-192.png",
+        "/icon-512.png"
+    ):
         return True
-    if path in PUBLIC_PATHS or path.startswith("/static/embed"):
+    if clean_path in PUBLIC_PATHS or path in PUBLIC_PATHS or path.startswith("/static/embed"):
+        return True
+    if method == "POST" and clean_path in ("/api/bookings", "/api/login"):
         return True
     if path.startswith("/api/track/"):
         return True
@@ -1434,7 +1455,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         vat_amount = fare_result["vat_amount"]
         total_fare = fare_result["total_fare"]
 
-        # Credit Card Payment Pre-Authorization Processing (Stripe or Direct)
+        # Credit Card Payment Pre-Authorization Processing (Strict Stripe Verification)
         payment_method_id = payload.get("payment_method_id")
         stripe_intent_id = None
         card_num_raw = str(payload.get("card_number") or payload.get("cardNumber") or "").replace(" ", "").replace("-", "")
@@ -1442,7 +1463,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         card_exp = payload.get("card_expiry") or payload.get("cardExpiry") or ""
         card_cvc = payload.get("card_cvc") or payload.get("cardCvc") or ""
 
-        payment_status = "PENDING"
+        payment_status = "PENDING_PAYMENT"
         payment_method = "INVOICE"
         card_brand = None
         card_last4 = None
@@ -1456,7 +1477,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 pm_res = stripe_create_payment_method_from_card(card_num_raw, card_exp, card_cvc, card_holder)
                 if pm_res.get("error"):
                     conn.close()
-                    self.send_json({"error": f"Stripe card validation error: {pm_res['error']}"}, 400)
+                    self.send_json({"error": f"Card validation error: {pm_res['error']}"}, 400)
                     return
                 pm_id = pm_res["id"]
 
@@ -1471,6 +1492,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 self.send_json({"error": f"Card pre-authorisation declined by Stripe: {stripe_res['error']}"}, 400)
                 return
+
+            # Explicit check of Stripe status
+            stripe_status = stripe_res.get("status")
+            if stripe_status not in ("requires_capture", "succeeded"):
+                conn.close()
+                self.send_json({"error": f"Stripe pre-authorisation hold could not be verified (status: {stripe_status})."}, 400)
+                return
+
             payment_method = "STRIPE"
             payment_status = "PRE_AUTHORIZED"
             card_brand = stripe_res.get("brand", "Card")
@@ -1480,8 +1509,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             preauth_amount = total_fare
             preauth_at = now_str
         elif card_num_raw and len(card_num_raw) >= 12:
+            # Card entered but Stripe is not configured: record as PENDING_PAYMENT, NEVER falsely claim PRE_AUTHORIZED
             payment_method = "CREDIT_CARD"
-            payment_status = "PRE_AUTHORIZED"
+            payment_status = "PENDING_PAYMENT"
             if card_num_raw.startswith("4"):
                 card_brand = "Visa"
             elif card_num_raw.startswith(("51", "52", "53", "54", "55", "22", "23", "24", "25", "26", "27")):
@@ -1489,12 +1519,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             elif card_num_raw.startswith(("34", "37")):
                 card_brand = "American Express"
             else:
-                card_brand = "Credit Card"
-            
+                card_brand = "Card"
             card_last4 = card_num_raw[-4:]
-            card_auth_code = f"AUTH-{uuid.uuid4().hex[:8].upper()}"
-            preauth_amount = total_fare
-            preauth_at = now_str
+            card_auth_code = None
+            preauth_amount = 0.0
+            preauth_at = None
 
         flight_num = payload.get("flight_number")
         flight_status = "Airport Monitoring Active (45m free wait)" if flight_num else None
