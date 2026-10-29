@@ -9,3 +9,7 @@ services:
         value: 3.12.0
       - key: FROM_EMAIL
         value: enquiries@gachauffeurs.co.uk
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false

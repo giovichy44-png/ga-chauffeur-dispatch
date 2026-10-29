@@ -270,11 +270,16 @@ function renderJobsList() {
               <span style="background: rgba(74, 222, 128, 0.15); border: 1px solid rgba(74, 222, 128, 0.4); color: #4ade80; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
                 💳 PRE-AUTH (${escapeHtml(b.card_brand || 'Card')} •••• ${escapeHtml(b.card_last4 || '')})
               </span>
+            ` : b.payment_status === 'PAID' ? `
+              <span style="background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.4); color: #34d399; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px;">
+                ✓ PAID
+              </span>
             ` : ''}
           </div>
 
           <div class="action-btn-group">
             <button class="btn btn-secondary" onclick="viewVoucher('${b.id}')">Voucher</button>
+            ${b.payment_status === 'PRE_AUTHORIZED' ? `<button class="btn btn-secondary" onclick="captureBookingPayment('${b.id}', ${b.total_fare})" style="border-color: #4ade80; color: #4ade80; font-weight: 600;" title="Capture pre-authorised hold">💳 Capture £${parseFloat(b.total_fare).toFixed(2)}</button>` : ''}
             ${!isCompleted ? actionBtnHtml : '<span style="color: var(--status-green); font-weight: 700;">Completed ✓</span>'}
           </div>
         </div>
@@ -298,6 +303,26 @@ async function triggerAction(bookingId, action) {
     }
   } catch (err) {
     showToast('Action failed');
+  }
+}
+
+async function captureBookingPayment(bookingId, amount) {
+  if (!confirm(`Capture pre-authorised hold of £${parseFloat(amount).toFixed(2)} now?`)) return;
+  try {
+    const res = await fetch(`/api/bookings/${bookingId}/capture-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`Payment of £${parseFloat(amount).toFixed(2)} captured successfully!`);
+      loadData();
+    } else {
+      showToast(data.error || 'Capture failed');
+    }
+  } catch (e) {
+    showToast('Failed to connect to dispatch');
   }
 }
 

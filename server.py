@@ -38,6 +38,22 @@ sse_clients = []
 sse_lock = threading.Lock()
 
 # Configuration
+def load_env_file():
+    env_file = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_file):
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
+load_env_file()
+
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USER = os.environ.get("SMTP_USER", "")
@@ -48,6 +64,92 @@ COMPANY_NAME = "GA Chauffeur Services Limited"
 COMPANY_WEBSITE = "https://gachauffeurs.co.uk"
 COMPANY_PHONE = "+44 7886 622082"
 COMPANY_ADDRESS = "1 Glebe Road, Stanmore, Greater London, HA7 4EJ"
+
+# Stripe Payments & Pre-Authorisation Configuration
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "").strip()
+
+def stripe_api_request(endpoint, method="POST", data=None):
+    """Call Stripe REST API securely without third-party pip dependencies."""
+    if not STRIPE_SECRET_KEY:
+        return {"error": "STRIPE_SECRET_KEY not configured"}
+    url = f"https://api.stripe.com/v1/{endpoint.lstrip('/')}"
+    headers = {
+        "Authorization": f"Bearer {STRIPE_SECRET_KEY}",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    encoded = None
+    if data:
+        import urllib.parse
+        encoded = urllib.parse.urlencode(data).encode("utf-8")
+    req = urllib.request.Request(url, data=encoded, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err_text = e.read().decode("utf-8")
+        try:
+            parsed = json.loads(err_text)
+            return {"error": parsed.get("error", {}).get("message", err_text)}
+        except Exception:
+            return {"error": f"Stripe HTTP {e.code}: {err_text}"}
+    except Exception as e:
+        return {"error": f"Stripe connection error: {str(e)}"}
+
+def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, customer_name, description):
+    """Places a manual capture pre-authorisation hold on a card via Stripe PaymentIntent."""
+    amount_pence = int(round(amount_gbp * 100))
+    data = {
+        "amount": str(amount_pence),
+        "currency": "gbp",
+        "capture_method": "manual",
+        "confirm": "true",
+        "payment_method": payment_method_id,
+        "description": description,
+        "receipt_email": customer_email or "",
+        "metadata[customer_name]": customer_name or "",
+        "metadata[company]": COMPANY_NAME,
+        "metadata[service]": "GA Chauffeur Services Pre-Auth Hold"
+    }
+    res = stripe_api_request("payment_intents", method="POST", data=data)
+    if "error" in res:
+        return res
+    
+    brand = "Card"
+    last4 = "••••"
+    if "charges" in res and res["charges"].get("data"):
+        ch = res["charges"]["data"][0]
+        pm_det = ch.get("payment_method_details", {}).get("card", {})
+        brand = pm_det.get("brand", "Card").capitalize()
+        last4 = pm_det.get("last4", "••••")
+    elif "payment_method" in res:
+        pm_res = stripe_api_request(f"payment_methods/{res['payment_method']}", method="GET")
+        if not pm_res.get("error") and "card" in pm_res:
+            brand = pm_res["card"].get("brand", "Card").capitalize()
+            last4 = pm_res["card"].get("last4", "••••")
+
+    return {
+        "success": True,
+        "payment_intent_id": res["id"],
+        "status": res["status"],
+        "brand": brand,
+        "last4": last4
+    }
+
+def stripe_capture_hold(payment_intent_id, amount_gbp=None):
+    """Captures a pre-authorised Stripe PaymentIntent upon journey completion."""
+    data = {}
+    if amount_gbp is not None:
+        data["amount_to_capture"] = str(int(round(amount_gbp * 100)))
+    res = stripe_api_request(f"payment_intents/{payment_intent_id}/capture", method="POST", data=data if data else None)
+    if "error" in res:
+        return res
+    return {
+        "success": True,
+        "payment_intent_id": res["id"],
+        "status": res["status"],
+        "amount_received": float(res.get("amount_received", 0)) / 100.0
+    }
 
 # Private Dispatch Console Authentication
 DISPATCH_ADMIN_USER = os.environ.get("DISPATCH_ADMIN_USER", "admin")
@@ -95,6 +197,7 @@ def check_auth(headers):
 
 PUBLIC_PATHS = {
     "/embed-booking-widget.js",
+    "/api/stripe-config",
     "/api/quote",
     "/api/suggestions",
     "/api/lookup-postcode",
@@ -933,6 +1036,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"vehicles": VEHICLE_CONFIGS})
             return
 
+        if path == "/api/stripe-config":
+            self.send_json({
+                "ok": True,
+                "enabled": bool(STRIPE_SECRET_KEY),
+                "publishable_key": STRIPE_PUBLISHABLE_KEY
+            })
+            return
+
         if path == "/api/quote":
             vehicle = query.get("vehicle", ["mercedes_s_class"])[0]
             pickup = query.get("pickup", [""])[0]
@@ -1072,6 +1183,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             parts = path.split("/")
             booking_id = parts[3]
             self.handle_live_action(booking_id, payload)
+            return
+
+        if path.endswith("/capture-payment"):
+            parts = path.split("/")
+            booking_id = parts[3]
+            self.handle_capture_payment(booking_id, payload)
             return
 
         if path == "/api/confirmations/resend":
@@ -1297,7 +1414,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         vat_amount = fare_result["vat_amount"]
         total_fare = fare_result["total_fare"]
 
-        # Credit Card Payment Pre-Authorization Processing
+        # Credit Card Payment Pre-Authorization Processing (Stripe or Direct)
+        payment_method_id = payload.get("payment_method_id")
+        stripe_intent_id = None
         card_num_raw = str(payload.get("card_number") or payload.get("cardNumber") or "").replace(" ", "").replace("-", "")
         card_holder = payload.get("cardholder_name") or payload.get("cardholderName") or payload.get("customer_name") or ""
         card_exp = payload.get("card_expiry") or payload.get("cardExpiry") or ""
@@ -1311,7 +1430,27 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         preauth_amount = 0.0
         preauth_at = None
 
-        if card_num_raw and len(card_num_raw) >= 12:
+        if payment_method_id and STRIPE_SECRET_KEY:
+            stripe_res = stripe_create_preauth_hold(
+                amount_gbp=total_fare,
+                payment_method_id=payment_method_id,
+                customer_email=payload.get("customer_email"),
+                customer_name=payload.get("customer_name"),
+                description=f"GA Chauffeur Booking {code}"
+            )
+            if "error" in stripe_res:
+                conn.close()
+                self.send_json({"error": f"Card pre-authorisation declined by Stripe: {stripe_res['error']}"}, 400)
+                return
+            payment_method = "STRIPE"
+            payment_status = "PRE_AUTHORIZED"
+            card_brand = stripe_res.get("brand", "Card")
+            card_last4 = stripe_res.get("last4", "••••")
+            card_auth_code = stripe_res["payment_intent_id"]
+            stripe_intent_id = stripe_res["payment_intent_id"]
+            preauth_amount = total_fare
+            preauth_at = now_str
+        elif card_num_raw and len(card_num_raw) >= 12:
             payment_method = "CREDIT_CARD"
             payment_status = "PRE_AUTHORIZED"
             if card_num_raw.startswith("4"):
@@ -1350,8 +1489,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             fare_amount, vat_amount, total_fare, currency, source, status, chauffeur_id,
             parking_fee, congestion_charge, payment_status, payment_method,
             card_brand, card_last4, card_auth_code, preauth_amount, preauth_at,
-            created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            stripe_payment_intent_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             booking_id, code, payload["customer_name"], payload["customer_phone"], payload["customer_email"],
             payload.get("vip_level", "Executive"), service_type, payload["pickup_address"], pickup_unit,
@@ -1362,7 +1501,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             net_fare, vat_amount, total_fare, "GBP", source, "CONFIRMED", None,
             parking_fee, congestion_charge, payment_status, payment_method,
             card_brand, card_last4, card_auth_code, preauth_amount, preauth_at,
-            now_str, now_str
+            stripe_intent_id, now_str, now_str
         ))
 
         vehicle_name = VEHICLE_CONFIGS[normalized_vehicle]["name"]
@@ -1698,6 +1837,20 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 """, (booking["dropoff_lat"], booking["dropoff_lng"], chauffeur_id))
             details = f"Journey successfully completed at {booking['dropoff_address']}. Official receipt issued."
 
+            # If a card pre-authorisation hold exists, capture it upon completion
+            card_code = booking.get("card_auth_code") or ""
+            if booking.get("payment_status") == "PRE_AUTHORIZED":
+                if card_code.startswith("pi_") and STRIPE_SECRET_KEY:
+                    cap_res = stripe_capture_hold(card_code)
+                    if not cap_res.get("error"):
+                        cursor.execute("UPDATE bookings SET payment_status = 'PAID' WHERE id = ?", (booking_id,))
+                        details += f" Stripe pre-authorisation hold of £{booking['total_fare']:.2f} successfully captured ({card_code})."
+                    else:
+                        details += f" Stripe pre-authorisation capture pending: {cap_res.get('error')}."
+                else:
+                    cursor.execute("UPDATE bookings SET payment_status = 'PAID' WHERE id = ?", (booking_id,))
+                    details += f" Card pre-authorisation hold of £{booking['total_fare']:.2f} captured ({card_code})."
+
             cnf_rec_id = f"CNF-{random.randint(1000, 9999)}"
             receipt_content = (
                 f"GA Chauffeur Services Limited - Official Trip Receipt\n\n"
@@ -1755,6 +1908,47 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         broadcast_event("live_action_executed", event_payload)
         self.send_json({"success": True, "action": action, "booking_status": new_booking_status, "details": details})
+
+    def handle_capture_payment(self, booking_id, payload):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
+        b_row = cursor.fetchone()
+        if not b_row:
+            conn.close()
+            self.send_json({"error": "Booking not found"}, 404)
+            return
+
+        booking = dict(b_row)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        card_code = booking.get("card_auth_code") or ""
+        amount = float(payload.get("amount", booking.get("total_fare", 0.0)))
+
+        if card_code.startswith("pi_") and STRIPE_SECRET_KEY:
+            res = stripe_capture_hold(card_code, amount)
+            if "error" in res:
+                conn.close()
+                self.send_json({"error": f"Stripe capture failed: {res['error']}"}, 400)
+                return
+            cursor.execute("UPDATE bookings SET payment_status = 'PAID', updated_at = ? WHERE id = ?", (now_str, booking_id))
+            cursor.execute("""
+            INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (booking_id, booking.get("chauffeur_id"), "STRIPE_CAPTURE_SUCCESS", "Dispatch Control", f"Captured £{amount:.2f} via Stripe PaymentIntent {card_code}.", now_str))
+            conn.commit()
+            conn.close()
+            broadcast_event("payment_captured", {"booking_id": booking_id, "amount": amount, "method": "STRIPE"})
+            self.send_json({"success": True, "payment_status": "PAID", "amount_captured": amount, "reference": card_code})
+        else:
+            cursor.execute("UPDATE bookings SET payment_status = 'PAID', updated_at = ? WHERE id = ?", (now_str, booking_id))
+            cursor.execute("""
+            INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (booking_id, booking.get("chauffeur_id"), "PREAUTH_CAPTURE_SUCCESS", "Dispatch Control", f"Captured £{amount:.2f} against pre-authorisation {card_code}.", now_str))
+            conn.commit()
+            conn.close()
+            broadcast_event("payment_captured", {"booking_id": booking_id, "amount": amount, "method": "PRE_AUTH"})
+            self.send_json({"success": True, "payment_status": "PAID", "amount_captured": amount, "reference": card_code})
 
     def handle_get_chauffeurs(self, query):
         status_filter = query.get("status", ["ALL"])[0].upper()

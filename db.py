@@ -109,7 +109,9 @@ def init_db():
         ("card_last4", "TEXT"),
         ("card_auth_code", "TEXT"),
         ("preauth_amount", "REAL DEFAULT 0.0"),
-        ("preauth_at", "TEXT")
+        ("preauth_at", "TEXT"),
+        ("stripe_payment_intent_id", "TEXT"),
+        ("stripe_customer_id", "TEXT")
     ]
     for col_name, col_def in cols_to_add:
         if col_name not in existing_cols:
