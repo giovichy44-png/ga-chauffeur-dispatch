@@ -1,10 +1,10 @@
 /**
- * GA Chauffeur Services Limited - Official Website Booking Widget
+ * GA Chauffeur Services Limited - Official Website Booking Widget (CDS Alternative)
  * Website: gachauffeurs.co.uk
  * Office: 1 Glebe Road, Stanmore, Greater London, HA7 4EJ
  * Direct Phone: +44 7886 622082 | Email: enquiries@gachauffeurs.co.uk
  * 
- * Embed on gachauffeurs.co.uk:
+ * Embed on gachauffeurs.co.uk or any partner site:
  * <div id="ga-chauffeur-booking-widget"></div>
  * <script src="https://dispatch.gachauffeurs.co.uk/embed-booking-widget.js"></script>
  */
@@ -16,50 +16,79 @@
   const API_BASE = window.GA_DISPATCH_API_URL || 'https://dispatch.gachauffeurs.co.uk';
 
   container.innerHTML = `
-    <div id="ga-widget-root" style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #171f1b; color: #edf0ea; border: 1px solid #2e3b33; border-radius: 6px; padding: 32px 28px; max-width: 720px; margin: 0 auto; box-shadow: 0 20px 45px rgba(0,0,0,0.45); text-align: left; box-sizing: border-box;">
+    <div id="ga-widget-root" style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #171f1b; color: #edf0ea; border: 1px solid #2e3b33; border-radius: 6px; padding: 32px 28px; max-width: 740px; margin: 0 auto; box-shadow: 0 20px 45px rgba(0,0,0,0.45); text-align: left; box-sizing: border-box;">
       
       <!-- GA Brand Header -->
       <div style="text-align: center; margin-bottom: 24px; border-bottom: 1px solid #2e3b33; padding-bottom: 20px;">
-        <div style="display: inline-flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 10px;">
           <span style="font-family: Georgia, serif; font-size: 34px; letter-spacing: -4px; color: #c9b894; line-height: 1;">GA</span>
           <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #3e4e44; padding-left: 12px; color: #d0d8d1; text-align: left; line-height: 1.4;">Chauffeur<br>Services</span>
         </div>
-        <span style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .22em; color: #c9b894; font-weight: 600; margin-bottom: 4px;">Direct Chauffeur Booking</span>
+        <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3); color: #34d399; font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .08em;">
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px #34d399; display: inline-block;"></span>
+          Live Operations Active 24/7 • Stanmore Base HA7 4EJ
+        </div>
         <h2 style="font-family: Georgia, serif; font-size: 26px; font-weight: normal; color: #ffffff; margin: 0 0 6px 0;">Request a Booking</h2>
-        <p style="margin: 0; color: #aab5ae; font-size: 14px;">Real-time quote with VAT breakdown &amp; instant booking reference (GA-XXXXX)</p>
+        <p style="margin: 0 0 14px 0; color: #aab5ae; font-size: 14px;">Instant quote with itemized VAT breakdown &amp; confirmed booking reference (GA-XXXXX)</p>
+        
+        <!-- WhatsApp Quick Link -->
+        <a id="ga-whatsapp-btn" href="https://wa.me/447886622082?text=Hello%20GA%20Chauffeurs%2C%20I%20would%20like%20to%20request%20a%20chauffeur%20quote" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #25D366; color: #fff; font-weight: 700; font-size: 13px; padding: 10px 18px; border-radius: 4px; text-decoration: none; box-shadow: 0 4px 12px rgba(37,211,102,0.25);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2zm.01 17.58c-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.16 8.16 0 0 1-1.25-4.32c0-4.52 3.68-8.2 8.2-8.2 2.19 0 4.25.85 5.8 2.4 1.55 1.55 2.4 3.61 2.4 5.8 0 4.52-3.68 8.2-8.2 8.2zm4.49-6.14c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.24-1.47-1.39-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43s-.56-1.34-.76-1.84c-.2-.48-.41-.42-.56-.43h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.24 3.75.59.26 1.05.41 1.41.53.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.08.15-1.18-.06-.1-.23-.16-.48-.28z"/></svg>
+          Chat with Operations on WhatsApp (+44 7886 622082) ↗
+        </a>
       </div>
 
       <form id="ga-widget-form" style="display: flex; flex-direction: column; gap: 18px;" autocomplete="off">
         
-        <!-- Service Type Selector & Auto Badge -->
-        <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
-          <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <label style="font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: #c9b894; font-weight: 600;">Service Type *</label>
-              <span id="ga-service-badge" style="font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #38bdf8; background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.3); padding: 2px 8px; border-radius: 3px;">AUTO-DETECTED</span>
-            </div>
-            <select id="ga-service-type" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
-              <option value="Airport arrival">Airport arrival (Heathrow, Gatwick, Luton, City, Stansted, Farnborough)</option>
-              <option value="Airport departure">Airport departure</option>
-              <option value="Point-to-point transfer">Point-to-point transfer</option>
-              <option value="Hourly chauffeur service">Hourly chauffeur service (As Directed)</option>
-            </select>
+        <!-- Interactive Service Chips -->
+        <div>
+          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: #c9b894; font-weight: 600; margin-bottom: 8px;">Journey Category *</label>
+          <div id="ga-service-chips-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;">
+            <button type="button" class="ga-btn-chip active" data-service="Airport arrival" style="background: #2e3b33; color: #c9b894; border: 1px solid #c9b894; padding: 9px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">✈️ Airport</button>
+            <button type="button" class="ga-btn-chip" data-service="Hourly chauffeur service" style="background: #17201b; color: #aab5ae; border: 1px solid #3e4e44; padding: 9px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">⏱️ Hourly</button>
+            <button type="button" class="ga-btn-chip" data-service="Private aviation" style="background: #17201b; color: #aab5ae; border: 1px solid #3e4e44; padding: 9px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">🛩️ Private Jet</button>
+            <button type="button" class="ga-btn-chip" data-service="Point-to-point transfer" style="background: #17201b; color: #aab5ae; border: 1px solid #3e4e44; padding: 9px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">📍 Point-to-Point</button>
           </div>
+          <select id="ga-service-type" style="display: none;">
+            <option value="Airport arrival" selected>Airport arrival</option>
+            <option value="Airport departure">Airport departure</option>
+            <option value="Point-to-point transfer">Point-to-point transfer</option>
+            <option value="Hourly chauffeur service">Hourly chauffeur service</option>
+            <option value="Private aviation">Private aviation</option>
+          </select>
+        </div>
 
-          <!-- Hours Selector (for Hourly Service) -->
-          <div id="ga-wrap-hours" style="display: none; background: #1c2420; border: 1px solid #2e3b33; border-radius: 4px; padding: 12px 14px;">
-            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Hours of Service (Minimum 2 Hours) *</label>
-            <select id="ga-hours" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #c9b894; border-radius: 4px; padding: 10px 14px; color: #fff; font-size: 13px; font-family: inherit;">
-              <option value="2">2 Hours (Minimum: £170 S / £190 V / £230 RR + VAT)</option>
-              <option value="3">3 Hours</option>
-              <option value="4">4 Hours (Half Day: £340 S / £380 V / £460 RR + VAT)</option>
-              <option value="5">5 Hours</option>
-              <option value="6">6 Hours</option>
-              <option value="8">8 Hours</option>
-              <option value="10">10 Hours (Full Day: £850 S / £900 V / £1,150 RR + VAT)</option>
-              <option value="12">12 Hours (Extended: £960 S / £1,080 V / £1,380 RR + VAT)</option>
-            </select>
-          </div>
+        <!-- Private Jet / FBO Group -->
+        <div id="ga-wrap-fbo" style="display: none; background: #1c2420; border: 1px solid #c9b894; border-radius: 4px; padding: 14px 16px;">
+          <div style="font-size: 11px; font-weight: 700; color: #c9b894; text-transform: uppercase; letter-spacing: .14em; margin-bottom: 8px;">🛩️ Private Aviation / FBO Handler</div>
+          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #d0d8d1; margin-bottom: 4px;">Select Private Airfield</label>
+          <select id="ga-fbo-airport" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #3e4e44; border-radius: 4px; padding: 10px; color: #fff; font-size: 13px; margin-bottom: 10px;">
+            <option value="Farnborough Airport (FAB), Signature Aviation, GU14 6XA">Farnborough Airport (FAB) - Signature Aviation</option>
+            <option value="London Biggin Hill Airport (BQH), Jetex, TN16 3BN">London Biggin Hill Airport (BQH) - Jetex</option>
+            <option value="RAF Northolt (NHT) Private Aviation FBO, HA4 6NG">RAF Northolt (NHT) - Private Aviation FBO</option>
+            <option value="London Luton Airport (LTN), Signature / Harrods Aviation, LU2 9LY">London Luton Airport (LTN) - Signature / Harrods</option>
+            <option value="London Stansted Airport (STN), Inflite The Jet Centre, CM24 1QW">London Stansted Airport (STN) - Inflite The Jet Centre</option>
+            <option value="London Heliport Battersea (EGLW), SW11 3BE">London Heliport Battersea (EGLW)</option>
+          </select>
+          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #d0d8d1; margin-bottom: 4px;">Aircraft Tail Number / Callsign</label>
+          <input type="text" id="ga-tail-number" placeholder="e.g. G-OADY, N700GX, or M-HOTL" maxlength="25" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #3e4e44; border-radius: 4px; padding: 10px; color: #fff; font-size: 13px;">
+          <p style="margin: 6px 0 0; font-size: 12px; color: #aab5ae;">Our operations team arranges apron tarmac clearance or VIP lounge meet &amp; greet directly with the FBO handling agents.</p>
+        </div>
+
+        <!-- Hours Selector (for Hourly Service) -->
+        <div id="ga-wrap-hours" style="display: none; background: #1c2420; border: 1px solid #2e3b33; border-radius: 4px; padding: 12px 14px;">
+          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Hours of Service (Minimum 2 Hours) *</label>
+          <select id="ga-hours" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #c9b894; border-radius: 4px; padding: 10px 14px; color: #fff; font-size: 13px; font-family: inherit;">
+            <option value="2">2 Hours (Minimum: £170 S / £190 V / £230 RR + VAT)</option>
+            <option value="3">3 Hours</option>
+            <option value="4">4 Hours (Half Day: £340 S / £380 V / £460 RR + VAT)</option>
+            <option value="5">5 Hours</option>
+            <option value="6">6 Hours</option>
+            <option value="8">8 Hours</option>
+            <option value="10">10 Hours (Full Day: £850 S / £900 V / £1,150 RR + VAT)</option>
+            <option value="12">12 Hours (Extended: £960 S / £1,080 V / £1,380 RR + VAT)</option>
+          </select>
+          <p style="margin: 6px 0 0; font-size: 12px; color: #aab5ae;">Destination is as directed by passenger throughout the booking duration.</p>
         </div>
 
         <!-- Passenger Contact -->
@@ -84,11 +113,11 @@
           
           <!-- Pickup -->
           <div style="position: relative;">
-            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Collection Point (Type LHR, T5 or Postcode) *</label>
-            <input type="text" id="ga-pickup" required placeholder="e.g. LHR, T5, or Postcode" autocomplete="off" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Collection Point *</label>
+            <input type="text" id="ga-pickup" required placeholder="e.g. LHR T5 or Postcode" autocomplete="off" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
             <div id="ga-dropdown-pickup" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #171f1b; border: 1px solid #c9b894; border-radius: 4px; z-index: 1000; max-height: 240px; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.6);"></div>
 
-            <input type="text" id="ga-pickup-unit" placeholder="House / Flat / Terminal (e.g. No. 12 or T5 Windsor Suite)" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 8px 12px; color: #cbd5e1; font-size: 12px; font-family: inherit; margin-top: 6px;">
+            <input type="text" id="ga-pickup-unit" placeholder="House / Flat / Terminal Detail (optional)" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 8px 12px; color: #cbd5e1; font-size: 12px; font-family: inherit; margin-top: 6px;">
 
             <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
               <span class="ga-chip" onclick="window.gaSetVal('ga-pickup', 'Heathrow Airport (LHR) Terminal 5, TW6 2GA')">Heathrow T5</span>
@@ -104,7 +133,7 @@
             <input type="text" id="ga-dropoff" required placeholder="e.g. The Connaught, Mayfair" autocomplete="off" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
             <div id="ga-dropdown-dropoff" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #171f1b; border: 1px solid #c9b894; border-radius: 4px; z-index: 1000; max-height: 240px; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.6);"></div>
 
-            <input type="text" id="ga-dropoff-unit" placeholder="House / Flat / Building Unit (optional)" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 8px 12px; color: #cbd5e1; font-size: 12px; font-family: inherit; margin-top: 6px;">
+            <input type="text" id="ga-dropoff-unit" placeholder="Building Unit / Suite (optional)" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 8px 12px; color: #cbd5e1; font-size: 12px; font-family: inherit; margin-top: 6px;">
 
             <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
               <span class="ga-chip" onclick="window.gaSetVal('ga-dropoff', 'The Connaught, Carlos Place, Mayfair, London W1K 2AL')">The Connaught</span>
@@ -320,13 +349,85 @@
   const sTypeSelect = document.getElementById('ga-service-type');
   const hoursSelect = document.getElementById('ga-hours');
   const wrapHours = document.getElementById('ga-wrap-hours');
-  const sBadge = document.getElementById('ga-service-badge');
+  const wrapFbo = document.getElementById('ga-wrap-fbo');
+  const fboSelect = document.getElementById('ga-fbo-airport');
+  const tailInput = document.getElementById('ga-tail-number');
 
   const vSelect = document.getElementById('ga-vehicle');
   const passSelect = document.getElementById('ga-passengers');
   const lgCases = document.getElementById('ga-large-cases');
   const medCases = document.getElementById('ga-medium-cases');
   const handLug = document.getElementById('ga-hand-luggage');
+  const chips = document.querySelectorAll('.ga-btn-chip');
+  const whatsappBtn = document.getElementById('ga-whatsapp-btn');
+
+  // Chip Switching
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      chips.forEach(c => {
+        c.classList.remove('active');
+        c.style.background = '#17201b';
+        c.style.borderColor = '#3e4e44';
+        c.style.color = '#aab5ae';
+      });
+      chip.classList.add('active');
+      chip.style.background = '#2e3b33';
+      chip.style.borderColor = '#c9b894';
+      chip.style.color = '#c9b894';
+
+      if (sTypeSelect) {
+        sTypeSelect.value = chip.dataset.service;
+        triggerServiceChange();
+      }
+    });
+  });
+
+  function triggerServiceChange() {
+    const val = sTypeSelect ? sTypeSelect.value : 'Airport arrival';
+    const isHourly = val === 'Hourly chauffeur service';
+    const isFBO = val === 'Private aviation';
+
+    if (wrapHours) wrapHours.style.display = isHourly ? 'block' : 'none';
+    if (wrapFbo) wrapFbo.style.display = isFBO ? 'block' : 'none';
+
+    const lblDrop = document.getElementById('ga-lbl-dropoff');
+    if (lblDrop) {
+      lblDrop.textContent = isHourly ? 'Disposal Destination (e.g. As Directed / Central London)' : 'Destination / Drop-off Location *';
+    }
+    if (isHourly && dInput && !dInput.value) {
+      dInput.value = 'As Directed / Central London';
+    }
+    if (isFBO && fboSelect && !pInput.value) {
+      pInput.value = fboSelect.value;
+    }
+    updateWidgetQuote();
+    updateWhatsAppLink();
+  }
+
+  if (fboSelect) {
+    fboSelect.addEventListener('change', () => {
+      if (sTypeSelect && sTypeSelect.value === 'Private aviation') {
+        pInput.value = fboSelect.value;
+        updateWidgetQuote();
+        updateWhatsAppLink();
+      }
+    });
+  }
+
+  function updateWhatsAppLink() {
+    if (!whatsappBtn) return;
+    const v = vSelect ? vSelect.options[vSelect.selectedIndex].text.split('(')[0].trim() : 'Executive Chauffeur';
+    const s = sTypeSelect ? sTypeSelect.value : 'chauffeur service';
+    const p = pInput ? pInput.value : '';
+    const d = dInput ? dInput.value : '';
+    const dt = dtInput ? dtInput.value : '';
+
+    let text = `Hello GA Chauffeurs, I would like to request a quote for a ${v} for ${s}`;
+    if (p) text += ` from ${p}`;
+    if (d) text += ` to ${d}`;
+    if (dt) text += ` on ${dt.replace('T', ' at ')}`;
+    whatsappBtn.href = `https://wa.me/447886622082?text=${encodeURIComponent(text)}`;
+  }
 
   // Autocomplete functionality
   setupWidgetAutocomplete(pInput, pDropdown, 'ga-pickup');
@@ -341,6 +442,7 @@
       const val = input.value.trim();
       autoDetectServiceType();
       updateWidgetQuote();
+      updateWhatsAppLink();
 
       if (val.length < 2) {
         dropdown.style.display = 'none';
@@ -393,13 +495,14 @@
       if (dd) dd.style.display = 'none';
       autoDetectServiceType();
       updateWidgetQuote();
+      updateWhatsAppLink();
     }
   };
 
   // Automatic Service Type Detection
   function autoDetectServiceType() {
     if (!sTypeSelect) return;
-    if (sTypeSelect.value === 'Hourly chauffeur service') return;
+    if (sTypeSelect.value === 'Hourly chauffeur service' || sTypeSelect.value === 'Private aviation') return;
 
     const p = (pInput ? pInput.value : '').toLowerCase();
     const d = (dInput ? dInput.value : '').toLowerCase();
@@ -414,32 +517,9 @@
       } else {
         sTypeSelect.value = 'Airport departure';
       }
-      if (sBadge) {
-        sBadge.textContent = 'AIRPORT';
-        sBadge.style.color = '#38bdf8';
-      }
     } else if (p && d) {
       sTypeSelect.value = 'Point-to-point transfer';
-      if (sBadge) {
-        sBadge.textContent = 'POINT-TO-POINT';
-        sBadge.style.color = '#34d399';
-      }
     }
-  }
-
-  if (sTypeSelect) {
-    sTypeSelect.addEventListener('change', () => {
-      const isHourly = sTypeSelect.value === 'Hourly chauffeur service';
-      if (wrapHours) wrapHours.style.display = isHourly ? 'block' : 'none';
-      const lblDrop = document.getElementById('ga-lbl-dropoff');
-      if (lblDrop) {
-        lblDrop.textContent = isHourly ? 'Disposal Destination (e.g. As Directed / Central London)' : 'Destination / Drop-off Location *';
-      }
-      if (isHourly && dInput && !dInput.value) {
-        dInput.value = 'As Directed / Central London';
-      }
-      updateWidgetQuote();
-    });
   }
 
   if (hoursSelect) hoursSelect.addEventListener('change', updateWidgetQuote);
@@ -454,9 +534,10 @@
     }
   }
 
-  if (vSelect) vSelect.addEventListener('change', () => { checkVehicleCapacity(); updateWidgetQuote(); });
+  if (vSelect) vSelect.addEventListener('change', () => { checkVehicleCapacity(); updateWidgetQuote(); updateWhatsAppLink(); });
   if (passSelect) passSelect.addEventListener('change', () => { checkVehicleCapacity(); updateWidgetQuote(); });
   if (lgCases) lgCases.addEventListener('change', () => { checkVehicleCapacity(); updateWidgetQuote(); });
+  if (dtInput) dtInput.addEventListener('change', updateWhatsAppLink);
 
   // Card formatting listeners
   const wCardNum = document.getElementById('ga-cardnumber');
@@ -544,6 +625,12 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Pre-Authorising Card & Registering Journey...';
 
+    const tailNo = tailInput ? tailInput.value.trim() : '';
+    let notes = (document.getElementById('ga-notes').value || '').trim();
+    if (tailNo) {
+      notes = `[Private Jet Tail: ${tailNo}] ` + notes;
+    }
+
     const payload = {
       customer_name: document.getElementById('ga-name').value,
       customer_phone: document.getElementById('ga-phone').value,
@@ -561,7 +648,7 @@
       large_cases: parseInt(lgCases ? lgCases.value : 0),
       medium_cases: parseInt(medCases ? medCases.value : 0),
       hand_luggage: parseInt(handLug ? handLug.value : 0),
-      special_requests: document.getElementById('ga-notes').value || '',
+      special_requests: notes,
       cardholder_name: document.getElementById('ga-cardholder') ? document.getElementById('ga-cardholder').value : '',
       card_number: document.getElementById('ga-cardnumber') ? document.getElementById('ga-cardnumber').value.replace(/\s+/g, '') : '',
       card_expiry: document.getElementById('ga-cardexpiry') ? document.getElementById('ga-cardexpiry').value : '',
@@ -599,6 +686,7 @@
             <div style="font-size: 12px; color: #aab5ae; margin-top: 4px;">
               Hold Reference: ${data.booking.card_auth_code || 'VERIFIED'}
             </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 6px;">
               ✓ Automated confirmation email sent to: <strong>${payload.customer_email}</strong>
             </div>
           </div>
