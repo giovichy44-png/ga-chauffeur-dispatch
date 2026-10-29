@@ -96,6 +96,25 @@ def stripe_api_request(endpoint, method="POST", data=None):
     except Exception as e:
         return {"error": f"Stripe connection error: {str(e)}"}
 
+def stripe_create_payment_method_from_card(card_number, exp_str, cvc, name):
+    """Creates a Stripe PaymentMethod directly from card details."""
+    exp_month = "12"
+    exp_year = "2028"
+    if "/" in str(exp_str):
+        parts = str(exp_str).split("/")
+        exp_month = parts[0].strip()
+        y = parts[1].strip()
+        exp_year = f"20{y}" if len(y) == 2 else y
+    data = {
+        "type": "card",
+        "card[number]": str(card_number).replace(" ", "").replace("-", ""),
+        "card[exp_month]": exp_month,
+        "card[exp_year]": exp_year,
+        "card[cvc]": str(cvc),
+        "billing_details[name]": name or ""
+    }
+    return stripe_api_request("payment_methods", method="POST", data=data)
+
 def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, customer_name, description):
     """Places a manual capture pre-authorisation hold on a card via Stripe PaymentIntent."""
     amount_pence = int(round(amount_gbp * 100))
@@ -1430,10 +1449,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         preauth_amount = 0.0
         preauth_at = None
 
-        if payment_method_id and STRIPE_SECRET_KEY:
+        if STRIPE_SECRET_KEY and (payment_method_id or (card_num_raw and len(card_num_raw) >= 12)):
+            pm_id = payment_method_id
+            if not pm_id and card_num_raw:
+                pm_res = stripe_create_payment_method_from_card(card_num_raw, card_exp, card_cvc, card_holder)
+                if pm_res.get("error"):
+                    conn.close()
+                    self.send_json({"error": f"Stripe card validation error: {pm_res['error']}"}, 400)
+                    return
+                pm_id = pm_res["id"]
+
             stripe_res = stripe_create_preauth_hold(
                 amount_gbp=total_fare,
-                payment_method_id=payment_method_id,
+                payment_method_id=pm_id,
                 customer_email=payload.get("customer_email"),
                 customer_name=payload.get("customer_name"),
                 description=f"GA Chauffeur Booking {code}"
