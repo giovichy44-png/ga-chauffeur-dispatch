@@ -53,22 +53,31 @@ def init_db():
         customer_phone TEXT NOT NULL,
         customer_email TEXT NOT NULL,
         vip_level TEXT DEFAULT 'Executive',
+        service_type TEXT DEFAULT 'Airport Transfer',
         pickup_address TEXT NOT NULL,
+        pickup_unit TEXT,
         pickup_lat REAL NOT NULL,
         pickup_lng REAL NOT NULL,
         dropoff_address TEXT NOT NULL,
+        dropoff_unit TEXT,
         dropoff_lat REAL NOT NULL,
         dropoff_lng REAL NOT NULL,
         pickup_datetime TEXT NOT NULL,
+        hours_booked INTEGER DEFAULT 0,
         flight_number TEXT,
         flight_status TEXT,
         vehicle_class TEXT NOT NULL,
         passenger_count INTEGER DEFAULT 1,
         luggage_count INTEGER DEFAULT 1,
+        large_cases INTEGER DEFAULT 0,
+        medium_cases INTEGER DEFAULT 0,
+        hand_luggage INTEGER DEFAULT 0,
         special_requests TEXT,
         estimated_distance_mi REAL DEFAULT 15.0,
         estimated_duration_min INTEGER DEFAULT 35,
         fare_amount REAL NOT NULL,
+        vat_amount REAL DEFAULT 0.0,
+        total_fare REAL NOT NULL,
         currency TEXT DEFAULT 'GBP',
         source TEXT DEFAULT 'DISPATCH_PORTAL',
         status TEXT NOT NULL DEFAULT 'PENDING',
@@ -78,6 +87,24 @@ def init_db():
         FOREIGN KEY (chauffeur_id) REFERENCES chauffeurs(id)
     )
     """)
+
+    # Ensure backwards compatibility with any existing columns
+    cursor.execute("PRAGMA table_info(bookings)")
+    existing_cols = [row["name"] for row in cursor.fetchall()]
+    cols_to_add = [
+        ("service_type", "TEXT DEFAULT 'Airport Transfer'"),
+        ("pickup_unit", "TEXT"),
+        ("dropoff_unit", "TEXT"),
+        ("hours_booked", "INTEGER DEFAULT 0"),
+        ("large_cases", "INTEGER DEFAULT 0"),
+        ("medium_cases", "INTEGER DEFAULT 0"),
+        ("hand_luggage", "INTEGER DEFAULT 0"),
+        ("vat_amount", "REAL DEFAULT 0.0"),
+        ("total_fare", "REAL DEFAULT 0.0")
+    ]
+    for col_name, col_def in cols_to_add:
+        if col_name not in existing_cols:
+            cursor.execute(f"ALTER TABLE bookings ADD COLUMN {col_name} {col_def}")
 
     # Confirmations Table
     cursor.execute("""
@@ -165,40 +192,43 @@ def seed_data(force=False):
     bookings = [
         (
             "BK-5001", "GA-84920", "Lord Henry Cavendish", "+44 7700 900891", "h.cavendish@foreignoffice.gov.uk", "VIP / Diplomatic",
-            "Heathrow Airport (LHR) Terminal 5, Windsor Suite", 51.4700, -0.4543,
-            "The Connaught, Carlos Place, Mayfair, London W1K 2AL", 51.5100, -0.1492,
-            t_plus_45m, "BA 178", "Landed - On Time", "mercedes_s_class",
-            2, 2, "VIP Meet & Greet with nameboard at jetbridge, chilled Hildon sparkling water, phone charger ready",
-            17.2, 42, 175.00, "GBP", "WEBSITE_GACHAUFFEURS", "CONFIRMED", None,
+            "Airport arrival", "Heathrow Airport (LHR) Terminal 5", "Windsor Suite VIP", 51.4700, -0.4543,
+            "The Connaught, Carlos Place, Mayfair, London W1K 2AL", "Main Entrance", 51.5100, -0.1492,
+            t_plus_45m, 0, "BA 178", "Landed - On Time", "mercedes_s_class",
+            2, 2, 2, 0, 1, "VIP Meet & Greet with nameboard at jetbridge, chilled Hildon sparkling water, phone charger ready",
+            17.2, 42, 165.00, 33.00, 198.00, "GBP", "WEBSITE_GACHAUFFEURS", "CONFIRMED", None,
             now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d %H:%M:%S")
         ),
         (
             "BK-5002", "GA-84921", "Victoria Kensington", "+44 7700 900904", "victoria@vanguardglobal.co.uk", "Executive",
-            "Canary Wharf, One Canada Square, London E14 5AA", 51.5048, -0.0195,
-            "Farnborough Airport (FAB), Signature Aviation Private FBO", 51.2758, -0.7763,
-            t_plus_2h, "G-OEDG (Challenger 350)", "Ready for Departure", "range_rover_autobiography",
-            3, 3, "Luggage assist for 3 Rimowa suitcases, privacy glass, Wi-Fi",
-            44.6, 68, 295.00, "GBP", "WEBSITE_GACHAUFFEURS", "PENDING", None,
+            "Airport departure", "Canary Wharf, One Canada Square, London E14 5AA", "Floor 32 Reception", 51.5048, -0.0195,
+            "Farnborough Airport (FAB), Signature Aviation Private FBO", "Terminal Gate 2", 51.2758, -0.7763,
+            t_plus_2h, 0, "G-OEDG (Challenger 350)", "Ready for Departure", "range_rover_autobiography",
+            3, 3, 3, 0, 2, "Luggage assist for 3 Rimowa suitcases, privacy glass, Wi-Fi",
+            44.6, 68, 405.00, 81.00, 486.00, "GBP", "WEBSITE_GACHAUFFEURS", "PENDING", None,
             now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d %H:%M:%S")
         ),
         (
             "BK-5003", "GA-84922", "Sir Alistair Finch & Party", "+44 7700 900612", "afinch@finchpartners.co.uk", "Corporate Standard",
-            "The Savoy, Strand, London WC2R 0EZ", 51.5103, -0.1207,
-            "Wimbledon All England Club, Church Road, London SW19 5AE", 51.4344, -0.2144,
-            t_plus_4h, None, None, "mercedes_v_class",
-            6, 5, "Party of 6 with luggage, mineral water, umbrellas ready",
-            8.4, 30, 195.00, "GBP", "DISPATCH_PORTAL", "PENDING", None,
+            "Hourly chauffeur service", "The Savoy, Strand, London WC2R 0EZ", "River Entrance", 51.5103, -0.1207,
+            "As Directed / Central London", None, 51.4344, -0.2144,
+            t_plus_4h, 4, None, None, "mercedes_v_class",
+            6, 5, 4, 1, 3, "Party of 6 with luggage, 4 hours disposal, mineral water, umbrellas ready",
+            24.0, 240, 380.00, 76.00, 456.00, "GBP", "DISPATCH_PORTAL", "PENDING", None,
             now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d %H:%M:%S")
         )
     ]
 
     cursor.executemany("""
     INSERT INTO bookings (id, confirmation_code, customer_name, customer_phone, customer_email, vip_level,
-                          pickup_address, pickup_lat, pickup_lng, dropoff_address, dropoff_lat, dropoff_lng,
-                          pickup_datetime, flight_number, flight_status, vehicle_class, passenger_count,
-                          luggage_count, special_requests, estimated_distance_mi, estimated_duration_min,
-                          fare_amount, currency, source, status, chauffeur_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          service_type, pickup_address, pickup_unit, pickup_lat, pickup_lng,
+                          dropoff_address, dropoff_unit, dropoff_lat, dropoff_lng,
+                          pickup_datetime, hours_booked, flight_number, flight_status, vehicle_class,
+                          passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
+                          special_requests, estimated_distance_mi, estimated_duration_min,
+                          fare_amount, vat_amount, total_fare, currency, source, status, chauffeur_id,
+                          created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, bookings)
 
     # Initial Confirmation Log

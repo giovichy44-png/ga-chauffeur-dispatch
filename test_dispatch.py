@@ -45,16 +45,35 @@ def run_tests():
     print(f"  ✓ Seeded {b_count} initial London bookings")
     conn.close()
 
-    # 2. Test GBP Pricing Engine
-    print("\n[TEST 2] Testing UK Luxury Mileage Fare Calculator (GBP £)...")
-    fare_s_class = server.calculate_fare("mercedes_s_class", 17.2, 42)
-    fare_range_rover = server.calculate_fare("range_rover_autobiography", 44.6, 68)
-    fare_v_class = server.calculate_fare("mercedes_v_class", 8.4, 30)
-    print(f"  ✓ Mercedes S-Class LHR T5 to Mayfair (17.2 mi, 42 min): £{fare_s_class:.2f} GBP")
-    print(f"  ✓ Range Rover Autobiography Canary Wharf to Farnborough (44.6 mi, 68 min): £{fare_range_rover:.2f} GBP")
-    print(f"  ✓ Mercedes V-Class The Savoy to Wimbledon (8.4 mi, 30 min): £{fare_v_class:.2f} GBP")
-    assert fare_s_class >= 135.0, "Minimum S-Class fare check failed"
-    assert fare_range_rover >= 175.0, "Minimum Range Rover fare check failed"
+    # 2. Test GBP Pricing Engine & Auto Service Detection
+    print("\n[TEST 2] Testing UK Published Tariffs & VAT Calculator (GBP £)...")
+    
+    # 2a. Heathrow Airport to Central London (£165 + VAT for S-Class)
+    fare_s_class = server.calculate_fare("mercedes_s_class", pickup="Heathrow Airport (LHR) Terminal 5", dropoff="The Connaught, Mayfair")
+    print(f"  ✓ Mercedes S-Class Heathrow to Mayfair: Net £{fare_s_class['net_fare']:.2f} + £{fare_s_class['vat_amount']:.2f} VAT (20%) = £{fare_s_class['total_fare']:.2f} Total")
+    assert fare_s_class["net_fare"] == 165.0, f"Expected Heathrow net fare £165, got {fare_s_class['net_fare']}"
+    assert fare_s_class["vat_amount"] == 33.0, f"Expected VAT £33, got {fare_s_class['vat_amount']}"
+    assert fare_s_class["total_fare"] == 198.0, f"Expected total £198, got {fare_s_class['total_fare']}"
+
+    # 2b. Range Rover to Gatwick / Farnborough (£405 + VAT)
+    fare_range_rover = server.calculate_fare("range_rover_autobiography", pickup="Canary Wharf", dropoff="Farnborough Airport (FAB)")
+    print(f"  ✓ Range Rover Canary Wharf to Farnborough: Net £{fare_range_rover['net_fare']:.2f} + £{fare_range_rover['vat_amount']:.2f} VAT = £{fare_range_rover['total_fare']:.2f}")
+    assert fare_range_rover["net_fare"] == 405.0
+
+    # 2c. Hourly Chauffeur Service (4 hours V-Class: £380 + VAT)
+    fare_v_hourly = server.calculate_fare("mercedes_v_class", service_type="Hourly chauffeur service", hours=4)
+    print(f"  ✓ Mercedes V-Class 4 Hours Hourly Service: Net £{fare_v_hourly['net_fare']:.2f} + £{fare_v_hourly['vat_amount']:.2f} VAT = £{fare_v_hourly['total_fare']:.2f}")
+    assert fare_v_hourly["net_fare"] == 380.0
+    assert fare_v_hourly["total_fare"] == 456.0
+
+    # 2d. Auto Service Type Detection
+    st_arrival = server.detect_service_type("Heathrow Airport (LHR) Terminal 5", "The Connaught, Mayfair")
+    st_departure = server.detect_service_type("The Dorchester, Mayfair", "Gatwick Airport (LGW)")
+    st_p2p = server.detect_service_type("The Savoy, Strand", "Harrods, Knightsbridge")
+    assert st_arrival == "Airport arrival", f"Expected Airport arrival, got {st_arrival}"
+    assert st_departure == "Airport departure", f"Expected Airport departure, got {st_departure}"
+    assert st_p2p == "Point-to-point transfer", f"Expected Point-to-point transfer, got {st_p2p}"
+    print("  ✓ Service type automatically detects: Airport arrival, Airport departure, and Point-to-point")
 
     # 3. Test Website Booking Intake & Reference Generation
     print("\n[TEST 3] Testing Customer Booking Request From Website (gachauffeurs.co.uk)...")

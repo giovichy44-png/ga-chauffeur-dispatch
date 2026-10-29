@@ -152,49 +152,86 @@
       <div class="content-container narrow">
         <div class="clean-form-card">
           <div class="form-title-bar">
+            <span class="car-eyebrow">Direct Dispatch Intake</span>
             <h2>Add New Booking</h2>
-            <p>Fills job details, computes UK fare in £ GBP, and automatically sends confirmation to customer email.</p>
+            <p>Smart address suggestions, auto service-type detection, real-time £ GBP fare with VAT, and automated email confirmation.</p>
           </div>
 
-          <form id="simple-intake-form" class="clean-form">
+          <form id="simple-intake-form" class="clean-form" autocomplete="off">
             
+            <!-- Service Type & Optional Hours -->
+            <div class="form-group-grid two-col">
+              <div class="field">
+                <label>Service Type * <span class="dispatch-pill" id="f-service-badge" style="padding: 2px 6px; font-size: 9px;">AUTO</span></label>
+                <select id="f-service-type">
+                  <option value="Airport arrival">Airport arrival (Heathrow, Gatwick, Luton, City, etc.)</option>
+                  <option value="Airport departure">Airport departure</option>
+                  <option value="Point-to-point transfer">Point-to-point transfer</option>
+                  <option value="Hourly chauffeur service">Hourly chauffeur service (As Directed)</option>
+                </select>
+              </div>
+
+              <div class="field" id="wrap-hours" style="display: none;">
+                <label>Hours of Disposal (Min 2 Hours) *</label>
+                <select id="f-hours">
+                  <option value="2">2 Hours (Min: £170 S / £190 V / £230 RR + VAT)</option>
+                  <option value="3">3 Hours</option>
+                  <option value="4">4 Hours (Half Day: £340 S / £380 V / £460 RR + VAT)</option>
+                  <option value="5">5 Hours</option>
+                  <option value="6">6 Hours</option>
+                  <option value="8">8 Hours</option>
+                  <option value="10">10 Hours (Full Day: £850 S / £900 V / £1,150 RR + VAT)</option>
+                  <option value="12">12 Hours (Extended: £960 S / £1,080 V / £1,380 RR + VAT)</option>
+                </select>
+              </div>
+            </div>
+
             <!-- Customer Details -->
             <div class="form-group-grid two-col">
               <div class="field">
-                <label>Customer Full Name *</label>
+                <label>Passenger Full Name *</label>
                 <input type="text" id="f-name" required placeholder="e.g. Lord Henry Cavendish">
               </div>
               <div class="field">
-                <label>Customer Mobile Phone *</label>
+                <label>Mobile Phone (for driver SMS) *</label>
                 <input type="tel" id="f-phone" required placeholder="+44 7886 622082">
               </div>
             </div>
 
             <div class="field">
-              <label>Customer Email Address (for confirmation email) *</label>
+              <label>Customer Email Address (for instant confirmation) *</label>
               <input type="email" id="f-email" required placeholder="client@company.co.uk">
             </div>
 
-            <!-- Route -->
+            <!-- Route with Autocomplete Dropdown & Postcode Lookup -->
             <div class="form-group-grid two-col">
-              <div class="field">
-                <label>Pickup Address / Airport *</label>
-                <input type="text" id="f-pickup" required placeholder="e.g. Heathrow Terminal 5">
+              <div class="field" style="position: relative;">
+                <label>Collection Point / Airport (Type LHR, T5 or Postcode) *</label>
+                <input type="text" id="f-pickup" required placeholder="e.g. LHR, T5, or Postcode" autocomplete="off">
+                <div class="autocomplete-dropdown" id="dropdown-pickup" style="display: none;"></div>
+                
+                <input type="text" id="f-pickup-unit" placeholder="House / Flat / Terminal (e.g. No. 12 or Terminal 5)" style="margin-top: 6px; font-size: 13px;">
+
                 <div class="chip-shortcuts">
-                  <span class="quick-chip" onclick="setPickup('Heathrow Airport (LHR) Terminal 5')">Heathrow T5</span>
-                  <span class="quick-chip" onclick="setPickup('Gatwick Airport (LGW) South Terminal')">Gatwick</span>
-                  <span class="quick-chip" onclick="setPickup('The Connaught, Mayfair, London')">The Connaught</span>
-                  <span class="quick-chip" onclick="setPickup('1 Glebe Road, Stanmore, HA7 4EJ')">Stanmore Base</span>
+                  <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 5, TW6 2GA')">Heathrow T5</span>
+                  <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 2, TW6 1EW')">Heathrow T2</span>
+                  <span class="quick-chip" onclick="applySuggestion('pickup', 'Gatwick Airport (LGW) South Terminal, RH6 0NP')">Gatwick</span>
+                  <span class="quick-chip" onclick="applySuggestion('pickup', '1 Glebe Road, Stanmore, Greater London, HA7 4EJ')">Stanmore Base</span>
                 </div>
               </div>
-              <div class="field">
-                <label>Destination / Hotel *</label>
-                <input type="text" id="f-dropoff" required placeholder="e.g. The Connaught, Mayfair">
+
+              <div class="field" style="position: relative;">
+                <label id="lbl-dropoff">Destination / Drop-off Location *</label>
+                <input type="text" id="f-dropoff" required placeholder="e.g. The Connaught, Mayfair" autocomplete="off">
+                <div class="autocomplete-dropdown" id="dropdown-dropoff" style="display: none;"></div>
+
+                <input type="text" id="f-dropoff-unit" placeholder="House / Flat / Building Unit (optional)" style="margin-top: 6px; font-size: 13px;">
+
                 <div class="chip-shortcuts">
-                  <span class="quick-chip" onclick="setDropoff('The Dorchester, Park Lane, Mayfair')">The Dorchester</span>
-                  <span class="quick-chip" onclick="setDropoff('Canary Wharf, One Canada Square')">Canary Wharf</span>
-                  <span class="quick-chip" onclick="setDropoff('Farnborough Airport (FAB) FBO')">Farnborough FBO</span>
-                  <span class="quick-chip" onclick="setDropoff('The Ritz, 150 Piccadilly, London')">The Ritz</span>
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'The Connaught, Carlos Place, Mayfair, London W1K 2AL')">The Connaught</span>
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'The Dorchester, 53 Park Lane, Mayfair, London W1K 1QA')">The Dorchester</span>
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Canary Wharf, One Canada Square, London E14 5AA')">Canary Wharf</span>
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Farnborough Airport (FAB), Signature Aviation, GU14 6XA')">Farnborough FBO</span>
                 </div>
               </div>
             </div>
@@ -210,7 +247,7 @@
                 <input type="text" id="f-flight" placeholder="e.g. BA 178">
               </div>
               <div class="field">
-                <label>Select Car *</label>
+                <label>Select Vehicle *</label>
                 <select id="f-vehicle" required>
                   <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • 4 Pax)</option>
                   <option value="mercedes_v_class">Mercedes-Benz V-Class (MPV • 6 Pax)</option>
@@ -219,23 +256,83 @@
               </div>
             </div>
 
+            <!-- Passengers & Luggage (Exact as gachauffeurs.co.uk) -->
+            <div class="form-group-grid two-col" style="background: var(--bg-card-inner); border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px;">
+              <div class="field">
+                <label>Number of Passengers *</label>
+                <select id="f-passengers">
+                  <option value="1">1 Passenger</option>
+                  <option value="2">2 Passengers</option>
+                  <option value="3">3 Passengers</option>
+                  <option value="4">4 Passengers</option>
+                  <option value="5">5 Passengers (V-Class)</option>
+                  <option value="6">6 Passengers (V-Class)</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label>Luggage Breakdown</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                  <div>
+                    <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">Large Cases</span>
+                    <select id="f-large-cases" style="padding: 8px;">
+                      <option value="0">0</option>
+                      <option value="1">1</option>
+                      <option value="2" selected>2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                      <option value="6">6</option>
+                    </select>
+                  </div>
+                  <div>
+                    <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">Medium</span>
+                    <select id="f-medium-cases" style="padding: 8px;">
+                      <option value="0">0</option>
+                      <option value="1" selected>1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                    </select>
+                  </div>
+                  <div>
+                    <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">Hand Bags</span>
+                    <select id="f-hand-luggage" style="padding: 8px;">
+                      <option value="0">0</option>
+                      <option value="1">1</option>
+                      <option value="2" selected>2</option>
+                      <option value="3">3</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Notes -->
             <div class="field">
               <label>Special Requests / Chauffeur Instructions</label>
-              <input type="text" id="f-notes" placeholder="e.g. Nameboard meet & greet, child seat, extra luggage assistance">
+              <input type="text" id="f-notes" placeholder="e.g. Nameboard meet & greet, baby seat, extra luggage assistance">
             </div>
 
-            <!-- Live Fare Box -->
-            <div class="clean-fare-box">
-              <div>
-                <span class="fare-label">ALL-INCLUSIVE FARE</span>
-                <div class="fare-note">Includes 45m flight wait time, in-car Wi-Fi &amp; bottled water</div>
+            <!-- Live Fare Box with Breakdown & Disclaimers -->
+            <div class="clean-fare-box" style="flex-direction: column; align-items: stretch; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <span class="fare-label" id="fare-service-title">HEATHROW / LONDON CITY AIRPORT TRANSFER</span>
+                  <div class="fare-note">Includes 45m complimentary flight wait time &amp; in-vehicle amenities</div>
+                </div>
+                <div style="text-align: right;">
+                  <div class="fare-price" id="calc-fare-total">£198.00</div>
+                  <div style="font-size: 12px; color: var(--text-muted);" id="calc-fare-sub">£165.00 + £33.00 VAT (20%)</div>
+                </div>
               </div>
-              <div class="fare-price" id="calc-fare-display">£175.00 GBP</div>
+              <div style="border-top: 1px solid var(--border); padding-top: 8px; font-size: 11px; color: var(--text-muted); line-height: 1.5;">
+                ⚠️ <strong>Additional Charges:</strong> Parking, airport drop-off, and London Congestion Charge are extra and will be added where applicable.
+              </div>
             </div>
 
             <button type="submit" class="btn btn-gold btn-block" id="btn-submit-booking">
-              Confirm Booking &amp; Send Email
+              Confirm Booking &amp; Send Email ↗
             </button>
           </form>
         </div>

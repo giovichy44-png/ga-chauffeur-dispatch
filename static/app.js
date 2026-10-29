@@ -401,31 +401,184 @@ function renderDriverView() {
   `;
 }
 
-// Intake Form Logic & Instant Fare Calculation
+// Intake Form Logic, Smart Autocomplete, & Live VAT Pricing Engine
 function initForm() {
   const form = document.getElementById('simple-intake-form');
   const dtInput = document.getElementById('f-datetime');
   const vSelect = document.getElementById('f-vehicle');
+  const serviceSelect = document.getElementById('f-service-type');
+  const hoursSelect = document.getElementById('f-hours');
+  const wrapHours = document.getElementById('wrap-hours');
+  const serviceBadge = document.getElementById('f-service-badge');
+
+  const pInput = document.getElementById('f-pickup');
+  const dInput = document.getElementById('f-dropoff');
+  const pDropdown = document.getElementById('dropdown-pickup');
+  const dDropdown = document.getElementById('dropdown-dropoff');
+
+  const passSelect = document.getElementById('f-passengers');
+  const lgCases = document.getElementById('f-large-cases');
+  const medCases = document.getElementById('f-medium-cases');
+  const handLug = document.getElementById('f-hand-luggage');
 
   if (dtInput) {
     const d = new Date(Date.now() + 60 * 60000);
     dtInput.value = d.toISOString().slice(0, 16);
   }
 
-  if (vSelect) {
-    vSelect.addEventListener('change', updatePricePreview);
+  // Autocomplete setup
+  setupAutocomplete(pInput, pDropdown, 'pickup');
+  setupAutocomplete(dInput, dDropdown, 'dropoff');
+
+  function setupAutocomplete(input, dropdown, field) {
+    if (!input || !dropdown) return;
+    let timer;
+
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      const val = input.value.trim();
+      autoDetectServiceType();
+      updatePricePreview();
+
+      if (val.length < 2) {
+        dropdown.style.display = 'none';
+        return;
+      }
+
+      timer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/suggestions?q=${encodeURIComponent(val)}`);
+          const data = await res.json();
+          const items = data.suggestions || [];
+
+          if (items.length === 0) {
+            dropdown.style.display = 'none';
+            return;
+          }
+
+          dropdown.innerHTML = items.map(item => `
+            <div class="autocomplete-item" onclick="applySuggestion('${field}', '${escapeHtml(item.title + ', ' + item.subtitle)}')">
+              <span class="auto-icon">${item.category === 'airport' ? '✈️' : item.category === 'hotel' ? '🏨' : '📍'}</span>
+              <div class="auto-text">
+                <strong>${escapeHtml(item.title)}</strong>
+                <span>${escapeHtml(item.subtitle)}</span>
+              </div>
+            </div>
+          `).join('');
+          dropdown.style.display = 'block';
+        } catch (e) {
+          dropdown.style.display = 'none';
+        }
+      }, 150);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
   }
 
-  function updatePricePreview() {
-    const rates = {
-      mercedes_s_class: 175.0,
-      mercedes_v_class: 195.0,
-      range_rover_autobiography: 225.0
-    };
-    const val = rates[vSelect.value] || 175.0;
-    const disp = document.getElementById('calc-fare-display');
-    if (disp) disp.textContent = `£${val.toFixed(2)} GBP`;
+  // Automatic Service Type Detector
+  function autoDetectServiceType() {
+    if (!serviceSelect) return;
+    if (serviceSelect.value === 'Hourly chauffeur service') return; // User manually selected hourly
+
+    const p = (pInput ? pInput.value : '').toLowerCase();
+    const d = (dInput ? dInput.value : '').toLowerCase();
+    const combined = p + ' ' + d;
+
+    const airportKws = ['lhr', 't5', 't2', 't3', 't4', 'heathrow', 'gatwick', 'lgw', 'city airport', 'lcy', 'luton', 'ltn', 'stansted', 'stn', 'farnborough', 'fab', 'biggin', 'airport', 'terminal'];
+
+    const hasAirport = airportKws.some(k => combined.includes(k));
+    if (hasAirport) {
+      if (airportKws.some(k => p.includes(k))) {
+        serviceSelect.value = 'Airport arrival';
+      } else {
+        serviceSelect.value = 'Airport departure';
+      }
+      if (serviceBadge) {
+        serviceBadge.textContent = 'AIRPORT';
+        serviceBadge.style.color = 'var(--status-blue)';
+      }
+    } else if (p && d) {
+      serviceSelect.value = 'Point-to-point transfer';
+      if (serviceBadge) {
+        serviceBadge.textContent = 'POINT-TO-POINT';
+        serviceBadge.style.color = 'var(--status-green)';
+      }
+    }
   }
+
+  if (serviceSelect) {
+    serviceSelect.addEventListener('change', () => {
+      const isHourly = serviceSelect.value === 'Hourly chauffeur service';
+      if (wrapHours) wrapHours.style.display = isHourly ? 'block' : 'none';
+      const lblDrop = document.getElementById('lbl-dropoff');
+      if (lblDrop) {
+        lblDrop.textContent = isHourly ? 'Disposal Destination (e.g. As Directed / Central London)' : 'Destination / Drop-off Location *';
+      }
+      if (isHourly && dInput && !dInput.value) {
+        dInput.value = 'As Directed / Central London';
+      }
+      updatePricePreview();
+    });
+  }
+
+  if (hoursSelect) hoursSelect.addEventListener('change', updatePricePreview);
+  if (vSelect) vSelect.addEventListener('change', () => { checkCapacity(); updatePricePreview(); });
+  if (passSelect) passSelect.addEventListener('change', checkCapacity);
+  if (lgCases) lgCases.addEventListener('change', checkCapacity);
+
+  // Check vehicle passenger & luggage capacity
+  function checkCapacity() {
+    const pax = parseInt(passSelect ? passSelect.value : 1);
+    const large = parseInt(lgCases ? lgCases.value : 0);
+    const v = vSelect ? vSelect.value : 'mercedes_s_class';
+
+    if (pax > 4 || large > 2) {
+      if (v === 'mercedes_s_class') {
+        vSelect.value = 'mercedes_v_class';
+        showToast('Switched to Mercedes-Benz V-Class for 5+ passengers / extra luggage');
+      }
+    }
+  }
+
+  // Update Live Fare with 20% VAT
+  async function updatePricePreview() {
+    const v = vSelect ? vSelect.value : 'mercedes_s_class';
+    const sType = serviceSelect ? serviceSelect.value : 'Airport arrival';
+    const hours = hoursSelect ? hoursSelect.value : 2;
+    const p = pInput ? pInput.value : '';
+    const d = dInput ? dInput.value : '';
+
+    try {
+      const res = await fetch(`/api/quote?vehicle=${v}&service_type=${encodeURIComponent(sType)}&hours=${hours}&pickup=${encodeURIComponent(p)}&dropoff=${encodeURIComponent(d)}`);
+      const q = await res.json();
+
+      const totalEl = document.getElementById('calc-fare-total');
+      const subEl = document.getElementById('calc-fare-sub');
+      const titleEl = document.getElementById('fare-service-title');
+
+      if (totalEl) totalEl.textContent = `£${q.total_fare.toFixed(2)}`;
+      if (subEl) subEl.textContent = `£${q.net_fare.toFixed(2)} + £${q.vat_amount.toFixed(2)} VAT (20%)`;
+      if (titleEl) titleEl.textContent = q.service_label ? q.service_label.toUpperCase() : 'ESTIMATED JOURNEY FARE';
+    } catch (e) {
+      // Fallback local calc
+      let net = 165.0;
+      if (v === 'mercedes_v_class') net = 175.0;
+      if (v === 'range_rover_autobiography') net = 225.0;
+      const vat = net * 0.20;
+      const total = net + vat;
+
+      const totalEl = document.getElementById('calc-fare-total');
+      const subEl = document.getElementById('calc-fare-sub');
+      if (totalEl) totalEl.textContent = `£${total.toFixed(2)}`;
+      if (subEl) subEl.textContent = `£${net.toFixed(2)} + £${vat.toFixed(2)} VAT (20%)`;
+    }
+  }
+
+  updatePricePreview();
 
   if (form) {
     form.addEventListener('submit', async (e) => {
@@ -438,11 +591,19 @@ function initForm() {
         customer_name: document.getElementById('f-name').value,
         customer_phone: document.getElementById('f-phone').value,
         customer_email: document.getElementById('f-email').value,
-        pickup_address: document.getElementById('f-pickup').value,
-        dropoff_address: document.getElementById('f-dropoff').value,
+        service_type: serviceSelect ? serviceSelect.value : 'Airport arrival',
+        hours_booked: wrapHours && wrapHours.style.display !== 'none' ? parseInt(hoursSelect.value) : 0,
+        pickup_address: pInput.value,
+        pickup_unit: document.getElementById('f-pickup-unit') ? document.getElementById('f-pickup-unit').value : '',
+        dropoff_address: dInput.value,
+        dropoff_unit: document.getElementById('f-dropoff-unit') ? document.getElementById('f-dropoff-unit').value : '',
         pickup_datetime: dtInput.value.replace('T', ' '),
         flight_number: document.getElementById('f-flight').value || null,
         vehicle_class: vSelect.value,
+        passenger_count: parseInt(passSelect ? passSelect.value : 1),
+        large_cases: parseInt(lgCases ? lgCases.value : 0),
+        medium_cases: parseInt(medCases ? medCases.value : 0),
+        hand_luggage: parseInt(handLug ? handLug.value : 0),
         special_requests: document.getElementById('f-notes').value || '',
         source: 'DISPATCH_PORTAL'
       };
@@ -458,32 +619,33 @@ function initForm() {
           showToast(`Job ${data.booking.confirmation_code} created! Email sent.`);
           form.reset();
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Confirm Booking & Send Email';
+          submitBtn.textContent = 'Confirm Booking & Send Email ↗';
           switchTab('jobs');
           loadData();
         } else {
           alert(data.error || 'Failed to create job');
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Confirm Booking & Send Email';
+          submitBtn.textContent = 'Confirm Booking & Send Email ↗';
         }
       } catch (err) {
         alert('Network error submitting job');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Confirm Booking & Send Email';
+        submitBtn.textContent = 'Confirm Booking & Send Email ↗';
       }
     });
   }
 }
 
-// Preset Chip Helpers
-function setPickup(addr) {
-  const el = document.getElementById('f-pickup');
-  if (el) el.value = addr;
-}
-function setDropoff(addr) {
-  const el = document.getElementById('f-dropoff');
-  if (el) el.value = addr;
-}
+// Global Suggestion Applier
+window.applySuggestion = function(field, text) {
+  const input = document.getElementById(field === 'pickup' ? 'f-pickup' : 'f-dropoff');
+  const dropdown = document.getElementById(field === 'pickup' ? 'dropdown-pickup' : 'dropdown-dropoff');
+  if (input) {
+    input.value = text;
+    if (dropdown) dropdown.style.display = 'none';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+};
 
 // Render Outbox
 function renderOutboxTable() {

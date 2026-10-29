@@ -43,45 +43,105 @@ COMPANY_WEBSITE = "https://gachauffeurs.co.uk"
 COMPANY_PHONE = "+44 7886 622082"
 COMPANY_ADDRESS = "1 Glebe Road, Stanmore, Greater London, HA7 4EJ"
 
-# VEHICLE FLEET SPECIFICATIONS & RATES FROM GACHAUFFEURS.CO.UK
+# VEHICLE FLEET SPECIFICATIONS & PUBLISHED RATES FROM GACHAUFFEURS.CO.UK
 VEHICLE_CONFIGS = {
     "mercedes_s_class": {
         "name": "Mercedes-Benz S-Class",
         "description": "Executive Saloon • Pure Elegance",
         "passengers": 4,
-        "luggage": 2,
+        "large_cases": 2,
+        "medium_cases": 2,
+        "hand_luggage": 2,
         "hourly_rate": 85.0,
         "min_hours": 2,
-        "base_transfer": 75.0,
-        "per_mile": 3.40,
-        "per_minute": 1.00,
-        "min_fare": 135.0
+        "heathrow_rate": 165.0,        # Heathrow & London City Airport to Central London
+        "outer_airports_rate": 305.0,  # Gatwick, Luton, Stansted, Farnborough, Biggin Hill
+        "ten_hour_rate": 850.0,
+        "twelve_hour_rate": 960.0,
+        "excess_mile_rate": 4.00,
+        "min_fare": 165.0
     },
     "mercedes_v_class": {
         "name": "Mercedes-Benz V-Class",
-        "description": "Luxury MPV • 6-Passenger Seater",
+        "description": "Luxury MPV • 6-Passenger Luxury Cabin",
         "passengers": 6,
-        "luggage": 6,
+        "large_cases": 6,
+        "medium_cases": 6,
+        "hand_luggage": 6,
         "hourly_rate": 95.0,
         "min_hours": 2,
-        "base_transfer": 85.0,
-        "per_mile": 3.80,
-        "per_minute": 1.10,
-        "min_fare": 150.0
+        "heathrow_rate": 175.0,        # Heathrow & London City Airport to Central London
+        "outer_airports_rate": 315.0,  # Gatwick, Luton, Stansted, Farnborough, Biggin Hill
+        "ten_hour_rate": 900.0,
+        "twelve_hour_rate": 1080.0,
+        "excess_mile_rate": 4.00,
+        "min_fare": 175.0
     },
     "range_rover_autobiography": {
         "name": "Range Rover Autobiography LWB",
         "description": "Prestige Long Wheelbase Luxury 4x4",
         "passengers": 4,
-        "luggage": 3,
+        "large_cases": 3,
+        "medium_cases": 2,
+        "hand_luggage": 3,
         "hourly_rate": 115.0,
         "min_hours": 2,
-        "base_transfer": 95.0,
-        "per_mile": 4.20,
-        "per_minute": 1.25,
-        "min_fare": 175.0
+        "heathrow_rate": 225.0,        # Heathrow & London City Airport to Central London
+        "outer_airports_rate": 405.0,  # Gatwick, Luton, Stansted, Farnborough, Biggin Hill
+        "ten_hour_rate": 1150.0,
+        "twelve_hour_rate": 1380.0,
+        "excess_mile_rate": 4.00,
+        "min_fare": 225.0
     }
 }
+
+# UK AIRPORT TERMINALS & PRESTIGE LOCATIONS FOR INSTANT AUTOCOMPLETE
+UK_AUTOCOMPLETE_DATABASE = [
+    # Heathrow Terminals & VIP Suites (LHR, T5, etc.)
+    {"title": "Heathrow Airport (LHR) Terminal 5", "subtitle": "Departures & Arrivals, TW6 2GA", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 5 - Windsor Suite VIP", "subtitle": "Private Jetbridge VIP Facility, TW6 2GA", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 2", "subtitle": "The Queen's Terminal, TW6 1EW", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 3", "subtitle": "Departures & Arrivals, TW6 1QG", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 4", "subtitle": "Departures & Arrivals, TW6 3XA", "category": "airport", "code": "LHR"},
+    
+    # Gatwick Terminals (LGW)
+    {"title": "Gatwick Airport (LGW) South Terminal", "subtitle": "Departures & Arrivals, RH6 0NP", "category": "airport", "code": "LGW"},
+    {"title": "Gatwick Airport (LGW) North Terminal", "subtitle": "Departures & Arrivals, RH6 0PJ", "category": "airport", "code": "LGW"},
+
+    # London City Airport (LCY)
+    {"title": "London City Airport (LCY)", "subtitle": "Royal Docks, Hartmann Road, London E16 2PB", "category": "airport", "code": "LCY"},
+    {"title": "London City Airport (LCY) Jet Centre", "subtitle": "Private Aviation Terminal, E16 2PB", "category": "airport", "code": "LCY"},
+
+    # Farnborough Airport (FAB)
+    {"title": "Farnborough Airport (FAB)", "subtitle": "Signature Aviation / TAG FBO, GU14 6XA", "category": "airport", "code": "FAB"},
+
+    # London Luton Airport (LTN)
+    {"title": "London Luton Airport (LTN)", "subtitle": "Main Passenger Terminal, LU2 9LY", "category": "airport", "code": "LTN"},
+    {"title": "London Luton Airport (LTN) Signature Aviation", "subtitle": "Private Jet FBO, LU2 9NW", "category": "airport", "code": "LTN"},
+    {"title": "London Luton Airport (LTN) Harrods Aviation", "subtitle": "VIP Private Terminal, LU2 9PF", "category": "airport", "code": "LTN"},
+
+    # London Stansted Airport (STN)
+    {"title": "London Stansted Airport (STN)", "subtitle": "Main Passenger Terminal, CM24 1QW", "category": "airport", "code": "STN"},
+    {"title": "London Stansted Airport (STN) Inflite Jet Centre", "subtitle": "Private VIP Aviation, CM24 1RY", "category": "airport", "code": "STN"},
+
+    # London Biggin Hill Airport (BQH)
+    {"title": "London Biggin Hill Airport (BQH)", "subtitle": "Executive Handling Terminal, TN16 3BN", "category": "airport", "code": "BQH"},
+
+    # RAF Northolt (NHT)
+    {"title": "RAF Northolt (NHT)", "subtitle": "VIP & Military Aviation Handling, HA4 6NG", "category": "airport", "code": "NHT"},
+
+    # Luxury London Hotels & Landmarks
+    {"title": "The Connaught", "subtitle": "Carlos Place, Mayfair, London W1K 2AL", "category": "hotel"},
+    {"title": "The Dorchester", "subtitle": "53 Park Lane, Mayfair, London W1K 1QA", "category": "hotel"},
+    {"title": "The Ritz London", "subtitle": "150 Piccadilly, St. James's, London W1J 9BR", "category": "hotel"},
+    {"title": "The Savoy", "subtitle": "Strand, London WC2R 0EZ", "category": "hotel"},
+    {"title": "Claridge's", "subtitle": "Brook Street, Mayfair, London W1K 4HR", "category": "hotel"},
+    {"title": "Rosewood London", "subtitle": "252 High Holborn, London WC1V 7EN", "category": "hotel"},
+    {"title": "The Berkeley", "subtitle": "Wilton Place, Knightsbridge, London SW1X 7RL", "category": "hotel"},
+    {"title": "Harrods", "subtitle": "87-135 Brompton Rd, Knightsbridge, London SW1X 7XL", "category": "landmark"},
+    {"title": "One Canada Square", "subtitle": "Canary Wharf, London E14 5AA", "category": "business"},
+    {"title": "1 Glebe Road", "subtitle": "Stanmore, Greater London HA7 4EJ", "category": "base"}
+]
 
 # Compatibility aliases
 VEHICLE_ALIASES = {
@@ -95,15 +155,90 @@ def normalize_vehicle_tier(tier_key):
     tier = str(tier_key).lower().strip()
     return VEHICLE_ALIASES.get(tier, tier if tier in VEHICLE_CONFIGS else "mercedes_s_class")
 
-def calculate_fare(vehicle_class, distance_mi, duration_min):
+def detect_service_type(pickup="", dropoff="", requested_type=None):
+    """
+    Intelligently detects whether a journey is an Airport arrival, Airport departure,
+    Hourly chauffeur service, or Point-to-point transfer.
+    """
+    if requested_type and "hourly" in str(requested_type).lower():
+        return "Hourly chauffeur service"
+    
+    text = f"{pickup} {dropoff}".lower()
+    airport_kws = [
+        "heathrow", "lhr", "t5", "t2", "t3", "t4", "terminal 5", "terminal 2", "terminal 3", "terminal 4",
+        "gatwick", "lgw", "city airport", "lcy", "london city", "luton", "ltn",
+        "stansted", "stn", "farnborough", "fab", "biggin hill", "bqh", "northolt",
+        "airport", "terminal", "fbo", "aerodrome"
+    ]
+    
+    is_airport = any(kw in text for kw in airport_kws)
+    if is_airport:
+        p_text = str(pickup).lower()
+        if any(kw in p_text for kw in airport_kws):
+            return "Airport arrival"
+        return "Airport departure"
+    return "Point-to-point transfer"
+
+def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hours=0, distance_mi=15.0):
     """
     Calculate executive luxury pricing in GBP (£) based on GA Chauffeur Services Limited published structure.
+    - Heathrow / London City Airport: S-Class £165 + VAT, V-Class £175 + VAT, Range Rover £225 + VAT
+    - Gatwick / Luton / Stansted / Farnborough: S-Class £305 + VAT, V-Class £315 + VAT, Range Rover £405 + VAT
+    - Hourly: S-Class £85/hr (min 2 hrs = £170 + VAT), V-Class £95/hr (min 2 hrs = £190 + VAT), Range Rover £115/hr (min 2 hrs = £230 + VAT)
+    - Point-to-point: minimum 2 hours base, £4/mile excess.
+    - VAT: 20%
     """
     key = normalize_vehicle_tier(vehicle_class)
     cfg = VEHICLE_CONFIGS.get(key, VEHICLE_CONFIGS["mercedes_s_class"])
-    raw_fare = cfg["base_transfer"] + (distance_mi * cfg["per_mile"]) + (duration_min * cfg["per_minute"])
-    fare = max(raw_fare, cfg["min_fare"])
-    return round(fare, 2)
+    
+    detected = detect_service_type(pickup, dropoff, service_type)
+    final_type = service_type or detected
+    
+    hours_int = int(hours or 0)
+    
+    if "hourly" in final_type.lower() or hours_int > 0:
+        h = max(2, hours_int if hours_int > 0 else 2)
+        if h == 10:
+            net_fare = cfg["ten_hour_rate"]
+        elif h == 12:
+            net_fare = cfg["twelve_hour_rate"]
+        else:
+            net_fare = h * cfg["hourly_rate"]
+        service_label = f"Hourly Chauffeur Service ({h} Hours)"
+    else:
+        text = f"{pickup} {dropoff}".lower()
+        heathrow_city_kws = ["heathrow", "lhr", "t5", "t2", "t3", "t4", "city airport", "lcy", "london city"]
+        outer_airports_kws = ["gatwick", "lgw", "luton", "ltn", "stansted", "stn", "farnborough", "fab", "biggin hill", "bqh"]
+        
+        if any(kw in text for kw in heathrow_city_kws) or "lhr" in text or "heathrow" in text:
+            net_fare = cfg["heathrow_rate"]
+            service_label = "Heathrow / London City Airport Transfer"
+        elif any(kw in text for kw in outer_airports_kws):
+            net_fare = cfg["outer_airports_rate"]
+            service_label = "Gatwick / Luton / Stansted / Farnborough Transfer"
+        elif "airport" in text or "terminal" in text or "fbo" in text:
+            net_fare = cfg["heathrow_rate"]
+            service_label = "Airport Transfer"
+        else:
+            # Point-to-point
+            base_p2p = cfg["hourly_rate"] * 2.0
+            excess_mi = max(0.0, float(distance_mi) - 20.0)
+            net_fare = base_p2p + (excess_mi * cfg["excess_mile_rate"])
+            service_label = "Point-to-Point Transfer"
+
+    net_fare = round(net_fare, 2)
+    vat_amount = round(net_fare * 0.20, 2)
+    total_fare = round(net_fare + vat_amount, 2)
+    
+    return {
+        "net_fare": net_fare,
+        "vat_amount": vat_amount,
+        "total_fare": total_fare,
+        "fare_amount": net_fare,
+        "service_type": detected,
+        "service_label": service_label,
+        "disclaimer": "Parking, airport drop-off, and Congestion Charge are extra and will be added where applicable."
+    }
 
 def generate_confirmation_code():
     chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -149,29 +284,42 @@ def send_smtp_email(to_email, subject, html_content, text_content=""):
         sys.stderr.write(f"[SMTP Error] Failed to send email to {to_email}: {e}\n")
         return False, str(e)
 
-def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, fare_amt, chauffeur=None, flight=None):
+def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None):
     tier_key = normalize_vehicle_tier(vehicle_tier)
     vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
+
+    if net_fare is None and fare_amt is not None:
+        net_fare = float(fare_amt)
+    elif net_fare is None:
+        net_fare = 165.0
+
+    net_fare = float(net_fare)
+    if vat_amt is None:
+        vat_amt = round(net_fare * 0.20, 2)
+    if total_fare is None:
+        total_fare = round(net_fare + float(vat_amt), 2)
 
     driver_block = ""
     if chauffeur:
         driver_block = f"""
-        <div style="background-color: #1a2233; border: 1px solid #d4af37; border-radius: 8px; padding: 18px; margin: 20px 0;">
-          <h3 style="color: #d4af37; margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Allocated Chauffeur Details</h3>
-          <p style="margin: 4px 0; color: #ffffff; font-size: 15px;"><strong>{chauffeur['name']}</strong> ({chauffeur['rating']}★)</p>
-          <p style="margin: 4px 0; color: #a0aec0; font-size: 13px;">Vehicle: <span style="color: #fff;">{chauffeur['vehicle_model']}</span></p>
-          <p style="margin: 4px 0; color: #a0aec0; font-size: 13px;">Registration Plate: <span style="color: #d4af37; font-weight: bold;">{chauffeur['license_plate']}</span></p>
-          <p style="margin: 4px 0; color: #a0aec0; font-size: 13px;">Direct Contact: <a href="tel:{chauffeur['phone']}" style="color: #d4af37; text-decoration: none;">{chauffeur['phone']}</a></p>
+        <div style="background-color: #171f1b; border: 1px solid #c9b894; border-radius: 6px; padding: 18px; margin: 20px 0;">
+          <h3 style="color: #c9b894; margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; letter-spacing: .15em; font-family: Georgia, serif;">Allocated Chauffeur Details</h3>
+          <p style="margin: 4px 0; color: #ffffff; font-size: 15px;"><strong>{chauffeur['name']}</strong> ({chauffeur.get('rating', 5.0)}★)</p>
+          <p style="margin: 4px 0; color: #aab5ae; font-size: 13px;">Vehicle: <span style="color: #fff;">{chauffeur['vehicle_model']}</span></p>
+          <p style="margin: 4px 0; color: #aab5ae; font-size: 13px;">Registration Plate: <span style="color: #c9b894; font-weight: bold; font-family: monospace;">{chauffeur['license_plate']}</span></p>
+          <p style="margin: 4px 0; color: #aab5ae; font-size: 13px;">Direct Contact: <a href="tel:{chauffeur['phone']}" style="color: #c9b894; text-decoration: none;">{chauffeur['phone']}</a></p>
         </div>
         """
 
     flight_block = ""
     if flight:
         flight_block = f"""
-        <p style="margin: 6px 0; color: #cbd5e1; font-size: 13px;">
-          <strong>Flight Tracking:</strong> {flight} (Live airport monitoring active • 45 mins complimentary waiting from landing)
-        </p>
+        <div style="background: rgba(56,189,248,0.08); border-left: 3px solid #38bdf8; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #cbd5e1;">
+          <strong style="color: #38bdf8;">Flight Monitoring:</strong> {flight} — 45 minutes complimentary waiting time commences after flight landing.
+        </div>
         """
+
+    luggage_summary = f"{large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand Luggage" if (large_cases or medium_cases or hand_luggage) else "Standard Luggage"
 
     return f"""
     <!DOCTYPE html>
@@ -180,50 +328,74 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
       <meta charset="utf-8">
       <title>Booking Confirmation {booking_ref} - GA Chauffeur Services Limited</title>
     </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0e14; color: #f0f4f8; margin: 0; padding: 24px;">
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; margin: 0 auto; background-color: #121722; border: 1px solid #2a3447; border-radius: 12px; overflow: hidden;">
-        <!-- Header -->
+    <body style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #121715; color: #edf0ea; margin: 0; padding: 24px;">
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 620px; margin: 0 auto; background-color: #171f1b; border: 1px solid #2e3b33; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+        
+        <!-- Header Monogram -->
         <tr>
-          <td style="background-color: #0d111a; padding: 30px 40px; text-align: center; border-bottom: 2px solid #d4af37;">
-            <h1 style="color: #ffffff; font-size: 22px; margin: 0; letter-spacing: 2px; font-weight: 700;">GA CHAUFFEUR SERVICES</h1>
-            <p style="color: #d4af37; font-size: 11px; margin: 6px 0 0 0; letter-spacing: 1.5px; text-transform: uppercase;">1 Glebe Road, Stanmore • gachauffeurs.co.uk</p>
+          <td style="background-color: #121715; padding: 28px 40px; text-align: center; border-bottom: 2px solid #c9b894;">
+            <div style="display: inline-block;">
+              <span style="font-family: Georgia, serif; font-size: 34px; letter-spacing: -4px; color: #c9b894; line-height: 1;">GA</span>
+              <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #3e4e44; padding-left: 14px; margin-left: 10px; color: #d0d8d1; line-height: 1.4; display: inline-block; vertical-align: middle; text-align: left;">Chauffeur<br>Services</span>
+            </div>
+            <p style="color: #c9b894; font-size: 11px; margin: 10px 0 0 0; letter-spacing: 2px; text-transform: uppercase;">gachauffeurs.co.uk • Official Reservation</p>
           </td>
         </tr>
+
         <!-- Content -->
         <tr>
           <td style="padding: 36px 40px;">
-            <span style="background-color: rgba(212, 175, 55, 0.15); color: #d4af37; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px;">Booking Confirmed</span>
-            <h2 style="color: #ffffff; font-size: 20px; margin: 14px 0 8px 0;">Dear {customer_name},</h2>
-            <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin-top: 0;">
-              Thank you for booking with <strong>GA Chauffeur Services Limited</strong>. Your private chauffeur reservation has been registered in our dispatch system.
+            <span style="background-color: rgba(201, 184, 148, 0.12); color: #c9b894; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 3px; text-transform: uppercase; letter-spacing: .12em; border: 1px solid rgba(201, 184, 148, 0.3);">Booking Confirmed</span>
+            <h2 style="font-family: Georgia, serif; color: #ffffff; font-size: 22px; font-weight: normal; margin: 16px 0 8px 0;">Dear {customer_name},</h2>
+            <p style="color: #aab5ae; font-size: 14px; line-height: 1.6; margin-top: 0;">
+              Thank you for choosing <strong>GA Chauffeur Services Limited</strong>. Your private luxury transfer has been registered in our central dispatch console.
             </p>
 
-            <table width="100%" style="background-color: #0f141f; border-radius: 8px; padding: 18px; margin: 24px 0; border: 1px solid #1e293b;">
+            <table width="100%" style="background-color: #121715; border-radius: 6px; padding: 18px; margin: 24px 0; border: 1px solid #2e3b33;">
               <tr>
-                <td style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: bold;">Booking Reference</td>
-                <td style="text-align: right; color: #d4af37; font-size: 16px; font-weight: bold; font-family: monospace;">{booking_ref}</td>
+                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600;">Booking Reference</td>
+                <td style="text-align: right; color: #c9b894; font-size: 18px; font-weight: bold; font-family: 'JetBrains Mono', monospace;">{booking_ref}</td>
               </tr>
               <tr>
-                <td style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: bold; padding-top: 12px;">Pickup Date & Time</td>
-                <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 12px;">{pickup_dt}</td>
+                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Service Type</td>
+                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{service_type}</td>
               </tr>
               <tr>
-                <td style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: bold; padding-top: 12px;">Vehicle Selected</td>
-                <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 12px;">{vehicle_info['name']}</td>
+                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Pickup Date &amp; Time</td>
+                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{pickup_dt}</td>
               </tr>
               <tr>
-                <td style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: bold; padding-top: 12px;">All-Inclusive Fare</td>
-                <td style="text-align: right; color: #d4af37; font-size: 18px; font-weight: bold; padding-top: 12px;">£{fare_amt:.2f} GBP</td>
+                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Vehicle Selected</td>
+                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px; font-weight: 600;">{vehicle_info['name']}</td>
+              </tr>
+              <tr>
+                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Passengers &amp; Luggage</td>
+                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{passengers} Pax • {luggage_summary}</td>
+              </tr>
+              <tr>
+                <td colspan="2" style="border-top: 1px solid #2e3b33; padding-top: 12px; margin-top: 12px;"></td>
+              </tr>
+              <tr>
+                <td style="color: #aab5ae; font-size: 13px;">Net Fare</td>
+                <td style="text-align: right; color: #ffffff; font-size: 14px;">£{net_fare:.2f} GBP</td>
+              </tr>
+              <tr>
+                <td style="color: #aab5ae; font-size: 13px;">VAT (20%)</td>
+                <td style="text-align: right; color: #ffffff; font-size: 14px;">£{vat_amt:.2f} GBP</td>
+              </tr>
+              <tr>
+                <td style="color: #c9b894; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding-top: 8px;">Total Fare</td>
+                <td style="text-align: right; color: #c9b894; font-size: 20px; font-weight: bold; padding-top: 8px; font-family: Georgia, serif;">£{total_fare:.2f} GBP</td>
               </tr>
             </table>
 
-            <div style="background-color: #090c12; border-left: 3px solid #d4af37; padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0;">
-              <div style="margin-bottom: 8px;">
-                <span style="color: #d4af37; font-size: 11px; font-weight: bold; text-transform: uppercase;">Pickup Address</span>
+            <div style="background-color: #121715; border-left: 3px solid #c9b894; padding: 14px 18px; margin: 20px 0; border-radius: 0 4px 4px 0;">
+              <div style="margin-bottom: 10px;">
+                <span style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Collection Point</span>
                 <div style="color: #ffffff; font-size: 14px; margin-top: 2px;">{pickup_addr}</div>
               </div>
               <div>
-                <span style="color: #00d2ff; font-size: 11px; font-weight: bold; text-transform: uppercase;">Destination</span>
+                <span style="color: #38bdf8; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Destination</span>
                 <div style="color: #ffffff; font-size: 14px; margin-top: 2px;">{dropoff_addr}</div>
               </div>
             </div>
@@ -231,24 +403,31 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
             {flight_block}
             {driver_block}
 
-            <p style="color: #94a3b8; font-size: 13px; line-height: 1.6; margin-top: 24px;">
-              Your dedicated chauffeur will arrive with complimentary in-vehicle Wi-Fi, bottled mineral water, and mobile charging cables. For airport pickups, your chauffeur will meet you inside Arrivals with an executive nameboard.
+            <!-- Important Terms & Additional Charges Disclaimer -->
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid #2e3b33; border-radius: 4px; padding: 14px 16px; margin: 22px 0; font-size: 12px; color: #aab5ae; line-height: 1.6;">
+              <strong style="color: #edf0ea;">Additional Charges Note:</strong> Parking, airport drop-off fee and London Congestion Charge will be added where applicable and included in your final settlement.<br>
+              <strong>Airport Waiting Policy:</strong> For airport arrivals, 45 minutes complimentary waiting time commences after flight landing. For departures, 15 minutes complimentary waiting time is provided.
+            </div>
+
+            <p style="color: #aab5ae; font-size: 13px; line-height: 1.6;">
+              Your dedicated chauffeur will arrive with complimentary high-speed in-vehicle Wi-Fi, bottled chilled mineral water, and phone charging facilities.
             </p>
 
-            <div style="text-align: center; margin-top: 30px;">
-              <a href="{COMPANY_WEBSITE}" style="background: linear-gradient(135deg, #d4af37, #aa882c); color: #0b0e14; text-decoration: none; font-weight: bold; font-size: 14px; padding: 12px 28px; border-radius: 6px; display: inline-block;">
-                Visit GA Chauffeurs
+            <div style="text-align: center; margin-top: 28px;">
+              <a href="{COMPANY_WEBSITE}" style="background: #c9b894; color: #171f1b; text-decoration: none; font-weight: 600; font-size: 13px; padding: 12px 28px; border-radius: 4px; display: inline-block;">
+                Visit GA Chauffeurs ↗
               </a>
             </div>
           </td>
         </tr>
+
         <!-- Footer -->
         <tr>
-          <td style="background-color: #0d111a; padding: 24px 40px; text-align: center; border-top: 1px solid #1e293b; color: #64748b; font-size: 11px; line-height: 1.6;">
-            <strong>GA Chauffeur Services Limited</strong><br>
-            {COMPANY_ADDRESS}<br>
-            Direct Phone: <a href="tel:{COMPANY_PHONE}" style="color: #d4af37; text-decoration: none;">{COMPANY_PHONE}</a> • Email: <a href="mailto:{FROM_EMAIL}" style="color: #d4af37; text-decoration: none;">{FROM_EMAIL}</a><br>
-            Website: <a href="{COMPANY_WEBSITE}" style="color: #d4af37; text-decoration: none;">{COMPANY_WEBSITE}</a>
+          <td style="background-color: #121715; padding: 22px 40px; text-align: center; border-top: 1px solid #2e3b33; color: #717d76; font-size: 12px; line-height: 1.6;">
+            <strong style="color: #edf0ea;">GA Chauffeur Services Limited</strong><br>
+            Stanmore, Greater London • Company No: 11136878<br>
+            Direct Phone: <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a> • Email: <a href="mailto:{FROM_EMAIL}" style="color: #c9b894; text-decoration: none;">{FROM_EMAIL}</a><br>
+            Website: <a href="{COMPANY_WEBSITE}" style="color: #c9b894; text-decoration: none;">gachauffeurs.co.uk</a>
           </td>
         </tr>
       </table>
@@ -317,6 +496,82 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/fleet-config":
             self.send_json({"vehicles": VEHICLE_CONFIGS})
+            return
+
+        if path == "/api/quote":
+            vehicle = query.get("vehicle", ["mercedes_s_class"])[0]
+            pickup = query.get("pickup", [""])[0]
+            dropoff = query.get("dropoff", [""])[0]
+            service_type = query.get("service_type", [None])[0]
+            hours = query.get("hours", [0])[0]
+            distance = float(query.get("distance", [15.0])[0])
+            fare_info = calculate_fare(vehicle, service_type, pickup, dropoff, hours, distance)
+            self.send_json(fare_info)
+            return
+
+        if path == "/api/suggestions":
+            q = query.get("q", [""])[0].strip().lower()
+            if not q:
+                # Return popular top airports and destinations
+                self.send_json({"suggestions": UK_AUTOCOMPLETE_DATABASE[:10]})
+                return
+
+            results = []
+            for item in UK_AUTOCOMPLETE_DATABASE:
+                title = item["title"].lower()
+                subtitle = item["subtitle"].lower()
+                code = item.get("code", "").lower()
+
+                # Priority scoring
+                score = 0
+                if q == code or q == "t5" and "terminal 5" in title:
+                    score = 100
+                elif q in code or q in title:
+                    score = 50
+                elif q in subtitle:
+                    score = 20
+
+                if score > 0:
+                    results.append((score, item))
+
+            results.sort(key=lambda x: x[0], reverse=True)
+            matched = [item for _, item in results]
+            self.send_json({"suggestions": matched[:12], "query": q})
+            return
+
+        if path == "/api/lookup-postcode":
+            pc = query.get("postcode", [""])[0].strip().upper().replace(" ", "")
+            # Return town / locality heuristics
+            matched_town = "Greater London"
+            if pc.startswith("TW6"):
+                matched_town = "Heathrow Airport, Hounslow"
+            elif pc.startswith("RH6"):
+                matched_town = "Gatwick Airport, Horley"
+            elif pc.startswith("HA7"):
+                matched_town = "Stanmore, Greater London"
+            elif pc.startswith("W1K") or pc.startswith("W1J"):
+                matched_town = "Mayfair, Central London"
+            elif pc.startswith("SW1"):
+                matched_town = "Westminster / Belgravia, London"
+            elif pc.startswith("E14"):
+                matched_town = "Canary Wharf, London"
+            elif pc.startswith("E16"):
+                matched_town = "London City Airport / Royal Docks"
+            elif pc.startswith("GU14"):
+                matched_town = "Farnborough Airport, Hampshire"
+            elif pc.startswith("LU2"):
+                matched_town = "Luton Airport, Bedfordshire"
+            elif pc.startswith("CM24"):
+                matched_town = "Stansted Airport, Essex"
+
+            self.send_json({
+                "postcode": pc,
+                "locality": matched_town,
+                "suggestions": [
+                    f"Unit / House Number, {matched_town}, {pc}",
+                    f"Main Entrance, {matched_town}, {pc}"
+                ]
+            })
             return
 
         if path == "/manifest.json":
@@ -542,26 +797,55 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         duration_min = int(payload.get("estimated_duration_min", calculated_dur))
 
         normalized_vehicle = normalize_vehicle_tier(payload["vehicle_class"])
-        fare = calculate_fare(normalized_vehicle, distance_mi, duration_min)
+        
+        # Service type detection & fare computation
+        detected_service = detect_service_type(payload["pickup_address"], payload["dropoff_address"], payload.get("service_type"))
+        service_type = payload.get("service_type") or detected_service
+        hours_booked = int(payload.get("hours_booked", payload.get("hours", 0)) or 0)
+        
+        fare_result = calculate_fare(
+            vehicle_class=normalized_vehicle,
+            service_type=service_type,
+            pickup=payload["pickup_address"],
+            dropoff=payload["dropoff_address"],
+            hours=hours_booked,
+            distance_mi=distance_mi
+        )
+        
+        net_fare = fare_result["net_fare"]
+        vat_amount = fare_result["vat_amount"]
+        total_fare = fare_result["total_fare"]
 
         flight_num = payload.get("flight_number")
         flight_status = "Airport Monitoring Active (45m free wait)" if flight_num else None
 
+        pickup_unit = payload.get("pickup_unit", "")
+        dropoff_unit = payload.get("dropoff_unit", "")
+        large_cases = int(payload.get("large_cases", 0) or 0)
+        medium_cases = int(payload.get("medium_cases", 0) or 0)
+        hand_luggage = int(payload.get("hand_luggage", 0) or 0)
+        passenger_count = int(payload.get("passenger_count", payload.get("passengers", 1)) or 1)
+        luggage_count = int(payload.get("luggage_count", large_cases + medium_cases) or 1)
+
         cursor.execute("""
         INSERT INTO bookings (
             id, confirmation_code, customer_name, customer_phone, customer_email, vip_level,
-            pickup_address, pickup_lat, pickup_lng, dropoff_address, dropoff_lat, dropoff_lng,
-            pickup_datetime, flight_number, flight_status, vehicle_class, passenger_count,
-            luggage_count, special_requests, estimated_distance_mi, estimated_duration_min,
-            fare_amount, currency, source, status, chauffeur_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            service_type, pickup_address, pickup_unit, pickup_lat, pickup_lng,
+            dropoff_address, dropoff_unit, dropoff_lat, dropoff_lng,
+            pickup_datetime, hours_booked, flight_number, flight_status, vehicle_class,
+            passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
+            special_requests, estimated_distance_mi, estimated_duration_min,
+            fare_amount, vat_amount, total_fare, currency, source, status, chauffeur_id,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             booking_id, code, payload["customer_name"], payload["customer_phone"], payload["customer_email"],
-            payload.get("vip_level", "Executive"), payload["pickup_address"], pickup_lat, pickup_lng,
-            payload["dropoff_address"], dropoff_lat, dropoff_lng, payload["pickup_datetime"],
-            flight_num, flight_status, normalized_vehicle, int(payload.get("passenger_count", 1)),
-            int(payload.get("luggage_count", 1)), payload.get("special_requests", ""),
-            distance_mi, duration_min, fare, "GBP", source, "CONFIRMED", None, now_str, now_str
+            payload.get("vip_level", "Executive"), service_type, payload["pickup_address"], pickup_unit,
+            pickup_lat, pickup_lng, payload["dropoff_address"], dropoff_unit, dropoff_lat, dropoff_lng,
+            payload["pickup_datetime"], hours_booked, flight_num, flight_status, normalized_vehicle,
+            passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
+            payload.get("special_requests", ""), distance_mi, duration_min,
+            net_fare, vat_amount, total_fare, "GBP", source, "CONFIRMED", None, now_str, now_str
         ))
 
         vehicle_name = VEHICLE_CONFIGS[normalized_vehicle]["name"]
@@ -569,11 +853,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         html_email = build_luxury_email_html(
             booking_ref=code,
             customer_name=payload["customer_name"],
-            pickup_addr=payload["pickup_address"],
-            dropoff_addr=payload["dropoff_address"],
+            pickup_addr=payload["pickup_address"] + (f" ({pickup_unit})" if pickup_unit else ""),
+            dropoff_addr=payload["dropoff_address"] + (f" ({dropoff_unit})" if dropoff_unit else ""),
             pickup_dt=payload["pickup_datetime"],
             vehicle_tier=normalized_vehicle,
-            fare_amt=fare,
+            net_fare=net_fare,
+            vat_amt=vat_amount,
+            total_fare=total_fare,
+            service_type=service_type,
+            passengers=passenger_count,
+            large_cases=large_cases,
+            medium_cases=medium_cases,
+            hand_luggage=hand_luggage,
             flight=flight_num
         )
 
@@ -582,17 +873,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             f"Thank you for choosing GA Chauffeur Services Limited (gachauffeurs.co.uk).\n"
             f"Your private chauffeur booking has been confirmed.\n\n"
             f"Booking Reference: {code}\n"
+            f"Service Type: {service_type}\n"
             f"Pickup: {payload['pickup_address']} at {payload['pickup_datetime']}\n"
             f"Destination: {payload['dropoff_address']}\n"
             f"Vehicle: {vehicle_name}\n"
-            f"Passengers: {payload.get('passenger_count', 1)} | Luggage: {payload.get('luggage_count', 1)}\n"
+            f"Passengers: {passenger_count} | Luggage: {large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand\n"
             + (f"Flight Monitoring: {flight_num} (Complimentary 45m waiting time included)\n" if flight_num else "")
             + (f"Special Requirements: {payload.get('special_requests')}\n" if payload.get('special_requests') else "")
-            + f"Estimated Distance: {distance_mi} miles (~{duration_min} mins)\n"
-            f"All-Inclusive Fare: £{fare:.2f} GBP\n\n"
+            + f"Net Fare: £{net_fare:.2f} GBP\n"
+            + f"VAT (20%): £{vat_amount:.2f} GBP\n"
+            + f"Total Fare: £{total_fare:.2f} GBP\n\n"
+            f"Please note: Parking, airport drop-off, and Congestion Charge will be added where applicable.\n\n"
             f"We will allocate your executive chauffeur shortly. You will receive driver contact details and vehicle tracking prior to departure.\n\n"
             f"GA Chauffeur Services Limited\n"
-            f"{COMPANY_ADDRESS}\n"
             f"Website: {COMPANY_WEBSITE}\n"
             f"Direct Phone: {COMPANY_PHONE}\n"
             f"Email: {FROM_EMAIL}"
@@ -641,7 +934,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "confirmation_code": code,
             "reference_number": code,
             "vehicle_name": vehicle_name,
-            "fare_amount": fare,
+            "net_fare": net_fare,
+            "vat_amount": vat_amount,
+            "total_fare": total_fare,
+            "fare_amount": net_fare,
+            "service_type": service_type,
             "currency": "GBP",
             "distance_mi": distance_mi,
             "duration_min": duration_min,
@@ -726,7 +1023,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             dropoff_addr=booking['dropoff_address'],
             pickup_dt=booking['pickup_datetime'],
             vehicle_tier=booking['vehicle_class'],
-            fare_amt=booking['fare_amount'],
+            net_fare=booking.get('fare_amount', 165.0),
+            vat_amt=booking.get('vat_amount'),
+            total_fare=booking.get('total_fare'),
+            service_type=booking.get('service_type', 'Airport Transfer'),
+            passengers=booking.get('passenger_count', 1),
+            large_cases=booking.get('large_cases', 0),
+            medium_cases=booking.get('medium_cases', 0),
+            hand_luggage=booking.get('hand_luggage', 0),
             chauffeur=chauffeur,
             flight=booking.get('flight_number')
         )
