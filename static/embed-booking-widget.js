@@ -131,9 +131,9 @@
         <div>
           <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Preferred Vehicle *</label>
           <select id="ga-vehicle" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #c9b894; border-radius: 4px; padding: 12px 14px; color: #fff; font-size: 14px; font-weight: 600; font-family: inherit;">
-            <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • 4 Passengers, 2 Large Bags)</option>
-            <option value="mercedes_v_class">Mercedes-Benz V-Class (Luxury MPV • 6-Seater, 6 Large Bags)</option>
-            <option value="range_rover_autobiography">Range Rover Autobiography LWB (Prestige 4x4 • 4 Passengers, 3 Bags)</option>
+            <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • Reg: HN76GYG • 4 Passengers, 2 Large Bags)</option>
+            <option value="mercedes_v_class">Mercedes-Benz V-Class (Luxury MPV • Reg: LR74EOG • 6-Seater, 6 Large Bags)</option>
+            <option value="range_rover_autobiography">Range Rover Autobiography LWB (Prestige 4x4 • Reg: UKZ 545 • 4 Passengers, 3 Bags)</option>
           </select>
         </div>
 
