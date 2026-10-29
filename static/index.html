@@ -3,582 +3,380 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>GA Chauffeur Services Limited | Dispatch OS & Mobile App</title>
+  <title>GA Chauffeur Services | Dispatch &amp; Operations</title>
   
-  <!-- PWA & Mobile Web App Meta Tags -->
   <meta name="application-name" content="GA Chauffeurs">
   <meta name="apple-mobile-web-app-title" content="GA Chauffeurs">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#090c10">
+  <meta name="theme-color" content="#0a0a0a">
   <link rel="manifest" href="/manifest.json">
 
-  <!-- Luxury Typography -->
+  <!-- Clean, Elegant Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cinzel:wght@600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-  
-  <!-- Leaflet CSS for interactive map -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cinzel:wght@600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Header / Navigation Bar -->
+
+  <!-- Top App Navigation Bar -->
   <header class="app-header">
-    <div class="brand-group">
-      <div class="brand-logo">
-        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M16 2L3 9L16 16L29 9L16 2Z" fill="url(#goldGrad)"/>
-          <path d="M3 14L16 21L29 14" stroke="url(#goldGrad)" stroke-width="2.2" stroke-linecap="round"/>
-          <path d="M3 19L16 26L29 19" stroke="url(#goldGrad)" stroke-width="2.2" stroke-linecap="round"/>
-          <defs>
-            <linearGradient id="goldGrad" x1="3" y1="2" x2="29" y2="26" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#F3E7C4"/>
-              <stop offset="0.5" stop-color="#D4AF37"/>
-              <stop offset="1" stop-color="#997C22"/>
-            </linearGradient>
-          </defs>
-        </svg>
+    <div class="header-container">
+      <div class="brand-group">
+        <div class="brand-monogram">GA</div>
+        <div class="brand-text">
+          <div class="brand-title">GA CHAUFFEUR SERVICES</div>
+          <div class="brand-subtitle">gachauffeurs.co.uk • 1 Glebe Road, Stanmore</div>
+        </div>
       </div>
-      <div>
-        <div class="brand-title">GA CHAUFFEUR SERVICES</div>
-        <div class="brand-subtitle">EXECUTIVE DISPATCH &amp; FLEET OS • GACHAUFFEURS.CO.UK</div>
-      </div>
-    </div>
 
-    <!-- Live Telemetry KPI Badges -->
-    <div class="kpi-group">
-      <div class="kpi-pill">
-        <span class="kpi-dot pulse"></span>
-        <span class="kpi-label">ACTIVE TRIPS</span>
-        <span class="kpi-value" id="kpi-active-trips">0</span>
+      <!-- Quick Actions & Contact -->
+      <div class="header-actions">
+        <a href="tel:+447886622082" class="quick-phone-link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          <span>07886 622082</span>
+        </a>
+        <a href="/widget-demo.html" target="_blank" class="btn btn-secondary">
+          Website Form
+        </a>
+        <button class="btn btn-gold" id="btn-quick-new-job">
+          + New Booking
+        </button>
       </div>
-      <div class="kpi-pill">
-        <span class="kpi-dot green"></span>
-        <span class="kpi-label">AVAILABLE FLEET</span>
-        <span class="kpi-value" id="kpi-available-fleet">0</span>
-      </div>
-      <div class="kpi-pill">
-        <span class="kpi-dot gold"></span>
-        <span class="kpi-label">CONFIRMATIONS</span>
-        <span class="kpi-value" id="kpi-confirmations">0</span>
-      </div>
-      <div class="clock-display" id="clock-display">00:00:00</div>
-    </div>
-
-    <!-- Quick Global Actions -->
-    <div class="header-actions">
-      <a href="/widget-demo.html" class="btn btn-secondary" target="_blank" title="Test Customer Booking on Website">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        <span>Website Form</span>
-      </a>
-      <button class="btn btn-secondary" id="btn-mobile-app-info" title="Install App on Phone">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-        <span>Mobile App</span>
-      </button>
-      <button class="btn btn-gold" id="btn-quick-booking">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-        <span>New Job</span>
-      </button>
-      <button class="btn btn-secondary btn-icon" id="btn-system-reset" title="Reset Demo Data">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-      </button>
-      <button class="btn btn-secondary btn-icon" id="btn-sound-toggle" title="Mute/Unmute Notifications">
-        <svg id="sound-icon-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-      </button>
     </div>
   </header>
 
-  <!-- Navigation View Tabs (Desktop & Tablet) -->
-  <nav class="nav-tabs">
-    <button class="tab-btn active" data-tab="radar">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-      Dispatch Radar &amp; Map
-    </button>
-    <button class="tab-btn" data-tab="bookings">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-      Bookings Management
-      <span class="tab-badge" id="badge-bookings-count">0</span>
-    </button>
-    <button class="tab-btn" data-tab="terminal">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-      Chauffeur Terminal (Live Simulator)
-      <span class="tab-badge-pulse" id="terminal-status-dot"></span>
-    </button>
-    <button class="tab-btn" data-tab="new-booking">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      Intake Portal
-    </button>
-    <button class="tab-btn" data-tab="fleet">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
-      Fleet Roster
-    </button>
-    <button class="tab-btn" data-tab="confirmations">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      Confirmations &amp; Outbox
-      <span class="tab-badge" id="badge-confirmations-count">0</span>
-    </button>
+  <!-- 3 Big Status Cards (Glance Overview) -->
+  <section class="top-status-bar">
+    <div class="status-container">
+      
+      <!-- Card 1: Mercedes S-Class -->
+      <div class="car-status-card" id="card-car-s-class">
+        <div class="car-badge-icon">S</div>
+        <div class="car-meta">
+          <div class="car-title">Mercedes-Benz S-Class</div>
+          <div class="car-sub">Saloon • Reg: GA24 LUX</div>
+        </div>
+        <button class="status-toggle-btn available" id="toggle-ch-1" onclick="toggleCarStatus('GA-CHF-01')">
+          Available
+        </button>
+      </div>
+
+      <!-- Card 2: Mercedes V-Class -->
+      <div class="car-status-card" id="card-car-v-class">
+        <div class="car-badge-icon">V</div>
+        <div class="car-meta">
+          <div class="car-title">Mercedes-Benz V-Class</div>
+          <div class="car-sub">MPV 7-Seater • Reg: GA24 VAN</div>
+        </div>
+        <button class="status-toggle-btn available" id="toggle-ch-2" onclick="toggleCarStatus('GA-CHF-02')">
+          Available
+        </button>
+      </div>
+
+      <!-- Card 3: Range Rover Autobiography -->
+      <div class="car-status-card" id="card-car-range-rover">
+        <div class="car-badge-icon">RR</div>
+        <div class="car-meta">
+          <div class="car-title">Range Rover Autobiography</div>
+          <div class="car-sub">LWB SUV • Reg: GA24 RVR</div>
+        </div>
+        <button class="status-toggle-btn available" id="toggle-ch-3" onclick="toggleCarStatus('GA-CHF-03')">
+          Available
+        </button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Clean Tab Navigation -->
+  <nav class="simple-tabs-nav">
+    <div class="tabs-container">
+      <button class="simple-tab-btn active" data-tab="jobs">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Active Jobs &amp; Bookings
+        <span class="tab-count-badge" id="badge-active-count">0</span>
+      </button>
+
+      <button class="simple-tab-btn" data-tab="new-booking">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        + Create New Booking
+      </button>
+
+      <button class="simple-tab-btn" data-tab="driver-mode">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+        Driver Mobile Mode
+      </button>
+
+      <button class="simple-tab-btn" data-tab="outbox">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Customer Emails &amp; Outbox
+      </button>
+    </div>
   </nav>
 
-  <!-- Main View Container -->
-  <main class="main-content">
-    
-    <!-- TAB 1: DISPATCH RADAR & MAP -->
-    <section class="tab-pane active" id="pane-radar">
-      <div class="radar-layout">
-        <!-- Interactive Map Container -->
-        <div class="map-wrapper">
-          <div id="dispatch-map"></div>
-          
-          <!-- Map Overlay Controls -->
-          <div class="map-overlay-card">
-            <div class="overlay-header">
-              <span class="pulse-gold"></span>
-              <strong>LONDON &amp; UK DISPATCH RADAR</strong>
-            </div>
-            <div class="overlay-body">
-              <div class="filter-row">
-                <label><input type="checkbox" id="layer-chauffeurs" checked> Chauffeurs</label>
-                <label><input type="checkbox" id="layer-pickups" checked> Pickups</label>
-                <label><input type="checkbox" id="layer-dropoffs" checked> Dropoffs</label>
-              </div>
-            </div>
-          </div>
+  <!-- Main Content Area -->
+  <main class="app-main">
 
-          <!-- Quick Selected Trip Bar -->
-          <div class="map-trip-bar" id="map-trip-bar" style="display: none;">
-            <div class="trip-bar-info">
-              <span class="badge" id="map-bar-status">STATUS</span>
-              <strong id="map-bar-code">GA-00000</strong>
-              <span id="map-bar-route">Route info</span>
-              <span class="tag-driver" id="map-bar-driver">Driver</span>
-            </div>
-            <div class="trip-bar-actions" id="map-bar-actions">
-              <!-- Dynamically populated live action buttons -->
-            </div>
+    <!-- TAB 1: ACTIVE JOBS (SIMPLE, CLEAR & DIRECT) -->
+    <section class="tab-content active" id="pane-jobs">
+      <div class="content-container">
+        
+        <!-- Filter Bar -->
+        <div class="jobs-filter-bar">
+          <div class="filter-pills">
+            <button class="pill-btn active" data-filter="ACTIVE">On Road / Upcoming</button>
+            <button class="pill-btn" data-filter="ALL">All Jobs</button>
+            <button class="pill-btn" data-filter="PENDING">Pending Allocation</button>
+            <button class="pill-btn" data-filter="COMPLETED">Completed</button>
+          </div>
+          <div class="search-wrap">
+            <input type="text" id="jobs-search-input" placeholder="Search reference, customer or airport...">
           </div>
         </div>
 
-        <!-- Radar Side Panel -->
-        <aside class="radar-sidebar">
-          <!-- Active Allocations & Needs Allocation -->
-          <div class="side-panel-section">
-            <div class="section-title-row">
-              <h3>NEEDS ALLOCATION</h3>
-              <span class="badge badge-warning" id="count-unallocated">0</span>
-            </div>
-            <div class="unallocated-list" id="unallocated-list">
-              <div class="empty-state">No unallocated bookings</div>
-            </div>
-          </div>
+        <!-- Jobs List Cards Container -->
+        <div class="jobs-list" id="jobs-list-container">
+          <!-- Dynamically populated clean cards -->
+        </div>
 
-          <!-- Live Action Event Feed -->
-          <div class="side-panel-section flex-grow">
-            <div class="section-title-row">
-              <h3>LIVE ACTION STREAM</h3>
-              <span class="live-tag"><span class="live-indicator"></span> REAL-TIME</span>
-            </div>
-            <div class="live-action-feed" id="live-action-feed">
-              <!-- Populated via SSE / events -->
-            </div>
-          </div>
-        </aside>
       </div>
     </section>
 
-    <!-- TAB 2: BOOKINGS MANAGEMENT -->
-    <section class="tab-pane" id="pane-bookings">
-      <div class="bookings-layout">
-        <!-- Bookings Filter Bar -->
-        <div class="filter-toolbar">
-          <div class="search-box">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="booking-search-input" placeholder="Search reference, client, flight (e.g. BA 178)...">
-          </div>
-          <div class="filter-buttons">
-            <button class="filter-btn active" data-filter="ALL">All Jobs</button>
-            <button class="filter-btn" data-filter="PENDING">Pending</button>
-            <button class="filter-btn" data-filter="CONFIRMED">Confirmed</button>
-            <button class="filter-btn" data-filter="ACTIVE">On Road</button>
-            <button class="filter-btn" data-filter="COMPLETED">Completed</button>
-          </div>
-          <div class="toolbar-actions">
-            <button class="btn btn-gold" id="btn-create-booking-shortcut">+ New Job</button>
-          </div>
-        </div>
-
-        <!-- Bookings Cards Grid -->
-        <div class="bookings-grid" id="bookings-grid">
-          <!-- Dynamic booking cards inserted here -->
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 3: CHAUFFEUR MOBILE TERMINAL SIMULATOR -->
-    <section class="tab-pane" id="pane-terminal">
-      <div class="terminal-container">
-        <!-- Chauffeur Selector Bar -->
-        <div class="terminal-selector-bar">
-          <label>SELECT CHAUFFEUR HANDSET:</label>
-          <select id="terminal-chauffeur-select" class="form-select">
-            <!-- Dynamically populated -->
-          </select>
-          <div class="terminal-tips">
-            Simulates the live mobile handset in the chauffeur's Mercedes or Range Rover. Executing live actions here immediately alerts clients and syncs the London dispatch radar.
-          </div>
-        </div>
-
-        <!-- Smartphone Frame Simulator -->
-        <div class="phone-frame">
-          <div class="phone-speaker"></div>
-          <div class="phone-screen">
-            <!-- Mobile App Status Bar -->
-            <div class="phone-status-bar">
-              <span id="phone-clock">12:00</span>
-              <div class="phone-status-icons">
-                <span>5G</span>
-                <span>100%</span>
-              </div>
-            </div>
-
-            <!-- Mobile App Top Bar -->
-            <div class="phone-app-header">
-              <div class="phone-avatar" id="phone-driver-avatar">DR</div>
-              <div class="phone-driver-meta">
-                <div class="phone-driver-name" id="phone-driver-name">David Richardson</div>
-                <div class="phone-driver-vehicle" id="phone-driver-vehicle">Mercedes S-Class [GA24 LUX]</div>
-              </div>
-              <div class="phone-driver-rating" id="phone-driver-rating">4.99 ★</div>
-            </div>
-
-            <!-- Mobile App Body -->
-            <div class="phone-app-body" id="phone-app-body">
-              <!-- Dynamically populated trip or idle view -->
-            </div>
-          </div>
-          <div class="phone-home-indicator"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 4: NEW BOOKING INTAKE PORTAL -->
-    <section class="tab-pane" id="pane-new-booking">
-      <div class="intake-container">
-        <div class="intake-form-card">
-          <div class="card-header">
-            <div class="card-title-group">
-              <span class="gold-badge">GA CHAUFFEUR SERVICES LIMITED</span>
-              <h2>Receive New Executive Reservation</h2>
-              <p>Log a client booking, compute luxury UK mileage fare in GBP (£), and automatically dispatch email confirmations.</p>
-            </div>
+    <!-- TAB 2: CREATE NEW BOOKING (SIMPLE 1-PAGE INTAKE) -->
+    <section class="tab-content" id="pane-new-booking">
+      <div class="content-container narrow">
+        <div class="clean-form-card">
+          <div class="form-title-bar">
+            <h2>Add New Booking</h2>
+            <p>Fills job details, computes UK fare in £ GBP, and automatically sends confirmation to customer email.</p>
           </div>
 
-          <form id="booking-intake-form" class="intake-form">
-            <!-- Passenger Information -->
-            <div class="form-section">
-              <div class="section-heading">1. PASSENGER &amp; VIP INFORMATION</div>
-              <div class="form-row three-col">
-                <div class="form-group">
-                  <label for="intake-name">Passenger Full Name *</label>
-                  <input type="text" id="intake-name" class="form-input" required placeholder="e.g. Lord Henry Cavendish">
-                </div>
-                <div class="form-group">
-                  <label for="intake-phone">Mobile Phone (for live SMS) *</label>
-                  <input type="tel" id="intake-phone" class="form-input" required placeholder="+44 7700 900891">
-                </div>
-                <div class="form-group">
-                  <label for="intake-email">Passenger Email (for confirmation email) *</label>
-                  <input type="email" id="intake-email" class="form-input" required placeholder="client@luxury.co.uk">
+          <form id="simple-intake-form" class="clean-form">
+            
+            <!-- Customer Details -->
+            <div class="form-group-grid two-col">
+              <div class="field">
+                <label>Customer Full Name *</label>
+                <input type="text" id="f-name" required placeholder="e.g. Lord Henry Cavendish">
+              </div>
+              <div class="field">
+                <label>Customer Mobile Phone *</label>
+                <input type="tel" id="f-phone" required placeholder="+44 7886 622082">
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Customer Email Address (for confirmation email) *</label>
+              <input type="email" id="f-email" required placeholder="client@company.co.uk">
+            </div>
+
+            <!-- Route -->
+            <div class="form-group-grid two-col">
+              <div class="field">
+                <label>Pickup Address / Airport *</label>
+                <input type="text" id="f-pickup" required placeholder="e.g. Heathrow Terminal 5">
+                <div class="chip-shortcuts">
+                  <span class="quick-chip" onclick="setPickup('Heathrow Airport (LHR) Terminal 5')">Heathrow T5</span>
+                  <span class="quick-chip" onclick="setPickup('Gatwick Airport (LGW) South Terminal')">Gatwick</span>
+                  <span class="quick-chip" onclick="setPickup('The Connaught, Mayfair, London')">The Connaught</span>
+                  <span class="quick-chip" onclick="setPickup('1 Glebe Road, Stanmore, HA7 4EJ')">Stanmore Base</span>
                 </div>
               </div>
-              <div class="form-row two-col">
-                <div class="form-group">
-                  <label for="intake-vip">VIP Service Tier</label>
-                  <select id="intake-vip" class="form-select">
-                    <option value="Executive">Executive</option>
-                    <option value="VIP / Diplomatic">VIP / Diplomatic Protocol</option>
-                    <option value="Celebrity / Royal">Celebrity / High-Net-Worth</option>
-                    <option value="Corporate Standard">Corporate Standard</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="intake-pax">Passengers &amp; Luggage</label>
-                  <div class="pax-inputs">
-                    <input type="number" id="intake-passengers" min="1" max="10" value="1" class="form-input" placeholder="Pax">
-                    <span>Passengers</span>
-                    <input type="number" id="intake-luggage" min="0" max="12" value="2" class="form-input" placeholder="Bags">
-                    <span>Luggage</span>
-                  </div>
+              <div class="field">
+                <label>Destination / Hotel *</label>
+                <input type="text" id="f-dropoff" required placeholder="e.g. The Connaught, Mayfair">
+                <div class="chip-shortcuts">
+                  <span class="quick-chip" onclick="setDropoff('The Dorchester, Park Lane, Mayfair')">The Dorchester</span>
+                  <span class="quick-chip" onclick="setDropoff('Canary Wharf, One Canada Square')">Canary Wharf</span>
+                  <span class="quick-chip" onclick="setDropoff('Farnborough Airport (FAB) FBO')">Farnborough FBO</span>
+                  <span class="quick-chip" onclick="setDropoff('The Ritz, 150 Piccadilly, London')">The Ritz</span>
                 </div>
               </div>
             </div>
 
-            <!-- Route & Schedule -->
-            <div class="form-section">
-              <div class="section-heading">2. ITINERARY &amp; FLIGHT DETAILS</div>
-              <div class="form-row two-col">
-                <div class="form-group">
-                  <label for="intake-pickup">Pickup Address / Airport Terminal *</label>
-                  <input type="text" id="intake-pickup" class="form-input" required placeholder="e.g. Heathrow Terminal 5, Windsor Suite">
-                  <div class="quick-preset-chips">
-                    <span class="chip" data-pickup="Heathrow Airport (LHR) Terminal 5">Heathrow T5</span>
-                    <span class="chip" data-pickup="Gatwick Airport (LGW) South Terminal">Gatwick (LGW)</span>
-                    <span class="chip" data-pickup="London City Airport (LCY) Jet Centre">London City (LCY)</span>
-                    <span class="chip" data-pickup="Farnborough Airport (FAB) Signature FBO">Farnborough FBO</span>
-                    <span class="chip" data-pickup="The Connaught, Mayfair, London">The Connaught</span>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label for="intake-dropoff">Dropoff Destination / Hotel *</label>
-                  <input type="text" id="intake-dropoff" class="form-input" required placeholder="e.g. The Dorchester, Park Lane, Mayfair">
-                  <div class="quick-preset-chips">
-                    <span class="chip" data-dropoff="The Dorchester, 53 Park Lane, London W1K 1QA">The Dorchester</span>
-                    <span class="chip" data-dropoff="The Ritz London, 150 Piccadilly, London">The Ritz</span>
-                    <span class="chip" data-dropoff="Canary Wharf, One Canada Square, London">Canary Wharf</span>
-                    <span class="chip" data-dropoff="Harrods, 87-135 Brompton Rd, Knightsbridge">Harrods</span>
-                  </div>
-                </div>
+            <!-- Date, Time & Vehicle -->
+            <div class="form-group-grid three-col">
+              <div class="field">
+                <label>Pickup Date &amp; Time *</label>
+                <input type="datetime-local" id="f-datetime" required>
               </div>
-
-              <div class="form-row three-col">
-                <div class="form-group">
-                  <label for="intake-datetime">Pickup Date &amp; Time *</label>
-                  <input type="datetime-local" id="intake-datetime" class="form-input" required>
-                </div>
-                <div class="form-group">
-                  <label for="intake-flight">Flight Number (Airport Arrivals)</label>
-                  <input type="text" id="intake-flight" class="form-input" placeholder="e.g. BA 178 or VS 004">
-                </div>
-                <div class="form-group">
-                  <label for="intake-vehicle-class">Vehicle Tier *</label>
-                  <select id="intake-vehicle-class" class="form-select" required>
-                    <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • 4 Pax, 2 Bags)</option>
-                    <option value="mercedes_v_class">Mercedes-Benz V-Class (MPV • 7 Pax, 6 Bags)</option>
-                    <option value="range_rover_autobiography">Range Rover Autobiography LWB (Luxury 4x4 • 4 Pax, 3 Bags)</option>
-                  </select>
-                </div>
+              <div class="field">
+                <label>Flight No. (45m free wait)</label>
+                <input type="text" id="f-flight" placeholder="e.g. BA 178">
               </div>
-
-              <div class="form-group">
-                <label for="intake-requests">Special Amenities &amp; Chauffeur Instructions</label>
-                <input type="text" id="intake-requests" class="form-input" placeholder="e.g. Meet &amp; Greet with nameboard at Arrivals, chilled Hildon water, child safety seat">
+              <div class="field">
+                <label>Select Car *</label>
+                <select id="f-vehicle" required>
+                  <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • 4 Pax)</option>
+                  <option value="mercedes_v_class">Mercedes-Benz V-Class (MPV • 7 Pax)</option>
+                  <option value="range_rover_autobiography">Range Rover Autobiography (SUV • 4 Pax)</option>
+                </select>
               </div>
             </div>
 
-            <!-- Live Fare & Estimate Card -->
-            <div class="fare-preview-card">
-              <div class="fare-item">
-                <span class="label">ESTIMATED ROUTE</span>
-                <strong id="preview-distance">~18.5 miles (42 mins)</strong>
-              </div>
-              <div class="fare-item">
-                <span class="label">SERVICE CLASS</span>
-                <strong id="preview-tier">First Class</strong>
-              </div>
-              <div class="fare-item right">
-                <span class="label">ALL-INCLUSIVE FARE</span>
-                <strong class="gold-price" id="preview-fare">£195.00 GBP</strong>
-              </div>
+            <!-- Notes -->
+            <div class="field">
+              <label>Special Requests / Chauffeur Instructions</label>
+              <input type="text" id="f-notes" placeholder="e.g. Nameboard meet & greet, child seat, extra luggage assistance">
             </div>
 
-            <!-- Submit Buttons -->
-            <div class="form-submit-row">
-              <button type="submit" class="btn btn-gold btn-large" id="btn-submit-booking">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                Confirm Job &amp; Dispatch Email
-              </button>
+            <!-- Live Fare Box -->
+            <div class="clean-fare-box">
+              <div>
+                <span class="fare-label">ALL-INCLUSIVE FARE</span>
+                <div class="fare-note">Includes 45m flight wait time, in-car Wi-Fi &amp; bottled water</div>
+              </div>
+              <div class="fare-price" id="calc-fare-display">£175.00 GBP</div>
             </div>
+
+            <button type="submit" class="btn btn-gold btn-block" id="btn-submit-booking">
+              Confirm Booking &amp; Send Email
+            </button>
           </form>
         </div>
       </div>
     </section>
 
-    <!-- TAB 5: CHAUFFEUR FLEET ROSTER -->
-    <section class="tab-pane" id="pane-fleet">
-      <div class="fleet-layout">
-        <div class="fleet-header">
-          <div>
-            <h2>GA Chauffeur Fleet Roster</h2>
-            <p>Mercedes-Benz S-Class, Mercedes-Benz V-Class, and Range Rover Autobiography LWB.</p>
+    <!-- TAB 3: DRIVER MOBILE MODE (1-TAP ON-ROAD CONTROLS) -->
+    <section class="tab-content" id="pane-driver-mode">
+      <div class="content-container narrow">
+        <div class="driver-handset-card">
+          <div class="driver-selector-row">
+            <label>CURRENT CAR ON ROAD:</label>
+            <select id="driver-car-select" onchange="changeDriverCar(this.value)">
+              <option value="GA-CHF-01">Mercedes-Benz S-Class [GA24 LUX]</option>
+              <option value="GA-CHF-02">Mercedes-Benz V-Class [GA24 VAN]</option>
+              <option value="GA-CHF-03">Range Rover Autobiography [GA24 RVR]</option>
+            </select>
           </div>
-          <div class="fleet-quick-stats">
-            <span class="stat-pill"><strong id="fleet-stat-total">3</strong> Vehicles</span>
-            <span class="stat-pill green"><strong id="fleet-stat-avail">3</strong> Available</span>
-            <span class="stat-pill gold"><strong id="fleet-stat-trip">0</strong> On Active Trip</span>
-          </div>
-        </div>
 
-        <div class="fleet-grid" id="fleet-grid">
-          <!-- Populated dynamically -->
+          <div class="driver-active-trip" id="driver-trip-view">
+            <!-- Dynamically populated big action buttons -->
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- TAB 6: CONFIRMATIONS & OUTBOX -->
-    <section class="tab-pane" id="pane-confirmations">
-      <div class="confirmations-layout">
-        <div class="confirmations-header">
-          <div>
-            <h2>Dispatched Confirmations &amp; Outbox</h2>
-            <p>Real-time log of customer confirmations, driver dispatch notifications, and trip receipts.</p>
+    <!-- TAB 4: SENT CONFIRMATIONS & OUTBOX -->
+    <section class="tab-content" id="pane-outbox">
+      <div class="content-container">
+        <div class="outbox-card">
+          <div class="outbox-header">
+            <div>
+              <h2>Sent Customer Confirmations</h2>
+              <p>Automated emails sent from <strong>enquiries@gachauffeurs.co.uk</strong>.</p>
+            </div>
           </div>
-          <div>
-            <span class="live-tag"><span class="live-indicator"></span> 100% DISPATCHED</span>
-          </div>
-        </div>
 
-        <div class="confirmations-table-wrapper">
-          <table class="luxury-table">
-            <thead>
-              <tr>
-                <th>STATUS</th>
-                <th>CHANNEL</th>
-                <th>RECIPIENT</th>
-                <th>REFERENCE</th>
-                <th>SUBJECT / CONTENT PREVIEW</th>
-                <th>DISPATCHED AT</th>
-                <th>ACTION</th>
-              </tr>
-            </thead>
-            <tbody id="confirmations-table-body">
-              <!-- Dynamically populated -->
-            </tbody>
-          </table>
+          <div class="outbox-table-scroll">
+            <table class="clean-table">
+              <thead>
+                <tr>
+                  <th>STATUS</th>
+                  <th>RECIPIENT</th>
+                  <th>JOB REFERENCE</th>
+                  <th>SUBJECT</th>
+                  <th>SENT AT</th>
+                  <th>ACTION</th>
+                </tr>
+              </thead>
+              <tbody id="outbox-table-body">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
 
   </main>
 
-  <!-- MOBILE BOTTOM NAVIGATION BAR (Thumb-friendly on Phones) -->
-  <nav class="mobile-bottom-nav">
-    <button class="mobile-nav-btn active" data-tab="radar">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-      <span>Radar</span>
-    </button>
-    <button class="mobile-nav-btn" data-tab="bookings">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+  <!-- MOBILE BOTTOM BAR (Thumb Navigation) -->
+  <nav class="mobile-bar">
+    <button class="m-btn active" data-tab="jobs">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <span>Jobs</span>
-      <span class="mobile-badge" id="mobile-badge-jobs">0</span>
+      <span class="m-badge" id="m-jobs-count">0</span>
     </button>
-    <button class="mobile-nav-btn" data-tab="terminal">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-      <span>Driver App</span>
+    <button class="m-btn" data-tab="new-booking">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      <span>New</span>
     </button>
-    <button class="mobile-nav-btn" data-tab="new-booking">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      <span>New Job</span>
+    <button class="m-btn" data-tab="driver-mode">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+      <span>Driver</span>
     </button>
-    <button class="mobile-nav-btn" data-tab="confirmations">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      <span>Outbox</span>
+    <button class="m-btn" data-tab="outbox">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <span>Emails</span>
     </button>
   </nav>
 
-  <!-- MODAL: MANUAL CHAUFFEUR ALLOCATION -->
-  <div class="modal-overlay" id="modal-allocate" style="display: none;">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div>
-          <span class="gold-badge">GA CHAUFFEUR ALLOCATION</span>
-          <h3 id="modal-allocate-title">Allocate Chauffeur</h3>
-          <p id="modal-allocate-subtitle">Select the optimal chauffeur or run smart auto-matching.</p>
-        </div>
-        <button class="modal-close" id="modal-allocate-close">&times;</button>
+  <!-- MODAL: ALLOCATE CAR (SIMPLE 3-CAR CHOOSER) -->
+  <div class="modal-backdrop" id="modal-allocate" style="display: none;">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Allocate Car for Booking</h3>
+        <button class="modal-x" onclick="closeModal('modal-allocate')">&times;</button>
       </div>
-
       <div class="modal-body">
-        <div class="modal-booking-summary" id="modal-booking-summary">
-          <!-- Booking details -->
-        </div>
+        <div id="modal-job-summary" class="job-summary-pill"></div>
+        <p style="font-size: 13px; color: #a1a1aa; margin: 12px 0 16px;">Tap which car will carry out this journey:</p>
 
-        <div class="auto-match-box">
-          <div class="auto-match-info">
-            <strong>Smart London Proximity &amp; Tier Matcher</strong>
-            <p>Matches with the highest-rated available driver with matching vehicle class.</p>
+        <div class="car-choice-list">
+          <div class="car-choice-btn" onclick="assignVehicle('GA-CHF-01')">
+            <div class="choice-icon">S</div>
+            <div class="choice-info">
+              <strong>Mercedes-Benz S-Class Saloon</strong>
+              <span>Reg: GA24 LUX • Up to 4 Passengers</span>
+            </div>
+            <span class="choice-badge">Select</span>
           </div>
-          <button class="btn btn-gold" id="btn-run-auto-allocate">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            Auto-Allocate
-          </button>
-        </div>
 
-        <div class="separator-line"><span>OR SELECT MANUALLY</span></div>
+          <div class="car-choice-btn" onclick="assignVehicle('GA-CHF-02')">
+            <div class="choice-icon">V</div>
+            <div class="choice-info">
+              <strong>Mercedes-Benz V-Class MPV</strong>
+              <span>Reg: GA24 VAN • 7-Seater Passenger</span>
+            </div>
+            <span class="choice-badge">Select</span>
+          </div>
 
-        <div class="chauffeur-selection-list" id="modal-chauffeur-list">
-          <!-- List of chauffeurs with 1-click select -->
+          <div class="car-choice-btn" onclick="assignVehicle('GA-CHF-03')">
+            <div class="choice-icon">RR</div>
+            <div class="choice-info">
+              <strong>Range Rover Autobiography LWB</strong>
+              <span>Reg: GA24 RVR • Luxury 4x4 SUV</span>
+            </div>
+            <span class="choice-badge">Select</span>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- MODAL: DIGITAL CONFIRMATION VOUCHER / ITINERARY PREVIEW -->
-  <div class="modal-overlay" id="modal-voucher" style="display: none;">
-    <div class="modal-card voucher-modal-card">
-      <div class="modal-header">
-        <div>
-          <span class="gold-badge">GA CHAUFFEUR SERVICES LIMITED</span>
-          <h3>Passenger Itinerary Voucher</h3>
-        </div>
-        <button class="modal-close" id="modal-voucher-close">&times;</button>
+  <!-- MODAL: VIEW PASSENGER VOUCHER -->
+  <div class="modal-backdrop" id="modal-voucher" style="display: none;">
+    <div class="modal-box voucher-modal-box">
+      <div class="modal-head">
+        <h3>Booking Confirmation Voucher</h3>
+        <button class="modal-x" onclick="closeModal('modal-voucher')">&times;</button>
       </div>
-      <div class="modal-body voucher-body" id="voucher-content">
-        <!-- Rendered boarding pass voucher -->
+      <div class="modal-body" id="voucher-details-body">
+        <!-- Injected -->
       </div>
-      <div class="modal-footer">
+      <div class="modal-foot">
         <button class="btn btn-secondary" onclick="window.print()">Print / Save PDF</button>
-        <button class="btn btn-gold" id="modal-voucher-close-btn">Close Voucher</button>
+        <button class="btn btn-gold" onclick="closeModal('modal-voucher')">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- MODAL: MOBILE APP INSTALL INSTRUCTIONS -->
-  <div class="modal-overlay" id="modal-mobile-app" style="display: none;">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div>
-          <span class="gold-badge">INSTALL MOBILE APP</span>
-          <h3>Use GA Chauffeurs on Your Phone</h3>
-          <p>This system is a Progressive Web App (PWA) ready to run full-screen on your iPhone or Android.</p>
-        </div>
-        <button class="modal-close" id="modal-mobile-app-close">&times;</button>
-      </div>
-      <div class="modal-body" style="line-height: 1.6; font-size: 13px;">
-        <div style="background: rgba(212,175,55,0.08); border: 1px solid rgba(212,175,55,0.3); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-          <strong style="color: #d4af37; font-size: 14px; display: block; margin-bottom: 6px;">📱 On Apple iPhone / iPad (Safari):</strong>
-          <ol style="margin-left: 20px; color: #e2e8f0;">
-            <li>Open this URL in <strong>Safari</strong> on your iPhone.</li>
-            <li>Tap the <strong>Share</strong> button (box with an upward arrow at the bottom).</li>
-            <li>Scroll down and tap <strong>"Add to Home Screen"</strong>.</li>
-            <li>Tap <strong>Add</strong>. A dedicated "GA Chauffeurs" app icon will appear on your phone home screen!</li>
-          </ol>
-        </div>
+  <!-- Toast Notification Container -->
+  <div class="toast-stack" id="toast-stack"></div>
 
-        <div style="background: rgba(0,210,255,0.08); border: 1px solid rgba(0,210,255,0.3); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
-          <strong style="color: #00d2ff; font-size: 14px; display: block; margin-bottom: 6px;">🤖 On Android Phone (Chrome):</strong>
-          <ol style="margin-left: 20px; color: #e2e8f0;">
-            <li>Open this URL in <strong>Chrome</strong>.</li>
-            <li>Tap the <strong>three dots menu (⋮)</strong> in the top right.</li>
-            <li>Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
-            <li>Tap <strong>Install</strong>.</li>
-          </ol>
-        </div>
-
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-          Once added, it runs without browser bars in standalone app mode with touch gesture support, instant push notifications, and bottom navigation.
-        </p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-gold" id="btn-mobile-app-gotit">Got It</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- TOAST NOTIFICATION CONTAINER -->
-  <div class="toast-container" id="toast-container"></div>
-
-  <!-- Leaflet JS for interactive map -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="app.js"></script>
 </body>
 </html>
