@@ -1,38 +1,52 @@
 /* ==========================================================================
-   GA CHAUFFEUR SERVICES LIMITED - SIMPLIFIED LUXURY DISPATCH SYSTEM
-   Website: gachauffeurs.co.uk
-   Design: Clean, High-Contrast Black & Champagne Gold Palette
+   GA CHAUFFEUR SERVICES LIMITED - DISPATCH & OPERATIONS CONSOLE
+   Aesthetics: Hand-crafted to mirror gachauffeurs.co.uk
+   Palette: Forest Ink (#171f1b), Warm Heritage Gold (#c9b894), Ivory (#edf0ea)
+   Typography: DM Sans, Georgia Serif, Manrope
    ========================================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap');
+
 :root {
-  /* Exact GA Chauffeurs Palette */
-  --bg-page: #0a0a0c;
-  --bg-header: #111114;
-  --bg-card: #151518;
-  --bg-card-hover: #1c1c20;
-  --bg-input: #1b1b20;
+  /* Exact GA Chauffeurs Official Palette from gachauffeurs.co.uk */
+  --ink: #171c1c;
+  --paper: #f7f7f3;
+  --gold: #c9b894;
+  --gold-hover: #e1d3b7;
+  --gold-muted: #7f7257;
+  --gold-border: rgba(201, 184, 148, 0.35);
+  --gold-glow: rgba(201, 184, 148, 0.15);
 
-  --gold-accent: #c5a059;
-  --gold-hover: #d4af37;
-  --gold-glow: rgba(197, 160, 89, 0.25);
-  --gold-border: rgba(197, 160, 89, 0.35);
+  /* Deep Luxury Dark Theme matching dark sections of gachauffeurs.co.uk */
+  --bg-page: #121715;
+  --bg-header: #171f1b;
+  --bg-subnav: #161e1a;
+  --bg-card: #1c2420;
+  --bg-card-hover: #222c27;
+  --bg-card-inner: #161e1a;
+  --bg-input: #151c19;
 
+  /* Typography Colors */
   --text-white: #ffffff;
-  --text-body: #e4e4e7;
-  --text-muted: #9ca3af;
-  --text-dim: #71717a;
+  --text-body: #edf0ea;
+  --text-muted: #aab5ae;
+  --text-dim: #717d76;
 
-  --border-light: rgba(255, 255, 255, 0.08);
-  --border-active: #c5a059;
+  /* Borders */
+  --border: #2c3831;
+  --border-light: #38463e;
+  --border-active: #c9b894;
 
-  --status-green: #10b981;
-  --status-blue: #0284c7;
-  --status-purple: #8b5cf6;
-  --status-amber: #f59e0b;
+  /* Status Colors */
+  --status-green: #34d399;
+  --status-blue: #38bdf8;
+  --status-amber: #fbbf24;
+  --status-purple: #c084fc;
 
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-serif: 'Cinzel', Georgia, serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Typography Families */
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 * {
@@ -42,72 +56,114 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html {
+  background-color: var(--bg-page);
+}
+
 body {
   background-color: var(--bg-page);
   color: var(--text-body);
   font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   padding-bottom: 70px;
 }
 
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+}
+
 /* ==========================================================================
-   1. APP HEADER
+   1. APP HEADER (EXACT BRANDING FROM GACHAUFFEURS.CO.UK - NO ADDRESS)
    ========================================================================== */
 .app-header {
   background: var(--bg-header);
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 1000;
-  padding: 14px 20px;
+  padding: 16px 24px;
 }
 
 .header-container {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 20px;
 }
 
 .brand-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
-.brand-monogram {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #e7d2a5, var(--gold-accent), #9b7933);
-  color: #0a0a0c;
-  font-family: var(--font-serif);
-  font-weight: 700;
-  font-size: 16px;
-  border-radius: 8px;
+/* Exact Brand Monogram from gachauffeurs.co.uk */
+.brand {
   display: flex;
   align-items: center;
-  justify-content: center;
-  letter-spacing: 1px;
-  box-shadow: 0 4px 12px var(--gold-glow);
+  gap: 12px;
+  text-decoration: none;
+  cursor: pointer;
 }
 
-.brand-title {
+.monogram {
   font-family: var(--font-serif);
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: #ffffff;
+  font-size: 34px;
+  letter-spacing: -4px;
+  padding-right: 4px;
+  line-height: 1;
+  color: var(--gold);
 }
 
-.brand-subtitle {
+.brand-name {
+  font-family: var(--font-sans);
   font-size: 11px;
-  color: var(--gold-accent);
-  margin-top: 1px;
+  letter-spacing: .18em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  border-left: 1px solid var(--border-light);
+  padding-left: 14px;
+  color: #d0d8d1;
+  font-weight: 500;
 }
 
+.dispatch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: rgba(201, 184, 148, 0.1);
+  border: 1px solid var(--gold-border);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.dispatch-pill::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-green);
+  box-shadow: 0 0 8px var(--status-green);
+}
+
+/* Header Actions */
 .header-actions {
   display: flex;
   align-items: center;
@@ -118,65 +174,108 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-light);
-  color: var(--text-white);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text-body);
   padding: 8px 14px;
-  border-radius: 20px;
+  border-radius: 4px;
   font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
+  font-weight: 500;
   transition: all 0.2s ease;
 }
 
 .quick-phone-link:hover {
-  border-color: var(--gold-accent);
-  color: var(--gold-hover);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 9px 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  touch-action: manipulation;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-body);
+  border: 1px solid var(--border-light);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.btn-gold {
+  background: var(--gold);
+  color: #171f1b;
+  border-color: var(--gold);
+  font-weight: 600;
+}
+
+.btn-gold:hover {
+  background: var(--gold-hover);
+  border-color: var(--gold-hover);
+}
+
+.btn-block {
+  width: 100%;
 }
 
 /* ==========================================================================
-   2. TOP CAR STATUS BAR (GLANCE OVERVIEW)
+   2. TOP STATUS BAR (GLANCE OVERVIEW FOR THE 3 REAL CARS)
    ========================================================================== */
 .top-status-bar {
-  background: #0e0e11;
-  border-bottom: 1px solid var(--border-light);
-  padding: 16px 20px;
+  background: var(--bg-subnav);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
 }
 
 .status-container {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 16px;
 }
 
 .car-status-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
   transition: all 0.2s ease;
 }
 
 .car-status-card:hover {
   border-color: var(--gold-border);
+  background: var(--bg-card-hover);
 }
 
 .car-badge-icon {
-  width: 36px;
-  height: 36px;
-  background: rgba(197, 160, 89, 0.12);
+  width: 42px;
+  height: 42px;
+  background: rgba(201, 184, 148, 0.08);
   border: 1px solid var(--gold-border);
-  color: var(--gold-accent);
+  color: var(--gold);
   font-family: var(--font-serif);
-  font-weight: 700;
-  font-size: 13px;
-  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -185,45 +284,70 @@ body {
 
 .car-meta {
   flex: 1;
+  min-width: 0;
+}
+
+.car-eyebrow {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .2em;
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 2px;
 }
 
 .car-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #ffffff;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-white);
+  line-height: 1.25;
 }
 
 .car-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 3px;
+}
+
+.car-plate {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-white);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
 }
 
 .status-toggle-btn {
   padding: 7px 14px;
-  border-radius: 20px;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: .04em;
   cursor: pointer;
-  border: none;
+  border: 1px solid transparent;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .status-toggle-btn.available {
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--status-green);
+  border-color: rgba(52, 211, 153, 0.35);
 }
 
 .status-toggle-btn.available:hover {
-  background: #10b981;
-  color: #000;
+  background: var(--status-green);
+  color: #121715;
 }
 
 .status-toggle-btn.busy {
-  background: rgba(245, 158, 11, 0.18);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--status-amber);
+  border-color: rgba(251, 191, 36, 0.35);
 }
 
 /* ==========================================================================
@@ -231,12 +355,12 @@ body {
    ========================================================================== */
 .simple-tabs-nav {
   background: var(--bg-header);
-  border-bottom: 1px solid var(--border-light);
-  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
 }
 
 .tabs-container {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
   display: flex;
   gap: 8px;
@@ -246,109 +370,51 @@ body {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-family: var(--font-sans);
   font-size: 14px;
-  font-weight: 600;
-  padding: 14px 18px;
+  font-weight: 500;
+  padding: 16px 20px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  position: relative;
+  gap: 10px;
+  border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
 }
 
 .simple-tab-btn:hover {
-  color: #ffffff;
+  color: var(--text-white);
 }
 
 .simple-tab-btn.active {
-  color: #ffffff;
-}
-
-.simple-tab-btn.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--gold-accent);
-  border-radius: 3px 3px 0 0;
+  color: var(--gold);
+  border-bottom-color: var(--gold);
 }
 
 .tab-count-badge {
-  background: rgba(197, 160, 89, 0.2);
-  color: var(--gold-accent);
+  background: rgba(201, 184, 148, 0.15);
+  color: var(--gold);
   border: 1px solid var(--gold-border);
   font-size: 11px;
   font-weight: 700;
   padding: 2px 7px;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 /* ==========================================================================
-   4. BUTTONS & STYLING
-   ========================================================================== */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 9px 18px;
-  border-radius: 8px;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  text-decoration: none;
-  border: none;
-  transition: all 0.2s ease;
-}
-
-.btn-gold {
-  background: linear-gradient(135deg, #e7d2a5 0%, var(--gold-accent) 60%, #9b7933 100%);
-  color: #0a0a0c;
-  box-shadow: 0 4px 14px var(--gold-glow);
-}
-
-.btn-gold:hover {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-light);
-  color: var(--text-white);
-}
-
-.btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-}
-
-.btn-block {
-  width: 100%;
-  padding: 15px;
-  font-size: 15px;
-}
-
-/* ==========================================================================
-   5. TAB PANES & CONTENT
+   4. MAIN APP CONTENT
    ========================================================================== */
 .app-main {
   flex: 1;
-  padding: 24px 20px;
+  padding: 28px 24px;
 }
 
 .content-container {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
 }
 
 .content-container.narrow {
-  max-width: 720px;
+  max-width: 780px;
 }
 
 .tab-content {
@@ -357,15 +423,23 @@ body {
 
 .tab-content.active {
   display: block;
+  animation: fadeIn 0.2s ease;
 }
 
-/* Jobs Filter Toolbar */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   5. ACTIVE JOBS LIST & FILTER BAR
+   ========================================================================== */
 .jobs-filter-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 20px;
+  gap: 16px;
+  margin-bottom: 24px;
   flex-wrap: wrap;
 }
 
@@ -377,265 +451,333 @@ body {
 
 .pill-btn {
   background: var(--bg-card);
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--border);
   color: var(--text-muted);
   padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .pill-btn:hover {
-  color: #fff;
+  color: var(--text-white);
+  border-color: var(--border-light);
 }
 
 .pill-btn.active {
-  background: var(--gold-accent);
-  color: #0a0a0c;
-  font-weight: 700;
-  border-color: var(--gold-accent);
+  background: rgba(201, 184, 148, 0.12);
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.search-wrap {
+  flex: 1;
+  max-width: 360px;
+  min-width: 240px;
 }
 
 .search-wrap input {
+  width: 100%;
   background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 20px;
-  padding: 8px 18px;
-  color: #fff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 14px;
+  color: var(--text-white);
   font-size: 13px;
-  width: 280px;
-  outline: none;
+  transition: all 0.2s ease;
 }
 
 .search-wrap input:focus {
-  border-color: var(--gold-accent);
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-glow);
 }
 
-/* ==========================================================================
-   6. JOB CARDS (SUPER CLEAN & INTUITIVE)
-   ========================================================================== */
+/* Jobs Cards */
 .jobs-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .job-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 20px 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 22px 24px;
+  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  transition: all 0.2s ease;
+  gap: 18px;
 }
 
 .job-card:hover {
   border-color: var(--gold-border);
+  background: var(--bg-card-hover);
 }
 
 .job-card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 10px;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
 }
 
 .job-ref-code {
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--gold-accent);
+  color: var(--gold);
+  letter-spacing: 1px;
 }
 
 .customer-name {
-  font-size: 18px;
-  font-weight: 700;
-  color: #ffffff;
-  margin-top: 3px;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-white);
+  margin: 3px 0;
 }
 
 .customer-contact {
-  font-size: 13px;
-  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
 }
 
 .customer-contact a {
-  color: var(--gold-accent);
-  text-decoration: none;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.customer-contact a:hover {
+  color: var(--gold);
 }
 
 .status-badge {
   display: inline-block;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 4px;
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.8px;
+  font-weight: 700;
+  letter-spacing: .08em;
   text-transform: uppercase;
+  border: 1px solid transparent;
 }
 
-.status-badge.pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #fbbf24; }
-.status-badge.confirmed { background: rgba(2, 132, 199, 0.15); color: #38bdf8; border: 1px solid #38bdf8; }
-.status-badge.assigned { background: rgba(139, 92, 246, 0.15); color: #c084fc; border: 1px solid #c084fc; }
-.status-badge.en_route { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; }
-.status-badge.arrived { background: rgba(236, 72, 153, 0.2); color: #f472b6; border: 1px solid #f472b6; }
-.status-badge.on_board { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #34d399; }
-.status-badge.completed { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.status-badge.pending {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--status-amber);
+  border-color: rgba(251, 191, 36, 0.3);
+}
 
-/* Route Row */
+.status-badge.confirmed,
+.status-badge.assigned,
+.status-badge.accepted {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--status-blue);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.status-badge.en_route {
+  background: rgba(192, 132, 252, 0.12);
+  color: var(--status-purple);
+  border-color: rgba(192, 132, 252, 0.3);
+}
+
+.status-badge.arrived,
+.status-badge.on_board {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--status-green);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.status-badge.completed {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+/* Route Display */
 .job-route-box {
-  background: #0f0f13;
-  border-radius: 8px;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border);
+  border-radius: 4px;
   padding: 14px 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  gap: 12px;
 }
 
 .route-point {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  font-size: 13px;
 }
 
 .route-icon-dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  margin-top: 4px;
+  margin-top: 5px;
+  flex-shrink: 0;
 }
-.route-icon-dot.p { background: var(--gold-accent); }
-.route-icon-dot.d { background: #38bdf8; }
+
+.route-icon-dot.p {
+  background: var(--gold);
+  box-shadow: 0 0 8px var(--gold);
+}
+
+.route-icon-dot.d {
+  background: var(--status-blue);
+  box-shadow: 0 0 8px var(--status-blue);
+}
+
+.route-text {
+  font-size: 13px;
+}
 
 .route-text strong {
   display: block;
-  font-size: 11px;
-  color: var(--text-dim);
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: .15em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
 }
 
 .route-text span {
-  color: #ffffff;
-  font-size: 14px;
+  color: var(--text-white);
   font-weight: 500;
 }
 
-/* Action Footer of Job Card */
+/* Footer & Live Action Buttons */
 .job-card-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-top: 1px solid var(--border-light);
-  padding-top: 14px;
+  gap: 16px;
   flex-wrap: wrap;
-  gap: 12px;
+  padding-top: 4px;
 }
 
 .job-car-tag {
+  font-size: 13px;
+  color: var(--text-muted);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-white);
+  gap: 6px;
 }
 
 .job-fare {
-  font-family: var(--font-mono);
+  font-family: var(--font-serif);
   font-size: 20px;
-  font-weight: 700;
-  color: var(--gold-accent);
+  font-weight: 600;
+  color: var(--gold);
 }
 
 .action-btn-group {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
 }
 
-/* Big Live Action Transition Button */
+/* Big Live Action Single Tap Button */
 .btn-live-action {
-  padding: 10px 18px;
   font-size: 13px;
-  font-weight: 700;
-  border-radius: 6px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding: 10px 22px;
+  border-radius: 4px;
   cursor: pointer;
   border: none;
-  color: #fff;
   transition: all 0.2s ease;
+  touch-action: manipulation;
 }
 
 .btn-live-action.allocate {
-  background: var(--gold-accent);
-  color: #000;
-}
-.btn-live-action.en_route {
-  background: #0284c7;
-}
-.btn-live-action.arrived {
-  background: #db2777;
-}
-.btn-live-action.on_board {
-  background: #10b981;
-  color: #000;
-}
-.btn-live-action.completed {
-  background: #059669;
+  background: var(--gold);
+  color: #121715;
 }
 
-.btn-live-action:hover {
-  filter: brightness(1.15);
-  transform: translateY(-1px);
+.btn-live-action.allocate:hover {
+  background: var(--gold-hover);
+}
+
+.btn-live-action.en_route {
+  background: var(--status-purple);
+  color: #121715;
+}
+
+.btn-live-action.arrived {
+  background: var(--status-blue);
+  color: #121715;
+}
+
+.btn-live-action.on_board {
+  background: var(--status-green);
+  color: #121715;
+}
+
+.btn-live-action.completed {
+  background: #34433b;
+  color: var(--text-white);
 }
 
 /* ==========================================================================
-   7. CLEAN BOOKING INTAKE FORM
+   6. 1-PAGE BOOKING INTAKE FORM
    ========================================================================== */
 .clean-form-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  padding: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 32px 36px;
+}
+
+.form-title-bar {
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 18px;
 }
 
 .form-title-bar h2 {
   font-family: var(--font-serif);
-  font-size: 22px;
-  color: #ffffff;
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text-white);
+  margin-bottom: 6px;
 }
 
 .form-title-bar p {
-  font-size: 13px;
   color: var(--text-muted);
-  margin-top: 4px;
-  margin-bottom: 24px;
+  font-size: 14px;
 }
 
 .clean-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .form-group-grid {
   display: grid;
-  gap: 14px;
+  gap: 18px;
 }
-.form-group-grid.two-col { grid-template-columns: 1fr 1fr; }
-.form-group-grid.three-col { grid-template-columns: 1fr 1fr 1fr; }
+
+.form-group-grid.two-col {
+  grid-template-columns: 1fr 1fr;
+}
+
+.form-group-grid.three-col {
+  grid-template-columns: 1fr 1fr 1.2fr;
+}
 
 .field {
   display: flex;
@@ -645,24 +787,28 @@ body {
 
 .field label {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--gold);
 }
 
-.field input, .field select {
+.field input,
+.field select {
   background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
   padding: 12px 14px;
-  color: #fff;
-  font-family: var(--font-sans);
+  color: var(--text-white);
   font-size: 14px;
-  outline: none;
   transition: all 0.2s ease;
 }
 
-.field input:focus, .field select:focus {
-  border-color: var(--gold-accent);
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-glow);
 }
 
 .chip-shortcuts {
@@ -673,123 +819,119 @@ body {
 }
 
 .quick-chip {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-light);
-  color: var(--gold-accent);
-  padding: 3px 8px;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .quick-chip:hover {
-  background: var(--gold-accent);
-  color: #000;
+  background: rgba(201, 184, 148, 0.12);
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 .clean-fare-box {
-  background: rgba(197, 160, 89, 0.08);
+  background: var(--bg-card-inner);
   border: 1px solid var(--gold-border);
-  border-radius: 10px;
-  padding: 18px 20px;
+  border-radius: 4px;
+  padding: 18px 22px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 8px 0;
+  margin-top: 8px;
 }
 
 .fare-label {
   font-size: 11px;
-  font-weight: 800;
-  color: var(--gold-accent);
-  letter-spacing: 1px;
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--gold);
+  font-weight: 600;
 }
 
 .fare-note {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .fare-price {
-  font-family: var(--font-mono);
+  font-family: var(--font-serif);
   font-size: 26px;
-  font-weight: 700;
-  color: var(--gold-accent);
+  font-weight: 600;
+  color: var(--gold);
 }
 
 /* ==========================================================================
-   8. DRIVER HANDSET MODE
+   7. DRIVER HANDSET MODE
    ========================================================================== */
 .driver-handset-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
 }
 
 .driver-selector-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: #0f0f13;
-  padding: 12px 16px;
-  border-radius: 8px;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .driver-selector-row label {
   font-size: 11px;
-  font-weight: 800;
-  color: var(--gold-accent);
-  letter-spacing: 1px;
-  white-space: nowrap;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 600;
 }
 
 .driver-selector-row select {
   background: var(--bg-input);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  padding: 8px 12px;
-  color: #fff;
+  border: 1px solid var(--border);
+  color: var(--text-white);
+  padding: 10px 14px;
+  border-radius: 4px;
   font-size: 13px;
-  width: 100%;
-}
-
-.driver-active-trip {
-  min-height: 280px;
-  display: flex;
-  flex-direction: column;
+  font-weight: 600;
 }
 
 /* ==========================================================================
-   9. OUTBOX & MESSAGES
+   8. OUTBOX & SENT EMAILS
    ========================================================================== */
 .outbox-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 24px;
 }
 
 .outbox-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
 }
 
 .outbox-header h2 {
   font-family: var(--font-serif);
-  font-size: 20px;
-  color: #fff;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text-white);
 }
 
 .outbox-header p {
-  font-size: 13px;
   color: var(--text-muted);
-  margin-top: 2px;
+  font-size: 13px;
+  margin-top: 4px;
 }
 
 .outbox-table-scroll {
@@ -804,18 +946,18 @@ body {
 }
 
 .clean-table th {
-  background: #111114;
-  padding: 12px 18px;
-  color: var(--gold-accent);
+  padding: 12px 14px;
+  color: var(--gold);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  border-bottom: 1px solid var(--border-light);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
 }
 
 .clean-table td {
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border-light);
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
   color: var(--text-body);
 }
 
@@ -824,62 +966,66 @@ body {
 }
 
 /* ==========================================================================
-   10. MODALS
+   9. MODALS
    ========================================================================== */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
   z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 20px;
 }
 
 .modal-box {
-  background: #141418;
+  background: var(--bg-card);
   border: 1px solid var(--gold-border);
-  border-radius: 16px;
-  max-width: 500px;
+  border-radius: 6px;
   width: 100%;
-  overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+  max-width: 520px;
+  padding: 24px 28px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
 }
 
 .modal-head {
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--border-light);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .modal-head h3 {
   font-family: var(--font-serif);
-  font-size: 17px;
-  color: #fff;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-white);
 }
 
 .modal-x {
-  background: none;
+  background: transparent;
   border: none;
   color: var(--text-muted);
   font-size: 24px;
   cursor: pointer;
+  line-height: 1;
 }
 
-.modal-body {
-  padding: 20px;
+.modal-x:hover {
+  color: var(--text-white);
 }
 
-.modal-foot {
-  padding: 14px 20px;
-  border-top: 1px solid var(--border-light);
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+.job-summary-pill {
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-body);
 }
 
 .car-choice-list {
@@ -889,34 +1035,35 @@ body {
 }
 
 .car-choice-btn {
-  background: #1c1c22;
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border);
+  border-radius: 4px;
   padding: 14px 16px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .car-choice-btn:hover {
-  border-color: var(--gold-accent);
-  background: rgba(197, 160, 89, 0.08);
+  border-color: var(--gold);
+  background: var(--bg-card-hover);
 }
 
 .choice-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 6px;
-  background: var(--gold-accent);
-  color: #000;
-  font-weight: 800;
-  font-size: 12px;
+  width: 36px;
+  height: 36px;
+  background: rgba(201, 184, 148, 0.1);
+  color: var(--gold);
+  border: 1px solid var(--gold-border);
+  font-family: var(--font-serif);
+  font-weight: 600;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 12px;
+  flex-shrink: 0;
 }
 
 .choice-info {
@@ -926,7 +1073,7 @@ body {
 .choice-info strong {
   display: block;
   font-size: 14px;
-  color: #fff;
+  color: var(--text-white);
 }
 
 .choice-info span {
@@ -935,30 +1082,55 @@ body {
 }
 
 .choice-badge {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-light);
-  color: var(--gold-accent);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+  background: rgba(201, 184, 148, 0.1);
+  border: 1px solid var(--gold-border);
   padding: 4px 10px;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
 }
 
-/* ==========================================================================
-   11. MOBILE BOTTOM BAR
-   ========================================================================== */
+/* Toast */
+.toast-stack {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toast {
+  background: var(--bg-header);
+  border: 1px solid var(--gold);
+  color: var(--text-white);
+  padding: 12px 18px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Mobile Bottom Bar */
 .mobile-bar {
   display: none;
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60px;
-  background: #111114;
-  border-top: 1px solid var(--border-light);
-  z-index: 1500;
+  background: var(--bg-header);
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  z-index: 1000;
   justify-content: space-around;
-  align-items: center;
 }
 
 .m-btn {
@@ -968,68 +1140,36 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
-  flex: 1;
-  height: 100%;
-  cursor: pointer;
+  gap: 3px;
+  font-size: 11px;
   position: relative;
-}
-
-.m-btn span {
-  font-size: 10px;
-  font-weight: 600;
+  cursor: pointer;
 }
 
 .m-btn.active {
-  color: var(--gold-accent);
+  color: var(--gold);
 }
 
 .m-badge {
   position: absolute;
-  top: 6px;
-  right: 28%;
-  background: var(--gold-accent);
-  color: #000;
+  top: -4px;
+  right: 4px;
+  background: var(--gold);
+  color: #121715;
   font-size: 9px;
   font-weight: 800;
   border-radius: 10px;
   padding: 1px 5px;
 }
 
-/* Toast */
-.toast-stack {
-  position: fixed;
-  bottom: 80px;
-  right: 20px;
-  z-index: 3000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.toast-item {
-  background: #18181e;
-  border-left: 4px solid var(--gold-accent);
-  border-radius: 6px;
-  padding: 12px 16px;
-  color: #fff;
-  font-size: 13px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-  animation: slideIn 0.25s ease;
-}
-
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
+/* ==========================================================================
+   10. RESPONSIVE MEDIA QUERIES
+   ========================================================================== */
+@media (max-width: 820px) {
   .app-header {
-    padding: 10px 14px;
+    padding: 12px 16px;
   }
-  .brand-subtitle, .quick-phone-link {
+  .dispatch-pill {
     display: none;
   }
   .simple-tabs-nav {
@@ -1038,17 +1178,14 @@ body {
   .mobile-bar {
     display: flex;
   }
-  .form-group-grid.two-col, .form-group-grid.three-col {
+  .app-main {
+    padding: 16px;
+  }
+  .form-group-grid.two-col,
+  .form-group-grid.three-col {
     grid-template-columns: 1fr;
   }
-  .jobs-filter-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .search-wrap input {
-    width: 100%;
-  }
   .clean-form-card {
-    padding: 18px;
+    padding: 20px 16px;
   }
 }

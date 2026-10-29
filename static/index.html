@@ -12,42 +12,42 @@
   <meta name="theme-color" content="#0a0a0a">
   <link rel="manifest" href="/manifest.json">
 
-  <!-- Clean, Elegant Typography -->
+  <!-- Google Fonts matching gachauffeurs.co.uk -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cinzel:wght@600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- Top App Navigation Bar -->
+  <!-- Top App Navigation Bar (Matches GAChauffeurs.co.uk) -->
   <header class="app-header">
     <div class="header-container">
       <div class="brand-group">
-        <div class="brand-monogram">GA</div>
-        <div class="brand-text">
-          <div class="brand-title">GA CHAUFFEUR SERVICES</div>
-          <div class="brand-subtitle">gachauffeurs.co.uk • 1 Glebe Road, Stanmore</div>
-        </div>
+        <a class="brand" href="/" aria-label="GA Chauffeur Services">
+          <span class="monogram">GA</span>
+          <span class="brand-name">Chauffeur<br>Services</span>
+        </a>
+        <span class="dispatch-pill">Dispatch &amp; Operations</span>
       </div>
 
       <!-- Quick Actions & Contact -->
       <div class="header-actions">
         <a href="tel:+447886622082" class="quick-phone-link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          <span>07886 622082</span>
+          <span>+44 7886 622082</span>
         </a>
         <a href="/widget-demo.html" target="_blank" class="btn btn-secondary">
-          Website Form
+          Website Booking Widget ↗
         </a>
         <button class="btn btn-gold" id="btn-quick-new-job">
-          + New Booking
+          + New Booking ↗
         </button>
       </div>
     </div>
   </header>
 
-  <!-- 3 Big Status Cards (Glance Overview) -->
+  <!-- 3 Car Status Overview (Glance Overview) -->
   <section class="top-status-bar">
     <div class="status-container">
       
@@ -55,8 +55,9 @@
       <div class="car-status-card" id="card-car-s-class">
         <div class="car-badge-icon">S</div>
         <div class="car-meta">
+          <span class="car-eyebrow">Executive Saloon</span>
           <div class="car-title">Mercedes-Benz S-Class</div>
-          <div class="car-sub">Saloon • Reg: GA24 LUX</div>
+          <div class="car-sub">Reg: <strong class="car-plate">HN76GYG</strong> • 4 Pax</div>
         </div>
         <button class="status-toggle-btn available" id="toggle-ch-1" onclick="toggleCarStatus('GA-CHF-01')">
           Available
@@ -67,8 +68,9 @@
       <div class="car-status-card" id="card-car-v-class">
         <div class="car-badge-icon">V</div>
         <div class="car-meta">
+          <span class="car-eyebrow">Luxury MPV</span>
           <div class="car-title">Mercedes-Benz V-Class</div>
-          <div class="car-sub">MPV 7-Seater • Reg: GA24 VAN</div>
+          <div class="car-sub">Reg: <strong class="car-plate">LR74EOG</strong> • 6-Seater</div>
         </div>
         <button class="status-toggle-btn available" id="toggle-ch-2" onclick="toggleCarStatus('GA-CHF-02')">
           Available
@@ -79,8 +81,9 @@
       <div class="car-status-card" id="card-car-range-rover">
         <div class="car-badge-icon">RR</div>
         <div class="car-meta">
+          <span class="car-eyebrow">Prestige 4x4</span>
           <div class="car-title">Range Rover Autobiography</div>
-          <div class="car-sub">LWB SUV • Reg: GA24 RVR</div>
+          <div class="car-sub">Reg: <strong class="car-plate">UKZ 545</strong> • LWB</div>
         </div>
         <button class="status-toggle-btn available" id="toggle-ch-3" onclick="toggleCarStatus('GA-CHF-03')">
           Available
@@ -210,7 +213,7 @@
                 <label>Select Car *</label>
                 <select id="f-vehicle" required>
                   <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • 4 Pax)</option>
-                  <option value="mercedes_v_class">Mercedes-Benz V-Class (MPV • 7 Pax)</option>
+                  <option value="mercedes_v_class">Mercedes-Benz V-Class (MPV • 6 Pax)</option>
                   <option value="range_rover_autobiography">Range Rover Autobiography (SUV • 4 Pax)</option>
                 </select>
               </div>
@@ -246,9 +249,9 @@
           <div class="driver-selector-row">
             <label>CURRENT CAR ON ROAD:</label>
             <select id="driver-car-select" onchange="changeDriverCar(this.value)">
-              <option value="GA-CHF-01">Mercedes-Benz S-Class [GA24 LUX]</option>
-              <option value="GA-CHF-02">Mercedes-Benz V-Class [GA24 VAN]</option>
-              <option value="GA-CHF-03">Range Rover Autobiography [GA24 RVR]</option>
+              <option value="GA-CHF-01">Mercedes-Benz S-Class [HN76GYG]</option>
+              <option value="GA-CHF-02">Mercedes-Benz V-Class [LR74EOG]</option>
+              <option value="GA-CHF-03">Range Rover Autobiography [UKZ 545]</option>
             </select>
           </div>
 
@@ -330,27 +333,27 @@
             <div class="choice-icon">S</div>
             <div class="choice-info">
               <strong>Mercedes-Benz S-Class Saloon</strong>
-              <span>Reg: GA24 LUX • Up to 4 Passengers</span>
+              <span>Reg: HN76GYG • Up to 4 Passengers</span>
             </div>
-            <span class="choice-badge">Select</span>
+            <span class="choice-badge">Select ↗</span>
           </div>
 
           <div class="car-choice-btn" onclick="assignVehicle('GA-CHF-02')">
             <div class="choice-icon">V</div>
             <div class="choice-info">
               <strong>Mercedes-Benz V-Class MPV</strong>
-              <span>Reg: GA24 VAN • 7-Seater Passenger</span>
+              <span>Reg: LR74EOG • 6-Seater Luxury Cabin</span>
             </div>
-            <span class="choice-badge">Select</span>
+            <span class="choice-badge">Select ↗</span>
           </div>
 
           <div class="car-choice-btn" onclick="assignVehicle('GA-CHF-03')">
             <div class="choice-icon">RR</div>
             <div class="choice-info">
               <strong>Range Rover Autobiography LWB</strong>
-              <span>Reg: GA24 RVR • Luxury 4x4 SUV</span>
+              <span>Reg: UKZ 545 • Luxury 4x4 SUV</span>
             </div>
-            <span class="choice-badge">Select</span>
+            <span class="choice-badge">Select ↗</span>
           </div>
         </div>
       </div>

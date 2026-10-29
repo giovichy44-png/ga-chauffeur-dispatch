@@ -130,23 +130,23 @@ def seed_data(force=False):
         return
 
     # EXACT 3 VEHICLES AS OPERATED BY GA CHAUFFEUR SERVICES LIMITED
-    # 1. Mercedes-Benz S-Class Saloon (Up to 4 Pax, 2 Bags)
-    # 2. Mercedes-Benz V-Class MPV (Up to 7 Pax, 6 Bags)
-    # 3. Range Rover Autobiography Long Wheelbase (Up to 4 Pax, 3 Bags)
+    # 1. Mercedes-Benz S-Class Saloon (Up to 4 Pax, 2 Bags) - HN76GYG
+    # 2. Mercedes-Benz V-Class MPV (Up to 6 Pax, 6 Bags) - LR74EOG
+    # 3. Range Rover Autobiography Long Wheelbase (Up to 4 Pax, 3 Bags) - UKZ 545
     chauffeurs = [
         (
             "GA-CHF-01", "David Richardson", "+44 7886 622082", "DR", 4.99, 1420,
-            "Mercedes-Benz S-Class S580e L AMG Line", "mercedes_s_class", "GA24 LUX",
+            "Mercedes-Benz S-Class S580e L AMG Line", "mercedes_s_class", "HN76GYG",
             4, 2, "AVAILABLE", 51.5074, -0.1278, "Central London / Mayfair", None
         ),
         (
             "GA-CHF-02", "Harrison Cole", "+44 7886 622082", "HC", 4.98, 1180,
-            "Mercedes-Benz V-Class V300d Extra Long", "mercedes_v_class", "GA24 VAN",
-            7, 6, "AVAILABLE", 51.4700, -0.4543, "Heathrow Airport (LHR)", None
+            "Mercedes-Benz V-Class V300d Extra Long", "mercedes_v_class", "LR74EOG",
+            6, 6, "AVAILABLE", 51.4700, -0.4543, "Heathrow Airport (LHR)", None
         ),
         (
             "GA-CHF-03", "Arthur Pendelton", "+44 7886 622082", "AP", 4.99, 1640,
-            "Range Rover Autobiography Long Wheelbase (LWB)", "range_rover_autobiography", "GA24 RVR",
+            "Range Rover Autobiography Long Wheelbase (LWB)", "range_rover_autobiography", "UKZ 545",
             4, 3, "AVAILABLE", 51.6150, -0.3080, "Stanmore / North London Base", None
         )
     ]

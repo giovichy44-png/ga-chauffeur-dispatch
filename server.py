@@ -59,8 +59,8 @@ VEHICLE_CONFIGS = {
     },
     "mercedes_v_class": {
         "name": "Mercedes-Benz V-Class",
-        "description": "Luxury MPV • 7 Passenger Seater",
-        "passengers": 7,
+        "description": "Luxury MPV • 6-Passenger Seater",
+        "passengers": 6,
         "luggage": 6,
         "hourly_rate": 95.0,
         "min_hours": 2,

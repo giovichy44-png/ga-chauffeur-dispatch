@@ -1,10 +1,10 @@
 /**
- * GA Chauffeur Services Limited - Embeddable Booking Widget
+ * GA Chauffeur Services Limited - Official Embeddable Booking Widget
  * Website: gachauffeurs.co.uk
  * Office: 1 Glebe Road, Stanmore, Greater London, HA7 4EJ
- * Phone: +44 7886 622082 | Email: enquiries@gachauffeurs.co.uk
+ * Direct Phone: +44 7886 622082 | Email: enquiries@gachauffeurs.co.uk
  * 
- * Usage on gachauffeurs.co.uk:
+ * Embed snippet for gachauffeurs.co.uk:
  * <div id="ga-chauffeur-booking-widget"></div>
  * <script src="https://dispatch.gachauffeurs.co.uk/embed-booking-widget.js"></script>
  */
@@ -13,90 +13,101 @@
   const container = document.getElementById('ga-chauffeur-booking-widget');
   if (!container) return;
 
-  const API_BASE = window.GA_DISPATCH_API_URL || window.location.origin;
+  const API_BASE = window.GA_DISPATCH_API_URL || 'https://dispatch.gachauffeurs.co.uk';
 
   container.innerHTML = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0e131d; color: #f0f4f8; border: 1px solid #d4af37; border-radius: 12px; padding: 28px; max-width: 650px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-      <div style="text-align: center; margin-bottom: 24px; border-bottom: 1px solid rgba(212,175,55,0.2); padding-bottom: 16px;">
-        <span style="color: #d4af37; font-size: 11px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase;">GA CHAUFFEUR SERVICES LIMITED</span>
-        <h2 style="margin: 6px 0 2px 0; color: #ffffff; font-size: 22px;">Executive Journey Reservation</h2>
-        <p style="margin: 0; color: #94a3b8; font-size: 13px;">1 Glebe Road, Stanmore • Direct: +44 7886 622082</p>
+    <div style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; background: #171f1b; color: #edf0ea; border: 1px solid #2e3b33; border-radius: 6px; padding: 32px 28px; max-width: 680px; margin: 0 auto; box-shadow: 0 20px 40px rgba(0,0,0,0.4); text-align: left;">
+      
+      <!-- GA Brand Header -->
+      <div style="text-align: center; margin-bottom: 24px; border-bottom: 1px solid #2e3b33; padding-bottom: 20px;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px;">
+          <span style="font-family: Georgia, serif; font-size: 34px; letter-spacing: -4px; color: #c9b894; line-height: 1;">GA</span>
+          <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #3e4e44; padding-left: 12px; color: #d0d8d1; text-align: left; line-height: 1.4;">Chauffeur<br>Services</span>
+        </div>
+        <span style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .22em; color: #c9b894; font-weight: 600; margin-bottom: 4px;">Direct Chauffeur Booking</span>
+        <h2 style="font-family: Georgia, serif; font-size: 26px; font-weight: normal; color: #ffffff; margin: 0 0 6px 0;">Plan Your Journey</h2>
+        <p style="margin: 0; color: #aab5ae; font-size: 14px;">Instant confirmation with automated flight tracking &amp; luxury vehicle allocation</p>
       </div>
 
-      <form id="ga-widget-form" style="display: flex; flex-direction: column; gap: 14px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <form id="ga-widget-form" style="display: flex; flex-direction: column; gap: 16px;">
+        
+        <!-- Passenger Contact -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
           <div>
-            <label style="display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Full Name *</label>
-            <input type="text" id="ga-name" required placeholder="e.g. Lord Henry Cavendish" style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #2a374d; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;">
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Passenger Full Name *</label>
+            <input type="text" id="ga-name" required placeholder="e.g. Lord Henry Cavendish" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
           </div>
           <div>
-            <label style="display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Mobile Phone (for live driver SMS) *</label>
-            <input type="tel" id="ga-phone" required placeholder="+44 7886 622082" style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #2a374d; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;">
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Mobile Phone (for driver SMS) *</label>
+            <input type="tel" id="ga-phone" required placeholder="+44 7886 622082" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
           </div>
         </div>
 
         <div>
-          <label style="display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Email Address (for instant confirmation) *</label>
-          <input type="email" id="ga-email" required placeholder="client@company.co.uk" style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #2a374d; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;">
+          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Email Address (for instant confirmation voucher) *</label>
+          <input type="email" id="ga-email" required placeholder="client@company.co.uk" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <!-- Route -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
           <div>
-            <label style="display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Pickup Location / Airport *</label>
-            <input type="text" id="ga-pickup" required placeholder="e.g. Heathrow Terminal 5" style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #2a374d; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;">
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Collection Point / Airport *</label>
+            <input type="text" id="ga-pickup" required placeholder="e.g. Heathrow Airport (LHR) Terminal 5" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
           </div>
           <div>
-            <label style="display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Destination / Hotel *</label>
-            <input type="text" id="ga-dropoff" required placeholder="e.g. The Connaught, Mayfair" style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #2a374d; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;">
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div>
-            <label style="display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Pickup Date & Time *</label>
-            <input type="datetime-local" id="ga-datetime" required style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #2a374d; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;">
-          </div>
-          <div>
-            <label style="display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Flight Number (45m free airport wait)</label>
-            <input type="text" id="ga-flight" placeholder="e.g. BA 178" style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #2a374d; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;">
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Destination / Address *</label>
+            <input type="text" id="ga-dropoff" required placeholder="e.g. The Connaught, Mayfair, London" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
           </div>
         </div>
 
-        <!-- THE 3 EXCLUSIVE GA CHAUFFEUR VEHICLES -->
+        <!-- Date & Flight -->
+        <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px;">
+          <div>
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Pickup Date &amp; Time *</label>
+            <input type="datetime-local" id="ga-datetime" required style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Flight Number (45m free wait)</label>
+            <input type="text" id="ga-flight" placeholder="e.g. BA 178" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
+          </div>
+        </div>
+
+        <!-- 3 REAL GA CHAUFFEUR VEHICLES (6-SEATER V-CLASS) -->
         <div>
-          <label style="display: block; font-size: 12px; color: #d4af37; font-weight: bold; margin-bottom: 6px;">Select Vehicle Tier *</label>
-          <select id="ga-vehicle" style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #d4af37; border-radius: 6px; padding: 12px; color: #fff; font-size: 13px; font-weight: 600;">
-            <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • 4 Passengers, 2 Luggage)</option>
-            <option value="mercedes_v_class">Mercedes-Benz V-Class (MPV • 7 Passengers, 6 Luggage)</option>
-            <option value="range_rover_autobiography">Range Rover Autobiography LWB (Prestige SUV • 4 Passengers, 3 Luggage)</option>
+          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Select Vehicle *</label>
+          <select id="ga-vehicle" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #c9b894; border-radius: 4px; padding: 12px 14px; color: #fff; font-size: 14px; font-weight: 600; font-family: inherit;">
+            <option value="mercedes_s_class">Mercedes-Benz S-Class (Executive Saloon • 4 Passengers, 2 Luggage)</option>
+            <option value="mercedes_v_class">Mercedes-Benz V-Class (Luxury MPV • 6 Passengers, 6 Luggage)</option>
+            <option value="range_rover_autobiography">Range Rover Autobiography LWB (Prestige 4x4 • 4 Passengers, 3 Luggage)</option>
           </select>
         </div>
 
-        <div id="ga-vehicle-specs-box" style="background: rgba(255,255,255,0.03); border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #94a3b8; display: flex; justify-content: space-between;">
+        <div id="ga-vehicle-specs-box" style="background: rgba(201, 184, 148, 0.06); border: 1px solid #2e3b33; border-radius: 4px; padding: 10px 14px; font-size: 12px; color: #b9c1ba; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
           <span id="ga-spec-pax">Capacity: Up to 4 Adults</span>
           <span id="ga-spec-luggage">Luggage: 2 Large Bags</span>
-          <span>Wi-Fi &amp; Water Included</span>
+          <span>Wi-Fi, Water &amp; USB Charging Included</span>
         </div>
 
         <div>
-          <label style="display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">Special Requests / Amenities</label>
-          <input type="text" id="ga-notes" placeholder="e.g. Nameboard meet & greet, child seat, extra luggage assist" style="width: 100%; box-sizing: border-box; background: #161e2b; border: 1px solid #2a374d; border-radius: 6px; padding: 10px 12px; color: #fff; font-size: 13px;">
+          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Special Requests / Amenities</label>
+          <input type="text" id="ga-notes" placeholder="e.g. Nameboard meet & greet, baby seat, extra luggage assistance" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #2e3b33; border-radius: 4px; padding: 11px 14px; color: #fff; font-size: 14px; font-family: inherit;">
         </div>
 
-        <div id="ga-price-box" style="background: rgba(212,175,55,0.08); border: 1px solid rgba(212,175,55,0.3); border-radius: 8px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+        <!-- Estimated Fare Preview in GBP -->
+        <div id="ga-price-box" style="background: #1c2420; border: 1px solid rgba(201, 184, 148, 0.35); border-radius: 4px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
           <div>
-            <span style="font-size: 11px; color: #d4af37; text-transform: uppercase; font-weight: bold;">Estimated All-Inclusive Fare</span>
-            <div style="font-size: 12px; color: #94a3b8;">Includes meet &amp; greet, 45m flight wait, Wi-Fi &amp; bottled water</div>
+            <span style="font-size: 11px; color: #c9b894; text-transform: uppercase; letter-spacing: .16em; font-weight: 600;">All-Inclusive London Fare</span>
+            <div style="font-size: 12px; color: #aab5ae; margin-top: 2px;">Includes driver meet &amp; greet, 45m airport wait &amp; VAT</div>
           </div>
-          <div id="ga-price-val" style="font-size: 22px; font-weight: bold; color: #d4af37; font-family: monospace;">£135.00 GBP</div>
+          <div id="ga-price-val" style="font-family: Georgia, serif; font-size: 24px; font-weight: 600; color: #c9b894;">£135.00 GBP</div>
         </div>
 
-        <button type="submit" id="ga-submit-btn" style="background: linear-gradient(135deg, #f5e8c7 0%, #d4af37 60%, #9e8020 100%); color: #0b0e14; font-weight: bold; font-size: 15px; padding: 14px; border: none; border-radius: 6px; cursor: pointer; margin-top: 8px; transition: all 0.2s ease;">
-          Request Executive Booking
+        <button type="submit" id="ga-submit-btn" style="background: #c9b894; color: #171f1b; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14px; padding: 14px 20px; border: 1px solid #c9b894; border-radius: 4px; cursor: pointer; margin-top: 6px; transition: all 0.2s ease;">
+          Request Journey Reservation ↗
         </button>
       </form>
 
-      <div id="ga-result-box" style="display: none; margin-top: 20px; padding: 20px; background: #141c2b; border: 1px solid #10b981; border-radius: 8px; text-align: center;">
+      <div id="ga-result-box" style="display: none; margin-top: 20px; padding: 24px; background: #1c2420; border: 1px solid #34d399; border-radius: 4px; text-align: center;">
       </div>
     </div>
   `;
@@ -117,10 +128,10 @@
     if (val === 'mercedes_s_class') {
       priceVal.textContent = '£135.00 GBP';
       specPax.textContent = 'Capacity: Up to 4 Adults';
-      specLuggage.textContent = 'Luggage: 2 Suitcases';
+      specLuggage.textContent = 'Luggage: 2 Large Suitcases';
     } else if (val === 'mercedes_v_class') {
       priceVal.textContent = '£150.00 GBP';
-      specPax.textContent = 'Capacity: Up to 7 Adults';
+      specPax.textContent = 'Capacity: Up to 6 Adults';
       specLuggage.textContent = 'Luggage: 6 Large Suitcases';
     } else if (val === 'range_rover_autobiography') {
       priceVal.textContent = '£175.00 GBP';
@@ -139,7 +150,7 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Creating Job & Dispatching Confirmation...';
+    submitBtn.textContent = 'Registering Journey with GA Dispatch...';
 
     const payload = {
       customer_name: document.getElementById('ga-name').value,
@@ -166,36 +177,36 @@
         form.style.display = 'none';
         resultBox.style.display = 'block';
         resultBox.innerHTML = `
-          <div style="font-size: 32px; color: #10b981; margin-bottom: 8px;">✓</div>
-          <h3 style="color: #ffffff; margin: 0 0 6px 0; font-size: 18px;">Booking Request Confirmed</h3>
-          <p style="color: #94a3b8; font-size: 13px; margin: 0 0 16px 0;">
-            Your executive transfer has been registered in the GA Chauffeur Services dispatch system.
+          <div style="font-size: 36px; color: #34d399; margin-bottom: 10px;">✓</div>
+          <h3 style="font-family: Georgia, serif; color: #ffffff; margin: 0 0 6px 0; font-size: 22px; font-weight: normal;">Journey Request Confirmed</h3>
+          <p style="color: #aab5ae; font-size: 14px; margin: 0 0 18px 0;">
+            Your transfer has been received and logged directly into our dispatch control console.
           </p>
-          <div style="background: #0b0e14; border: 1px solid #d4af37; border-radius: 6px; padding: 14px; margin-bottom: 16px;">
-            <div style="font-size: 11px; color: #d4af37; text-transform: uppercase; font-weight: bold;">Your Job Reference Number</div>
-            <div style="font-family: monospace; font-size: 26px; font-weight: bold; color: #fff; margin-top: 4px;">
+          <div style="background: #131916; border: 1px solid #c9b894; border-radius: 4px; padding: 18px; margin-bottom: 18px;">
+            <div style="font-size: 11px; color: #c9b894; text-transform: uppercase; letter-spacing: .16em; font-weight: 600;">Your Booking Reference</div>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: bold; color: #ffffff; margin-top: 4px;">
               ${data.booking.confirmation_code}
             </div>
-            <div style="font-size: 12px; color: #10b981; margin-top: 6px;">
-              ✓ Automated confirmation email dispatched to: <strong>${payload.customer_email}</strong>
+            <div style="font-size: 12px; color: #34d399; margin-top: 8px;">
+              ✓ Automated confirmation email sent to: <strong>${payload.customer_email}</strong>
             </div>
           </div>
-          <p style="color: #cbd5e1; font-size: 12px; line-height: 1.5;">
-            Our dispatch office at 1 Glebe Road, Stanmore is allocating your chauffeur. Questions? Call direct: <strong>+44 7886 622082</strong>.
+          <p style="color: #b9c1ba; font-size: 13px; line-height: 1.6; margin-bottom: 16px;">
+            Our operations team at 1 Glebe Road, Stanmore is allocating your chauffeur. For urgent queries, call direct on <strong style="color: #fff;">+44 7886 622082</strong>.
           </p>
-          <button onclick="window.location.reload()" style="background: transparent; border: 1px solid #d4af37; color: #d4af37; padding: 8px 18px; border-radius: 4px; font-size: 12px; cursor: pointer; margin-top: 10px;">
-            Book Another Transfer
+          <button onclick="window.location.reload()" style="background: transparent; border: 1px solid #c9b894; color: #c9b894; padding: 9px 20px; border-radius: 4px; font-size: 13px; cursor: pointer;">
+            Book Another Journey ↗
           </button>
         `;
       } else {
         alert(data.error || 'Failed to submit booking');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Request Executive Booking';
+        submitBtn.textContent = 'Request Journey Reservation ↗';
       }
     } catch (err) {
-      alert('Unable to contact dispatch server. Please check connection.');
+      alert('Unable to contact dispatch server at ' + API_BASE + '. Please verify connection.');
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Request Executive Booking';
+      submitBtn.textContent = 'Request Journey Reservation ↗';
     }
   });
 })();
