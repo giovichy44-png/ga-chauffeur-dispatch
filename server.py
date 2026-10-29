@@ -17,6 +17,9 @@ import math
 import time
 import threading
 import smtplib
+import base64
+import hashlib
+import urllib.request
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
@@ -37,11 +40,280 @@ SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASS = os.environ.get("SMTP_PASS", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL = os.environ.get("FROM_EMAIL", "enquiries@gachauffeurs.co.uk")
 COMPANY_NAME = "GA Chauffeur Services Limited"
 COMPANY_WEBSITE = "https://gachauffeurs.co.uk"
 COMPANY_PHONE = "+44 7886 622082"
 COMPANY_ADDRESS = "1 Glebe Road, Stanmore, Greater London, HA7 4EJ"
+
+# Private Dispatch Console Authentication
+DISPATCH_ADMIN_USER = os.environ.get("DISPATCH_ADMIN_USER", "admin")
+DISPATCH_ADMIN_PASS = os.environ.get("DISPATCH_ADMIN_PASS", "GAChauffeurs2026!")
+DISPATCH_USERS = os.environ.get("DISPATCH_USERS", "")
+
+def get_auth_token():
+    return hashlib.sha256(f"{DISPATCH_ADMIN_USER}:{DISPATCH_ADMIN_PASS}".encode("utf-8")).hexdigest()
+
+def check_credentials(username, password):
+    if username == DISPATCH_ADMIN_USER and password == DISPATCH_ADMIN_PASS:
+        return True
+    if DISPATCH_USERS:
+        for entry in DISPATCH_USERS.split(","):
+            if ":" in entry:
+                u, p = entry.strip().split(":", 1)
+                if username == u and password == p:
+                    return True
+    return False
+
+def check_auth(headers):
+    # 1. Check Cookie
+    cookie_str = headers.get("Cookie", "")
+    expected = get_auth_token()
+    if f"ga_dispatch_auth={expected}" in cookie_str:
+        return True
+
+    # 2. Check Authorization Header (Basic or Bearer)
+    auth_header = headers.get("Authorization", "")
+    if auth_header.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+            if ":" in decoded:
+                u, p = decoded.split(":", 1)
+                if check_credentials(u, p):
+                    return True
+        except Exception:
+            pass
+    elif auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        if token == expected or token == DISPATCH_ADMIN_PASS:
+            return True
+
+    return False
+
+PUBLIC_PATHS = {
+    "/embed-booking-widget.js",
+    "/api/quote",
+    "/api/suggestions",
+    "/api/lookup-postcode",
+    "/favicon.ico",
+    "/manifest.json",
+    "/sw.js",
+    "/icon-192.png",
+    "/icon-512.png"
+}
+
+def is_public_request(method, path):
+    if method == "OPTIONS":
+        return True
+    if method == "POST" and path in ("/api/bookings", "/api/login"):
+        return True
+    if path in PUBLIC_PATHS or path.startswith("/static/embed"):
+        return True
+    if path.startswith("/api/track/"):
+        return True
+    return False
+
+LOGIN_PAGE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private Dispatch Portal | GA Chauffeur Services</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23171f1b'/%3E%3Ctext x='4' y='28' fill='%23c9b894' font-family='Georgia' font-size='23'%3EGA%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #121715;
+      color: #edf0ea;
+      font-family: 'DM Sans', -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .login-card {
+      background: #171f1b;
+      border: 1px solid #2e3b33;
+      border-radius: 8px;
+      padding: 40px 36px;
+      max-width: 440px;
+      width: 100%;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+      text-align: center;
+    }
+    .brand-monogram {
+      font-family: Georgia, serif;
+      font-size: 40px;
+      letter-spacing: -4px;
+      color: #c9b894;
+      line-height: 1;
+    }
+    .brand-title {
+      font-size: 11px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: #d0d8d1;
+      border-left: 1px solid #3e4e44;
+      padding-left: 12px;
+      margin-left: 12px;
+      line-height: 1.4;
+      text-align: left;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .eyebrow {
+      display: block;
+      margin-top: 24px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .2em;
+      color: #c9b894;
+      font-weight: 600;
+    }
+    h1 {
+      font-family: Georgia, serif;
+      font-weight: normal;
+      font-size: 24px;
+      color: #ffffff;
+      margin: 8px 0 12px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #8c9891;
+      margin: 0 0 28px;
+      line-height: 1.5;
+    }
+    .form-group {
+      text-align: left;
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: #c9b894;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      background: #121715;
+      border: 1px solid #2e3b33;
+      border-radius: 4px;
+      padding: 12px 14px;
+      color: #fff;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    input:focus {
+      outline: none;
+      border-color: #c9b894;
+    }
+    .btn-submit {
+      width: 100%;
+      background: #c9b894;
+      color: #171f1b;
+      font-weight: 600;
+      font-size: 14px;
+      padding: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 8px;
+      letter-spacing: .05em;
+      transition: background 0.2s;
+    }
+    .btn-submit:hover {
+      background: #dfd0af;
+    }
+    .error-msg {
+      display: none;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+      padding: 10px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 18px;
+    }
+    .footer-note {
+      margin-top: 24px;
+      font-size: 11px;
+      color: #637169;
+      border-top: 1px solid #2e3b33;
+      padding-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div style="display: inline-flex; align-items: center; justify-content: center;">
+      <span class="brand-monogram">GA</span>
+      <span class="brand-title">Chauffeur<br>Services</span>
+    </div>
+    <span class="eyebrow">Private Operations</span>
+    <h1>Dispatch Console</h1>
+    <p class="subtitle">Access restricted to authorized personnel of GA Chauffeur Services Limited.</p>
+    
+    <div id="login-error" class="error-msg">Invalid username or password. Please try again.</div>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autocomplete="username" placeholder="e.g. admin">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn-submit" id="btn-login">Sign In to Dispatch</button>
+    </form>
+    <div class="footer-note">
+      gachauffeurs.co.uk • 1 Glebe Road, Stanmore • +44 7886 622082
+    </div>
+  </div>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const u = document.getElementById('username').value.trim();
+      const p = document.getElementById('password').value;
+      const btn = document.getElementById('btn-login');
+      const err = document.getElementById('login-error');
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+      err.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username: u, password: p})
+        });
+        if (res.ok) {
+          window.location.href = '/';
+        } else {
+          err.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Sign In to Dispatch';
+        }
+      } catch (e) {
+        err.textContent = 'Connection error. Please try again.';
+        err.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sign In to Dispatch';
+      }
+    });
+  </script>
+</body>
+</html>
+"""
 
 # VEHICLE FLEET SPECIFICATIONS & PUBLISHED RATES FROM GACHAUFFEURS.CO.UK
 VEHICLE_CONFIGS = {
@@ -260,29 +532,54 @@ def broadcast_event(event_type, data):
                 sse_clients.remove(client)
 
 def send_smtp_email(to_email, subject, html_content, text_content=""):
-    if not SMTP_HOST or not SMTP_USER or not SMTP_PASS:
-        return True, "Simulated delivery (SMTP credentials not configured)"
+    # 1. Resend API delivery if RESEND_API_KEY is configured
+    if RESEND_API_KEY:
+        try:
+            req_data = {
+                "from": f"{COMPANY_NAME} <{FROM_EMAIL}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+                "text": text_content or ""
+            }
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=json.dumps(req_data).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=12) as response:
+                if response.status in (200, 201):
+                    return True, "Delivered via Resend API"
+        except Exception as e:
+            sys.stderr.write(f"[Resend Error] Failed to send email to {to_email}: {e}\n")
 
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{COMPANY_NAME} <{FROM_EMAIL}>"
-        msg["To"] = to_email
+    # 2. SMTP delivery if SMTP_HOST and SMTP_USER are configured
+    if SMTP_HOST and SMTP_USER and SMTP_PASS:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"{COMPANY_NAME} <{FROM_EMAIL}>"
+            msg["To"] = to_email
 
-        if text_content:
-            msg.attach(MIMEText(text_content, "plain"))
-        if html_content:
-            msg.attach(MIMEText(html_content, "html"))
+            if text_content:
+                msg.attach(MIMEText(text_content, "plain"))
+            if html_content:
+                msg.attach(MIMEText(html_content, "html"))
 
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASS)
-        server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
-        server.quit()
-        return True, "Delivered via live SMTP"
-    except Exception as e:
-        sys.stderr.write(f"[SMTP Error] Failed to send email to {to_email}: {e}\n")
-        return False, str(e)
+            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+            server.quit()
+            return True, "Delivered via live SMTP"
+        except Exception as e:
+            sys.stderr.write(f"[SMTP Error] Failed to send email to {to_email}: {e}\n")
+            return False, str(e)
+
+    return True, "Simulated delivery (Outbound email credentials not configured in Render)"
 
 def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None):
     tier_key = normalize_vehicle_tier(vehicle_tier)
@@ -465,6 +762,28 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
 
+        # Logout endpoint
+        if path == "/api/logout":
+            self.send_response(302)
+            self.send_header("Set-Cookie", "ga_dispatch_auth=; Path=/; HttpOnly; Max-Age=0")
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+
+        # Check authentication for private endpoints
+        if not is_public_request("GET", path):
+            if not check_auth(self.headers):
+                if path in ("/", "/index.html", "") or not path.startswith("/api/"):
+                    self.send_response(401)
+                    self.send_header("WWW-Authenticate", 'Basic realm="GA Chauffeur Services Private Dispatch"')
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(LOGIN_PAGE_HTML.encode("utf-8"))
+                    return
+                else:
+                    self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
+                    return
+
         if path == "/api/events":
             self.handle_sse()
             return
@@ -597,6 +916,31 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             payload = json.loads(post_data.decode("utf-8")) if post_data else {}
         except Exception:
             payload = {}
+
+        # Login endpoint (Public)
+        if path == "/api/login":
+            username = payload.get("username", "").strip()
+            password = payload.get("password", "")
+            if check_credentials(username, password):
+                token = get_auth_token()
+                body = json.dumps({"success": True, "token": token}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Set-Cookie", f"ga_dispatch_auth={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            else:
+                self.send_json({"error": "Invalid username or password"}, 401)
+                return
+
+        # Check authentication for private POST endpoints
+        if not is_public_request("POST", path):
+            if not check_auth(self.headers):
+                self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
+                return
 
         if path == "/api/bookings":
             self.handle_create_booking(payload)
