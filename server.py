@@ -1613,6 +1613,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         )
 
         send_success, delivery_note = send_smtp_email(payload["customer_email"], email_subject, html_email, plain_text_email)
+        if FROM_EMAIL and FROM_EMAIL.lower() != payload["customer_email"].lower():
+            send_smtp_email(FROM_EMAIL, f"[NEW BOOKING {code}] {email_subject}", html_email, plain_text_email)
         cnf_email_id = f"CNF-{random.randint(1000, 9999)}"
 
         cursor.execute("""
