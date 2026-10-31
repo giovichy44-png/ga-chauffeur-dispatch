@@ -34,6 +34,25 @@ import db
 
 PORT = 8080
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+WEBSITE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "website")
+
+MIME_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".txt": "text/plain; charset=utf-8",
+    ".pdf": "application/pdf",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff"
+}
 
 # In-memory subscriber list for Server-Sent Events (SSE)
 sse_clients = []
@@ -176,6 +195,28 @@ def stripe_capture_hold(payment_intent_id, amount_gbp=None):
         "payment_intent_id": res["id"],
         "status": res["status"],
         "amount_received": float(res.get("amount_received", 0)) / 100.0
+    }
+
+def stripe_create_checkout_session(amount_gbp, booking_ref, customer_email, customer_name, description):
+    """Creates a Stripe Checkout Session link to email or WhatsApp directly to a client."""
+    data = {
+        "mode": "payment",
+        "success_url": f"https://gachauffeurs.co.uk/confirm-booking/?code={booking_ref}&session_id={{CHECKOUT_SESSION_ID}}",
+        "cancel_url": "https://gachauffeurs.co.uk/book/",
+        "customer_email": customer_email or "",
+        "line_items[0][quantity]": "1",
+        "line_items[0][price_data][currency]": "gbp",
+        "line_items[0][price_data][unit_amount]": str(int(round(amount_gbp * 100))),
+        "line_items[0][price_data][product_data][name]": f"GA Chauffeur Services Booking {booking_ref}",
+        "line_items[0][price_data][product_data][description]": description or "Executive Chauffeur Travel"
+    }
+    res = stripe_api_request("checkout/sessions", method="POST", data=data)
+    if "error" in res:
+        return res
+    return {
+        "success": True,
+        "session_id": res.get("id"),
+        "url": res.get("url")
     }
 
 # Private Dispatch Console Authentication
@@ -1040,10 +1081,72 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
         self.end_headers()
 
+    def serve_website_file(self, path):
+        rel_path = path.lstrip("/")
+        if not rel_path or rel_path == "":
+            target = os.path.join(WEBSITE_DIR, "index.html")
+        else:
+            target = os.path.join(WEBSITE_DIR, rel_path)
+            if os.path.isdir(target):
+                target = os.path.join(target, "index.html")
+            elif not os.path.exists(target):
+                if os.path.exists(os.path.join(WEBSITE_DIR, rel_path, "index.html")):
+                    target = os.path.join(WEBSITE_DIR, rel_path, "index.html")
+                elif os.path.exists(target + ".html"):
+                    target = target + ".html"
+
+        if not os.path.isfile(target):
+            self.send_response(404)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"<!DOCTYPE html><html><head><title>404 Not Found</title></head><body><h1>404 Not Found - GA Chauffeur Services</h1><p><a href='/'>Return to Home</a></p></body></html>")
+            return
+
+        ext = os.path.splitext(target)[1].lower()
+        mime = MIME_TYPES.get(ext, "application/octet-stream")
+
+        try:
+            with open(target, "rb") as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            if ext in (".css", ".js", ".png", ".webp", ".jpg", ".svg", ".ico"):
+                self.send_header("Cache-Control", "public, max-age=86400")
+            else:
+                self.send_header("Cache-Control", "no-cache, must-revalidate")
+            self.end_headers()
+            self.wfile.write(content)
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(f"Error serving file: {e}".encode("utf-8"))
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
+
+        host = self.headers.get("Host", "").lower().split(":")[0]
+        is_dispatch = host.startswith("dispatch.") or "dispatch" in host
+
+        # If on website host and not an API route, serve website static files directly
+        if not is_dispatch and not path.startswith("/api/"):
+            if path in ("/dispatch", "/dispatch/", "/admin"):
+                if not check_auth(self.headers):
+                    self.send_response(401)
+                    self.send_header("WWW-Authenticate", 'Basic realm="GA Chauffeur Services Private Dispatch"')
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(LOGIN_PAGE_HTML.encode("utf-8"))
+                    return
+                self.path = "/index.html"
+                super().do_GET()
+                return
+
+            self.serve_website_file(path)
+            return
 
         # Logout endpoint
         if path == "/api/logout":
@@ -1253,6 +1356,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             parts = path.split("/")
             booking_id = parts[3]
             self.handle_capture_payment(booking_id, payload)
+            return
+
+        if path.endswith("/payment-link"):
+            parts = path.split("/")
+            booking_id = parts[3]
+            self.handle_create_payment_link(booking_id, payload)
+            return
+
+        if path.endswith("/manual-auth"):
+            parts = path.split("/")
+            booking_id = parts[3]
+            self.handle_manual_card_auth(booking_id, payload)
             return
 
         if path == "/api/confirmations/resend":
@@ -2040,6 +2155,95 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             conn.close()
             broadcast_event("payment_captured", {"booking_id": booking_id, "amount": amount, "method": "PRE_AUTH"})
             self.send_json({"success": True, "payment_status": "PAID", "amount_captured": amount, "reference": card_code})
+
+    def handle_create_payment_link(self, booking_id, payload):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.send_json({"error": "Booking not found"}, 404)
+            return
+
+        booking = dict(row)
+        amount = float(payload.get("amount", booking.get("total_fare", 0.0)))
+        ref = booking.get("confirmation_code", booking["id"])
+        email = booking.get("customer_email", "")
+        name = booking.get("customer_name", "")
+        desc = f"{booking.get('service_type', 'Chauffeur Journey')}: {booking.get('pickup_address', '')} to {booking.get('dropoff_address', '')}"
+
+        res = stripe_create_checkout_session(amount, ref, email, name, desc)
+        conn.close()
+        if res.get("error"):
+            self.send_json({"error": res["error"]}, 400)
+            return
+
+        self.send_json(res)
+
+    def handle_manual_card_auth(self, booking_id, payload):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.send_json({"error": "Booking not found"}, 404)
+            return
+
+        booking = dict(row)
+        card_num_raw = str(payload.get("card_number") or "").replace(" ", "").replace("-", "")
+        card_holder = payload.get("cardholder_name") or booking.get("customer_name") or ""
+        card_exp = payload.get("card_expiry") or ""
+        card_cvc = payload.get("card_cvc") or ""
+        amount = float(payload.get("amount", booking.get("total_fare", 0.0)))
+
+        pm_res = stripe_create_payment_method_from_card(card_num_raw, card_exp, card_cvc, card_holder)
+        if pm_res.get("error"):
+            conn.close()
+            self.send_json({"error": f"Card error: {pm_res['error']}"}, 400)
+            return
+
+        stripe_res = stripe_create_preauth_hold(
+            amount_gbp=amount,
+            payment_method_id=pm_res["id"],
+            customer_email=booking.get("customer_email"),
+            customer_name=booking.get("customer_name"),
+            description=f"Manual Pre-Auth: GA Chauffeur Booking {booking.get('confirmation_code', booking_id)}"
+        )
+        if "error" in stripe_res:
+            conn.close()
+            self.send_json({"error": f"Pre-authorisation declined: {stripe_res['error']}"}, 400)
+            return
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            UPDATE bookings SET
+                payment_status = 'PRE_AUTHORIZED',
+                payment_method = 'STRIPE',
+                card_brand = ?,
+                card_last4 = ?,
+                card_auth_code = ?,
+                preauth_amount = ?,
+                preauth_at = ?,
+                stripe_payment_intent_id = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (
+            stripe_res.get("brand", "Card"),
+            stripe_res.get("last4", "••••"),
+            stripe_res["payment_intent_id"],
+            amount,
+            now_str,
+            stripe_res["payment_intent_id"],
+            now_str,
+            booking["id"]
+        ))
+        conn.commit()
+        conn.close()
+
+        broadcast_event("payment_preauthorized", {"booking_id": booking["id"], "amount": amount, "method": "STRIPE"})
+        self.send_json({"success": True, "message": "Card pre-authorised successfully", "status": "PRE_AUTHORIZED", "payment_intent_id": stripe_res["payment_intent_id"]})
 
     def handle_get_chauffeurs(self, query):
         status_filter = query.get("status", ["ALL"])[0].upper()

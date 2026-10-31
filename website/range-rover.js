@@ -1,0 +1,1 @@
+document.querySelectorAll('[data-rr]').forEach(button=>button.addEventListener('click',()=>{const img=button.querySelector('img');const main=document.querySelector('#rr-main');main.src=img.src;main.alt=img.alt;document.querySelectorAll('[data-rr]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));}));

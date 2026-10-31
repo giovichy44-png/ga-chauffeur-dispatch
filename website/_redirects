@@ -1,0 +1,9 @@
+/vehicle-hire /pricing/ 301
+/vehicle-hire/ /pricing/ 301
+/vehicle-hire/* /pricing/ 301
+/vehicle-hire-terms /pricing/ 301
+/vehicle-hire-terms/ /pricing/ 301
+/vehicle-hire-terms/* /pricing/ 301
+/qualification /pricing/ 301
+/qualification/ /pricing/ 301
+/qualification/* /pricing/ 301
