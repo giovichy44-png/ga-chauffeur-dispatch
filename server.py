@@ -647,6 +647,21 @@ def is_airport_arrival_journey(pickup="", service_type=None):
     ]
     return any(kw in p_text for kw in airport_kws)
 
+def is_airport_departure_journey(dropoff="", service_type=None):
+    """
+    Detects if the destination is an Airport (which incurs standard £7.00 Heathrow / Airport drop-off fee).
+    """
+    if service_type and "departure" in str(service_type).lower():
+        return True
+    d_text = str(dropoff).lower()
+    airport_kws = [
+        "heathrow", "lhr", "t5", "t2", "t3", "t4", "terminal 5", "terminal 2", "terminal 3", "terminal 4",
+        "gatwick", "lgw", "city airport", "lcy", "london city", "luton", "ltn",
+        "stansted", "stn", "farnborough", "fab", "biggin hill", "bqh", "northolt",
+        "airport", "terminal", "fbo"
+    ]
+    return any(kw in d_text for kw in airport_kws)
+
 def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hours=0, distance_mi=15.0):
     """
     Calculate executive luxury pricing in GBP (£) based on GA Chauffeur Services Limited published structure.
@@ -655,8 +670,9 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     - Hourly: S-Class £85/hr (min 2 hrs = £170 + VAT), V-Class £95/hr (min 2 hrs = £190 + VAT), Range Rover £115/hr (min 2 hrs = £230 + VAT)
     - Point-to-point: minimum 2 hours base, £4/mile excess.
     - Airport Parking & Meet/Greet: £15.00 (added automatically for airport collections)
-    - London Congestion Charge: £15.00 (added automatically if pickup or dropoff is in Congestion Charge zone)
-    - VAT: 20% applied to subtotal (Base + Parking + Congestion Charge)
+    - Airport Drop-off Charge: £7.00 (added automatically for Heathrow / Airport departures)
+    - London Congestion Charge: £18.00 (added automatically if pickup or dropoff is in Congestion Charge zone)
+    - VAT: 20% applied to subtotal (Base + Parking + Dropoff + Congestion Charge)
     """
     key = normalize_vehicle_tier(vehicle_class)
     cfg = VEHICLE_CONFIGS.get(key, VEHICLE_CONFIGS["mercedes_s_class"])
@@ -701,13 +717,17 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     # Calculate Airport Parking & Meet/Greet (£15.00)
     has_airport_arrival = is_airport_arrival_journey(pickup, final_type)
     parking_fee = 15.0 if has_airport_arrival else 0.0
+
+    # Calculate Heathrow / Airport Drop-off Charge (£7.00)
+    has_airport_departure = is_airport_departure_journey(dropoff, final_type)
+    dropoff_fee = 7.0 if has_airport_departure else 0.0
     
-    # Calculate London Congestion Charge (£15.00)
+    # Calculate London Congestion Charge (£18.00)
     has_congestion = is_congestion_charge_zone(pickup) or is_congestion_charge_zone(dropoff)
-    congestion_charge = 15.0 if has_congestion else 0.0
+    congestion_charge = 18.0 if has_congestion else 0.0
     
     # Subtotal before VAT
-    subtotal = round(net_fare + parking_fee + congestion_charge, 2)
+    subtotal = round(net_fare + parking_fee + dropoff_fee + congestion_charge, 2)
     vat_amount = round(subtotal * 0.20, 2)
     total_fare = round(subtotal + vat_amount, 2)
     
@@ -715,8 +735,10 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
         "base_fare": net_fare,
         "net_fare": net_fare,
         "parking_fee": parking_fee,
+        "dropoff_fee": dropoff_fee,
         "congestion_charge": congestion_charge,
         "has_parking": has_airport_arrival,
+        "has_dropoff": has_airport_departure,
         "has_congestion": has_congestion,
         "subtotal": subtotal,
         "vat_amount": vat_amount,
@@ -727,12 +749,13 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
         "breakdown": {
             "base_fare": net_fare,
             "parking_fee": parking_fee,
+            "dropoff_fee": dropoff_fee,
             "congestion_charge": congestion_charge,
             "subtotal": subtotal,
             "vat_amount": vat_amount,
             "total_fare": total_fare
         },
-        "disclaimer": "Parking (£15.00 for airport collections) and London Congestion Charge (£15.00 for Central London zones) are included in the itemized pre-authorisation breakdown."
+        "disclaimer": "Parking (£15.00 for airport collections), Airport Drop-off (£7.00 for Heathrow/airport departures), and London Congestion Charge (£18.00 for Central London zones) are included in the itemized pre-authorisation breakdown."
     }
 
 def generate_confirmation_code():
@@ -1449,11 +1472,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         )
         
         net_fare = fare_result["net_fare"]
-        parking_fee = fare_result.get("parking_fee", 0.0)
-        congestion_charge = fare_result.get("congestion_charge", 0.0)
-        subtotal = fare_result.get("subtotal", round(net_fare + parking_fee + congestion_charge, 2))
-        vat_amount = fare_result["vat_amount"]
-        total_fare = fare_result["total_fare"]
+        parking_fee = float(payload.get("parking_fee", fare_result.get("parking_fee", 0.0)))
+        dropoff_fee = float(payload.get("airport_dropoff_fee", payload.get("dropoff_fee", fare_result.get("dropoff_fee", 0.0))))
+        congestion_charge = float(payload.get("congestion_charge", fare_result.get("congestion_charge", 0.0)))
+        subtotal = round(net_fare + parking_fee + dropoff_fee + congestion_charge, 2)
+        vat_amount = round(subtotal * 0.20, 2)
+        total_fare = round(subtotal + vat_amount, 2)
+        if payload.get("total_fare"):
+            try:
+                tf = float(payload["total_fare"])
+                if tf > 0:
+                    total_fare = round(tf, 2)
+            except Exception:
+                pass
 
         # Credit Card Payment Pre-Authorization Processing (Strict Stripe Verification)
         payment_method_id = payload.get("payment_method_id")
