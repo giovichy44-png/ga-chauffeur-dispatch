@@ -89,3 +89,14 @@ gmp-place-autocomplete{display:block;width:100%;color-scheme:light;background:wh
 
 /* Shared footer and policy pages */
 .footer.ga-footer{display:block;padding:60px 8% 28px;font-size:14px}.footer.ga-footer>div{display:block}.footer.ga-footer .ga-footer-grid{display:grid;grid-template-columns:1.25fr .75fr 1fr;gap:48px}.ga-footer .brand{margin:0 0 22px}.ga-footer p{margin:0 0 16px}.ga-footer address{font-style:normal;line-height:1.8;margin-bottom:16px}.ga-footer h2{font-family:inherit;font-size:13px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#e4e7df;margin:0 0 22px}.ga-footer nav>a,.ga-footer-contact>a{display:block;margin:0 0 12px!important;width:fit-content;overflow-wrap:anywhere;max-width:100%}.ga-footer a:hover{text-decoration:underline;text-underline-offset:4px}.footer.ga-footer .ga-footer-bottom{border-top:1px solid #435047;margin-top:36px;padding-top:24px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px 32px}.ga-footer-bottom p{font-size:12px;margin:0}.ga-footer-bottom nav{display:flex;flex-wrap:wrap;gap:12px 24px}.ga-footer-bottom nav>a{font-size:12px;margin:0!important}.legal-page{max-width:980px;margin:0 auto;min-height:65vh}.legal-page h1{font:normal clamp(38px,6vw,64px)/1.12 Georgia,serif;letter-spacing:-.03em;margin:0 0 18px;overflow-wrap:anywhere}.legal-page h2{font-size:28px;margin:38px 0 16px}.legal-page p{color:#445347}.legal-page a{text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}.legal-updated{font-size:13px;margin-bottom:36px}@media(max-width:800px){.footer.ga-footer{padding:44px 7% 26px}.footer.ga-footer .ga-footer-grid{grid-template-columns:1fr;gap:28px}.footer.ga-footer .ga-footer-bottom{flex-direction:column;gap:20px}.ga-footer-bottom nav{gap:14px 22px}.legal-page{padding-top:52px}}
+
+.booking-header-area{max-width:840px;margin:0 auto 20px}
+#ga-chauffeur-booking-widget{max-width:840px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:36px 32px;box-shadow:0 10px 35px rgba(0,0,0,0.06);color:#171c1c}
+.ga-vehicle-card{transition:all .2s ease}
+.ga-vehicle-card:hover{border-color:#c9b894!important;background:#faf8f3!important}
+@media(max-width:768px){
+  #ga-chauffeur-booking-widget{padding:24px 18px}
+  .ga-vehicle-card{grid-template-columns:1fr!important;text-align:left}
+  .ga-vehicle-card img{max-width:140px;margin-bottom:8px}
+  .booking-steps-bar{font-size:10px}
+}
