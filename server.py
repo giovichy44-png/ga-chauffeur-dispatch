@@ -1231,12 +1231,26 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json(cached[1]); return
             try:
                 url = "https://ga-chauffeur-services.giovichy44.chatgpt.site/api/postcode?" + urllib.parse.urlencode({"postcode":postcode,"page":page})
-                with urllib.request.urlopen(url, timeout=10) as response:
+                request = urllib.request.Request(url, headers={
+                    "User-Agent": "GAChauffeurs-PostcodeProxy/1.0 (+https://gachauffeurs.co.uk)",
+                    "Accept": "application/json",
+                })
+                with urllib.request.urlopen(request, timeout=10) as response:
                     result = json.loads(response.read(200000))
+                if not isinstance(result, dict) or not isinstance(result.get("addresses"), list):
+                    raise ValueError("Invalid postcode response")
                 if len(POSTCODE_CACHE) >= 200: POSTCODE_CACHE.clear()
                 POSTCODE_CACHE[cache_key] = (time.time() + 900, result)
                 self.send_json(result)
-            except Exception:
+            except urllib.error.HTTPError as error:
+                # Log status only: do not expose addresses, credentials or upstream bodies.
+                print(f"Postcode upstream HTTP {error.code}", file=sys.stderr, flush=True)
+                if error.code == 404:
+                    self.send_json({"error": "No properties found. Check the postcode or enter your full address."}, 404)
+                else:
+                    self.send_json({"error": "House-number lookup is temporarily unavailable. Please enter the full address."}, 503)
+            except Exception as error:
+                print(f"Postcode upstream failure: {type(error).__name__}", file=sys.stderr, flush=True)
                 self.send_json({"error": "House-number lookup is temporarily unavailable. Please enter the full address."}, 503)
             return
 
