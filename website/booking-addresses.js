@@ -37,257 +37,79 @@
     { keys: ['mayfair', 'w1k'], name: 'Mayfair, Central London, W1K 7TN', lat: 51.5110, lng: -0.1490, category: 'hub' }
   ];
 
-  let debounceTimer = null;
-
-  function setupResilientAutocomplete(input) {
-    const parent = input.parentElement;
-    if (!parent) return;
-
-    if (window.getComputedStyle(parent).position === 'static') {
-      parent.style.position = 'relative';
+  const instances = new Map();
+  let placesLibrary;
+  function setup(input) {
+    if (!input || instances.has(input.id)) return;
+    let timer, revision = 0;
+    const list = document.createElement('div');
+    list.className = 'ga-autocomplete-dropdown';
+    list.style.cssText = 'background:white;color:#17201b;border:1px solid #c9b894;border-radius:6px;max-height:280px;overflow:auto;position:relative;z-index:20';
+    list.hidden = true; list.setAttribute('role','listbox');
+    input.after(list); input.hidden=false; input.autocomplete='off';
+    instances.set(input.id, {input,list});
+    function choose(name, coords) {
+      ++revision; clearTimeout(timer); list.hidden=true;
+      input.value=name;
+      delete input.dataset.lat; delete input.dataset.lng;
+      if(coords){input.dataset.lat=coords.lat;input.dataset.lng=coords.lng;}
+      input.dispatchEvent(new Event('change',{bubbles:true}));
     }
-
-    // Dropdown container
-    let dropdown = parent.querySelector('.ga-autocomplete-dropdown');
-    if (!dropdown) {
-      dropdown = document.createElement('div');
-      dropdown.className = 'ga-autocomplete-dropdown';
-      dropdown.style.cssText = 'display:none;position:absolute;left:0;right:0;top:100%;z-index:99999;background:#ffffff;border:1px solid #c9b894;border-radius:8px;box-shadow:0 12px 30px rgba(0,0,0,0.15);margin-top:6px;max-height:300px;overflow-y:auto;';
-      parent.appendChild(dropdown);
-    }
-
-    const renderItems = (items) => {
-      if (!items || items.length === 0) {
-        dropdown.style.display = 'none';
-        return;
-      }
-
-      dropdown.innerHTML = items.map(item => {
-        const icon = item.category === 'airport' ? '✈️' :
-                     item.category === 'private_jet' ? '🛩️' :
-                     item.category === 'hotel' ? '🏨' :
-                     item.category === 'postcode' ? '📮' : '📍';
-        const subtitle = item.subtitle ? `<span style="font-size:11px;color:#64748b;display:block;">${item.subtitle}</span>` : '';
-        return `
-          <div class="ga-item" data-name="${item.name.replace(/"/g, '&quot;')}" data-lat="${item.lat || ''}" data-lng="${item.lng || ''}" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;line-height:1.35;color:#171c1c;transition:background .15s ease;">
-            <div style="display:flex;align-items:flex-start;gap:8px;">
-              <span style="font-size:15px;line-height:1;">${icon}</span>
-              <div style="flex:1;">
-                <div style="font-weight:600;color:#171c1c;">${item.name}</div>
-                ${subtitle}
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      dropdown.querySelectorAll('.ga-item').forEach(el => {
-        el.addEventListener('mouseenter', () => { el.style.background = '#faf8f3'; });
-        el.addEventListener('mouseleave', () => { el.style.background = '#ffffff'; });
-        el.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          const name = el.dataset.name;
-          input.value = name;
-          if (el.dataset.lat) input.dataset.lat = el.dataset.lat;
-          if (el.dataset.lng) input.dataset.lng = el.dataset.lng;
-          dropdown.style.display = 'none';
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-      });
-
-      dropdown.style.display = 'block';
-    };
-
-    const handleSearch = async () => {
-      const q = (input.value || '').trim();
-      const lower = q.toLowerCase();
-      if (!q || q.length < 2) {
-        dropdown.style.display = 'none';
-        return;
-      }
-
-      const results = [];
-
-      // 1. Check instant local dictionary (airports, terminals, shorthand like T5, Stanmore)
-      AIRPORT_SUGGESTIONS.forEach(item => {
-        if (item.keys.some(k => k === lower || lower.startsWith(k) || item.name.toLowerCase().includes(lower))) {
-          results.push({
-            name: item.name,
-            subtitle: item.category === 'airport' ? 'London Airport Terminal' : item.category === 'private_jet' ? 'Private Jet FBO' : 'Stanmore Headquarters',
-            lat: item.lat,
-            lng: item.lng,
-            category: item.category
-          });
-        }
-      });
-
-      // 2. If postcode format (UK: e.g. HA7, HA7 4EJ, SW1A 1AA, W1K)
-      const cleanPostcode = q.replace(/\s+/g, '').toUpperCase();
-      const isPostcodeQuery = /^[A-Z]{1,2}[0-9][0-9A-Z]?[0-9]?[A-Z]{0,2}$/i.test(cleanPostcode);
-
-      if (isPostcodeQuery && cleanPostcode.length >= 2) {
-        try {
-          // Query postcodes.io autocomplete (fast, reliable, free)
-          const pResp = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPostcode)}/autocomplete`, { signal: AbortSignal.timeout(2000) });
-          if (pResp.ok) {
-            const pData = await pResp.json();
-            if (pData.result && Array.isArray(pData.result)) {
-              pData.result.slice(0, 4).forEach(pc => {
-                results.push({
-                  name: `${pc}, Greater London / UK`,
-                  subtitle: `Full Postcode: ${pc}`,
-                  category: 'postcode'
-                });
-              });
-            }
-          }
-        } catch (e) {}
-      }
-
-      // 3. Query Photon / Nominatim for street & house number matching in UK
-      if (results.length < 4 && q.length >= 3) {
-        try {
-          const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q + ', UK')}&limit=4`;
-          const phResp = await fetch(photonUrl, { signal: AbortSignal.timeout(2000) });
-          if (phResp.ok) {
-            const phData = await phResp.json();
-            if (phData.features && phData.features.length) {
-              phData.features.forEach(f => {
-                const props = f.properties || {};
-                const nameParts = [props.housenumber, props.street || props.name, props.city || props.district, props.postcode].filter(Boolean);
-                if (nameParts.length >= 2) {
-                  const fullAddress = nameParts.join(', ');
-                  if (!results.some(r => r.name.toLowerCase() === fullAddress.toLowerCase())) {
-                    results.push({
-                      name: fullAddress,
-                      subtitle: props.state || 'United Kingdom',
-                      lat: f.geometry?.coordinates ? f.geometry.coordinates[1] : null,
-                      lng: f.geometry?.coordinates ? f.geometry.coordinates[0] : null,
-                      category: 'address'
-                    });
-                  }
-                }
-              });
-            }
-          }
-        } catch (e) {}
-      }
-
-      renderItems(results.slice(0, 6));
-    };
-
-    input.addEventListener('input', () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(handleSearch, 150);
-    });
-
-    input.addEventListener('focus', () => {
-      if ((input.value || '').trim().length >= 2) {
-        handleSearch();
-      }
-    });
-
-    input.addEventListener('blur', () => {
-      setTimeout(() => { dropdown.style.display = 'none'; }, 250);
-    });
-  }
-
-  window.initBookingAddresses = () => {
-    try {
-      if (window.onGoogleMapsReady) window.onGoogleMapsReady();
-
-      const pickupInput = document.getElementById('booking-pickup');
-      const destInput = document.getElementById('booking-destination');
-
-      [pickupInput, destInput].forEach(input => {
-        if (!input) return;
-
-        input.hidden = false;
-        input.style.display = 'block';
-        input.setAttribute('autocomplete', 'off');
-
-        // Setup resilient fast autocomplete
-        setupResilientAutocomplete(input);
-
-        // Safe Google Places Autocomplete if enabled without breaking UI
-        if (window.google && window.google.maps && window.google.maps.places) {
+    function render(items) {
+      list.replaceChildren();list.hidden=!items.length;
+      for(const item of items){
+        const button=document.createElement('button');button.type='button';button.setAttribute('role','option');button.textContent=item.name;
+        button.style.cssText='display:block;width:100%;text-align:left;background:white;color:#17201b;border:0;border-bottom:1px solid #eee;padding:12px;cursor:pointer';
+        button.addEventListener('click',async()=>{
+          const token=++revision;
           try {
-            // const ac = new google.maps.places.Autocomplete(input, {
-              componentRestrictions: { country: 'gb' },
-              fields: ['formatted_address', 'geometry', 'name', 'address_components']
-            });
-
-            ac.addListener('place_changed', () => {
-              const place = ac.getPlace();
-              if (!place) return;
-
-              let fullAddress = place.formatted_address || place.name || '';
-              if (place.name && !fullAddress.toLowerCase().includes(place.name.toLowerCase())) {
-                fullAddress = `${place.name}, ${fullAddress}`;
-              }
-
-              input.value = fullAddress;
-
-              if (place.geometry && place.geometry.location) {
-                input.dataset.lat = place.geometry.location.lat();
-                input.dataset.lng = place.geometry.location.lng();
-              }
-
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-          } catch (acErr) {
-            console.warn('Google Places Autocomplete graceful fallback:', acErr);
-          }
-        }
-      });
-    } catch (e) {
-      console.warn('Booking address init warning:', e);
+            if(item.prediction){
+              const place=item.prediction.toPlace();
+              await place.fetchFields({fields:['displayName','formattedAddress','location']});
+              if(token!==revision)return;
+              const address=place.formattedAddress||item.name,name=place.displayName||'';
+              choose(name&&!address.toLowerCase().includes(name.toLowerCase())?name+', '+address:address,
+                place.location?{lat:place.location.lat(),lng:place.location.lng()}:null);
+            }else choose(item.name,item.lat!=null?{lat:item.lat,lng:item.lng}:null);
+          } catch {list.textContent='Please select the address again, or enter its full address.';}
+        });list.append(button);
+      }
     }
-  };
-
-  // Expose global interface
-  window.GABookingAddresses = {
-    setAddress(id, value) {
-      const input = document.getElementById(id);
-      if (input) {
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
+    async function search(){
+      const token=++revision,q=input.value.trim();
+      if(q.length<2){list.hidden=true;return;}
+      const local=AIRPORT_SUGGESTIONS.filter(i=>i.keys.some(k=>k===q.toLowerCase())||i.name.toLowerCase().includes(q.toLowerCase())).slice(0,5);
+      render(local);
+      try{
+        const lib=placesLibrary||await window.google?.maps?.importLibrary('places');
+        if(!lib)throw Error('Places unavailable');
+        placesLibrary=lib;
+        const {suggestions}=await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({input:q,includedRegionCodes:['gb']});
+        if(token!==revision)return;
+        const items=suggestions.filter(s=>s.placePrediction).map(s=>({name:s.placePrediction.text.toString(),prediction:s.placePrediction}));
+        render([...items,...local.filter(l=>!items.some(i=>i.name===l.name))].slice(0,8));
+      }catch{
+        if(token!==revision)return;
+        if(!local.length){list.hidden=false;list.textContent='Address suggestions are unavailable. Enter the full address including house number and postcode.';}
       }
-    },
-    validate() {
-      const p = document.getElementById('booking-pickup');
-      const d = document.getElementById('booking-destination');
-      const isHourly = form.elements.serviceType?.value === 'Hourly chauffeur service';
-      if (!p || !p.value.trim()) {
-        if (p) p.focus();
-        return false;
-      }
-      if (!isHourly && (!d || !d.value.trim())) {
-        if (d) d.focus();
-        return false;
-      }
-      return true;
     }
-  };
-
-  // Initialize immediately for instant response
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', window.initBookingAddresses);
-  } else {
-    window.initBookingAddresses();
+    input.addEventListener('input',()=>{
+      ++revision;delete input.dataset.lat;delete input.dataset.lng;clearTimeout(timer);list.hidden=true;timer=setTimeout(search,250);
+    });
+    input.addEventListener('focus',()=>{if(input.value.length>=2)search();});
+    input.addEventListener('keydown',e=>{if(e.key==='Escape')list.hidden=true;if(e.key==='ArrowDown'){e.preventDefault();list.querySelector('button')?.focus();}});
+    input.addEventListener('blur',()=>setTimeout(()=>{if(!list.contains(document.activeElement))list.hidden=true;},200));
   }
-
-  // Load Google Maps API safely in background without blocking
-  try {
-    const script = document.createElement('script');
-    script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyDNHZ7EWxRbvZVpuzAMJzfnKL4n4EPr9Xo&libraries=places,routes,geometry&loading=async&v=weekly&callback=initBookingAddresses';
-    script.async = true;
-    script.onerror = () => {
-      if (window.onGoogleMapsReady) window.onGoogleMapsReady();
-    };
-    document.head.append(script);
-  } catch (err) {}
+  window.GABookingAddresses={
+    setAddress(id,value){const input=document.getElementById(id);if(!input)return;input.value=value;delete input.dataset.lat;delete input.dataset.lng;input.dispatchEvent(new Event('change',{bubbles:true}));},
+    validate(){return ['booking-pickup','booking-destination'].every((id,i)=>i&&form.elements.serviceType?.value==='Hourly chauffeur service'||Boolean(document.getElementById(id)?.value.trim()));}
+  };
+  window.initBookingAddresses=()=>{
+    ['booking-pickup','booking-destination'].forEach(id=>setup(document.getElementById(id)));
+    window.onGoogleMapsReady?.();
+  };
+  ['booking-pickup','booking-destination'].forEach(id=>setup(document.getElementById(id)));
+  const script=document.createElement('script');
+  script.src='https://maps.googleapis.com/maps/api/js?key=AIzaSyDNHZ7EWxRbvZVpuzAMJzfnKL4n4EPr9Xo&libraries=places,routes,geometry&loading=async&v=weekly&callback=initBookingAddresses';
+  script.async=true;script.onerror=()=>window.onGoogleMapsReady?.();document.head.append(script);
 })();

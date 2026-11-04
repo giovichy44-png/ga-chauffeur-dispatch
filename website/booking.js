@@ -498,8 +498,8 @@
         const startPt = route.path[0];
         const endPt = route.path[route.path.length - 1];
         updatePins(
-          { lat: startPt.lat(), lng: startPt.lng() },
-          { lat: endPt.lat(), lng: endPt.lng() },
+          { lat: startPt.lat, lng: startPt.lng },
+          { lat: endPt.lat, lng: endPt.lng },
           bounds
         );
 
@@ -526,63 +526,12 @@
   }
 
   function fallbackGeodesic(pVal, dVal) {
-    const distEl = document.querySelector('#booking-route-distance');
-    const durEl = document.querySelector('#booking-route-duration');
-    const locsEl = document.querySelector('#booking-route-locations');
-
-    const pInput = document.getElementById('booking-pickup');
-    const dInput = document.getElementById('booking-destination');
-
-    const pCoords = (pInput?.dataset.lat && pInput?.dataset.lng)
-      ? { lat: parseFloat(pInput.dataset.lat), lng: parseFloat(pInput.dataset.lng) }
-      : (guessCoordinates(pVal) || { lat: 51.4700, lng: -0.4840 });
-
-    const dCoords = (dInput?.dataset.lat && dInput?.dataset.lng)
-      ? { lat: parseFloat(dInput.dataset.lat), lng: parseFloat(dInput.dataset.lng) }
-      : (guessCoordinates(dVal) || { lat: 51.5074, lng: -0.1278 });
-
-    const miles = calculateGeoDistance(pCoords.lat, pCoords.lng, dCoords.lat, dCoords.lng);
-    journeyDistanceMiles = Math.max(5.0, miles);
-    journeyDurationMinutes = Math.round(journeyDistanceMiles * 2.2 + 10);
-
-    const hoursPart = Math.floor(journeyDurationMinutes / 60);
-    const minsPart = journeyDurationMinutes % 60;
-    const durStr = hoursPart > 0 ? `${hoursPart} hr ${minsPart} mins` : `${minsPart} mins`;
-
-    if (distEl) distEl.textContent = `${journeyDistanceMiles.toFixed(1)} miles`;
-    if (durEl) durEl.textContent = `Approx. ${durStr}`;
-    if (locsEl) locsEl.textContent = `${pVal.split(',')[0]} ➔ ${dVal.split(',')[0]}`;
-
-    if (gMap && window.google && window.google.maps) {
-      const bounds = new google.maps.LatLngBounds();
-      updatePins(pCoords, dCoords, bounds);
-      const line = new google.maps.Polyline({
-        path: [pCoords, dCoords],
-        geodesic: true,
-        strokeColor: '#34d399',
-        strokeOpacity: 0.9,
-        strokeWeight: 5
-      });
-      line.setMap(gMap);
-      routeLines.push(line);
-      gMap.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
-    }
-
-    if (leafletMap && window.L) {
-      if (window.leafletRouteLayer) leafletMap.removeLayer(window.leafletRouteLayer);
-      const polyline = L.polyline([[pCoords.lat, pCoords.lng], [dCoords.lat, dCoords.lng]], {
-        color: '#34d399',
-        weight: 5,
-        opacity: 0.9
-      });
-      const mA = L.circleMarker([pCoords.lat, pCoords.lng], { radius: 7, fillColor: '#10b981', color: '#fff', weight: 2, fillOpacity: 1 });
-      const mB = L.circleMarker([dCoords.lat, dCoords.lng], { radius: 7, fillColor: '#f59e0b', color: '#fff', weight: 2, fillOpacity: 1 });
-      window.leafletRouteLayer = L.layerGroup([polyline, mA, mB]).addTo(leafletMap);
-      leafletMap.fitBounds(polyline.getBounds(), { padding: [35, 35] });
-    }
-
-    updatePricingAndReview();
-    updateWhatsAppLinks();
+    // Do not misrepresent a straight line or guessed distance as a driving route.
+    routeLines.forEach(line => line.setMap(null)); routeLines=[];
+    if (leafletMap && window.leafletRouteLayer) leafletMap.removeLayer(window.leafletRouteLayer);
+    document.querySelector('#booking-route-distance').textContent = '—';
+    document.querySelector('#booking-route-duration').textContent = '—';
+    document.querySelector('#booking-route-locations').textContent = 'Select both full addresses to calculate the driving route. If it remains unavailable, contact us for a quote.';
   }
 
   // Tariff & Review Calculations (Strict London Rules: Congestion £18, Parking £15, Drop-off £7)

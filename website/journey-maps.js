@@ -115,9 +115,13 @@
           }
         });
       }
-      // Places works independently. Do not instantiate the disabled Maps API:
-      // its global authorisation error also breaks Google's Places internals.
-      mapElement.hidden=true;
+      try {
+        const maps = await google.maps.importLibrary('maps');
+        ({Route} = await google.maps.importLibrary('routes'));
+        mapElement.hidden=false;
+        map=new maps.Map(mapElement,{center:{lat:51.5074,lng:-0.1278},zoom:10,mapTypeControl:false});
+        mapAvailable=true; await route();
+      } catch(error) { mapAvailable=false; status.textContent='Route preview is unavailable. Please contact us to confirm your journey.'; }
 
     } catch (error) { console.error('Journey address search unavailable', error); unavailable(); }
   };

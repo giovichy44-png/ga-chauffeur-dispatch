@@ -263,7 +263,11 @@ def check_auth(headers):
 
     return False
 
+POSTCODE_CACHE = {}
+
 PUBLIC_PATHS = {
+    "/api/forms-config",
+    "/api/postcode",
     "/embed-booking-widget.js",
     "/api/stripe-config",
     "/api/quote",
@@ -1209,6 +1213,31 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 "enabled": bool(STRIPE_SECRET_KEY),
                 "publishable_key": STRIPE_PUBLISHABLE_KEY
             })
+            return
+
+        # Retain the existing Sites-hosted Ideal Postcodes connection after migration.
+        if path in ("/api/forms-config", "/api/postcode"):
+            if path == "/api/forms-config":
+                self.send_json({"postcode": True})
+                return
+            postcode = re.sub(r"\s+", "", query.get("postcode", [""])[0]).upper()
+            page = query.get("page", ["0"])[0]
+            if not re.fullmatch(r"[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}", postcode) or not page.isdigit() or int(page) > 20:
+                self.send_json({"error": "Enter a complete UK postcode."}, 400)
+                return
+            cache_key = postcode + "/" + page
+            cached = POSTCODE_CACHE.get(cache_key)
+            if cached and cached[0] > time.time():
+                self.send_json(cached[1]); return
+            try:
+                url = "https://ga-chauffeur-services.giovichy44.chatgpt.site/api/postcode?" + urllib.parse.urlencode({"postcode":postcode,"page":page})
+                with urllib.request.urlopen(url, timeout=10) as response:
+                    result = json.loads(response.read(200000))
+                if len(POSTCODE_CACHE) >= 200: POSTCODE_CACHE.clear()
+                POSTCODE_CACHE[cache_key] = (time.time() + 900, result)
+                self.send_json(result)
+            except Exception:
+                self.send_json({"error": "House-number lookup is temporarily unavailable. Please enter the full address."}, 503)
             return
 
         if path == "/api/quote":
