@@ -55,6 +55,16 @@
         const requestId = revision;
         status.textContent = 'Calculating your route…';
         try {
+          const config=await window.GAServerQuote.config;
+          if(config.server_quotes){
+            const q=await window.GAServerQuote.get(window.GAServerQuote.homeSpec());
+            if(requestId!==revision)return;
+            const path=q.path.map(([lng,lat])=>({lat,lng}));
+            if(!path.length)throw Error('No driving route');
+            overlays=[new google.maps.Polyline({map,path,strokeColor:'#344b41',strokeWeight:5})];
+            const bounds=new google.maps.LatLngBounds();path.forEach(point=>bounds.extend(point));map.fitBounds(bounds,40);
+            status.textContent=q.distance_miles.toFixed(1)+' miles · approximately '+Math.ceil(q.duration_minutes)+' minutes';return;
+          }
           const {routes} = await Route.computeRoutes({origin:selected.pickup || stops.pickup+', UK', destination:selected.destination || stops.destination+', UK', travelMode:'DRIVING', routingPreference:'TRAFFIC_UNAWARE', fields:['path','distanceMeters','durationMillis']});
           if (requestId !== revision || !active) return;
           const result = routes?.[0];

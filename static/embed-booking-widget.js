@@ -566,8 +566,10 @@
     });
   }
 
+  let widgetQuote=null;
   // Update Quote
   async function updateWidgetQuote() {
+    widgetQuote=null;
     const v = vSelect ? vSelect.value : 'mercedes_s_class';
     const sType = sTypeSelect ? sTypeSelect.value : 'Airport arrival';
     const hours = hoursSelect ? hoursSelect.value : 2;
@@ -577,6 +579,8 @@
     try {
       const res = await fetch(`${API_BASE}/api/quote?vehicle=${v}&service_type=${encodeURIComponent(sType)}&hours=${hours}&pickup=${encodeURIComponent(p)}&dropoff=${encodeURIComponent(d)}`);
       const q = await res.json();
+      if(!res.ok)throw Error(q.error || "Quote unavailable");
+      widgetQuote=q;
 
       const totalEl = document.getElementById('ga-price-total');
       const subEl = document.getElementById('ga-price-breakdown');
@@ -599,17 +603,9 @@
       if (rowGrand) rowGrand.textContent = `£${q.total_fare.toFixed(2)}`;
       if (btnSubmit) btnSubmit.textContent = `Pre-Authorise £${q.total_fare.toFixed(2)} & Confirm Booking ↗`;
     } catch (e) {
-      // Offline fallback
-      let net = 165.0;
-      if (v === 'mercedes_v_class') net = 175.0;
-      if (v === 'range_rover_autobiography') net = 225.0;
-      const vat = net * 0.20;
-      const total = net + vat;
+      const totalEl=document.getElementById('ga-price-total'),subEl=document.getElementById('ga-price-breakdown');
+      if(totalEl)totalEl.textContent='—';if(subEl)subEl.textContent=e.message||'Quote unavailable';
 
-      const totalEl = document.getElementById('ga-price-total');
-      const subEl = document.getElementById('ga-price-breakdown');
-      if (totalEl) totalEl.textContent = `£${total.toFixed(2)}`;
-      if (subEl) subEl.textContent = `£${net.toFixed(2)} + £${vat.toFixed(2)} VAT (20%)`;
     }
   }
 
@@ -658,6 +654,13 @@
     };
 
     try {
+      const configResponse=await fetch(`${API_BASE}/api/forms-config`);
+      if(!configResponse.ok)throw Error('Quote configuration unavailable');
+      const config=await configResponse.json();
+      if(config.server_quotes){
+        if(!widgetQuote?.quote_token || widgetQuote.expires<Date.now()/1000+10)throw Error('Refresh your quote before booking.');
+        payload.quote_token=widgetQuote.quote_token;
+      }
       const res = await fetch(`${API_BASE}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

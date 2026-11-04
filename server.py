@@ -31,6 +31,9 @@ from urllib.parse import urlparse, parse_qs
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 import db
+import quote_service
+import flight_monitor
+from prepared_pricing.zone_quote import QuoteUnavailable
 
 PORT = 8080
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -160,7 +163,7 @@ def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, cu
             "error": f"Stripe pre-authorisation failed: status is '{status}', expected 'requires_capture'",
             "status": status
         }
-    
+
     brand = "Card"
     last4 = "••••"
     if "charges" in res and res["charges"].get("data"):
@@ -266,6 +269,8 @@ def check_auth(headers):
 POSTCODE_CACHE = {}
 
 PUBLIC_PATHS = {
+    "/api/flight-webhook",
+    "/api/route-quote",
     "/api/forms-config",
     "/api/postcode",
     "/embed-booking-widget.js",
@@ -452,7 +457,7 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
     <span class="eyebrow">Private Operations</span>
     <h1>Dispatch Console</h1>
     <p class="subtitle">Access restricted to authorized personnel of GA Chauffeur Services Limited.</p>
-    
+
     <div id="login-error" class="error-msg">Invalid username or password. Please try again.</div>
 
     <form id="login-form">
@@ -566,7 +571,7 @@ UK_AUTOCOMPLETE_DATABASE = [
     {"title": "Heathrow Airport (LHR) Terminal 2", "subtitle": "The Queen's Terminal, TW6 1EW", "category": "airport", "code": "LHR"},
     {"title": "Heathrow Airport (LHR) Terminal 3", "subtitle": "Departures & Arrivals, TW6 1QG", "category": "airport", "code": "LHR"},
     {"title": "Heathrow Airport (LHR) Terminal 4", "subtitle": "Departures & Arrivals, TW6 3XA", "category": "airport", "code": "LHR"},
-    
+
     # Gatwick Terminals (LGW)
     {"title": "Gatwick Airport (LGW) South Terminal", "subtitle": "Departures & Arrivals, RH6 0NP", "category": "airport", "code": "LGW"},
     {"title": "Gatwick Airport (LGW) North Terminal", "subtitle": "Departures & Arrivals, RH6 0PJ", "category": "airport", "code": "LGW"},
@@ -625,7 +630,7 @@ def detect_service_type(pickup="", dropoff="", requested_type=None):
     """
     if requested_type and "hourly" in str(requested_type).lower():
         return "Hourly chauffeur service"
-    
+
     text = f"{pickup} {dropoff}".lower()
     airport_kws = [
         "heathrow", "lhr", "t5", "t2", "t3", "t4", "terminal 5", "terminal 2", "terminal 3", "terminal 4",
@@ -633,7 +638,7 @@ def detect_service_type(pickup="", dropoff="", requested_type=None):
         "stansted", "stn", "farnborough", "fab", "biggin hill", "bqh", "northolt",
         "airport", "terminal", "fbo", "aerodrome"
     ]
-    
+
     is_airport = any(kw in text for kw in airport_kws)
     if is_airport:
         p_text = str(pickup).lower()
@@ -653,7 +658,7 @@ def is_congestion_charge_zone(address=""):
     if not address:
         return False
     text = str(address).strip().lower()
-    
+
     # Check postcodes
     cc_postcode_patterns = [
         r'\b(ec1[a-z]?|ec2[a-z]?|ec3[a-z]?|ec4[a-z]?)\b',
@@ -666,7 +671,7 @@ def is_congestion_charge_zone(address=""):
     for pattern in cc_postcode_patterns:
         if re.search(pattern, text, re.IGNORECASE):
             return True
-            
+
     # Key central areas within the Congestion Charge zone
     cc_keywords = [
         "mayfair", "soho", "westminster", "covent garden", "fitzrovia",
@@ -681,8 +686,6 @@ def is_airport_arrival_journey(pickup="", service_type=None):
     """
     Detects if the collection point is an Airport (which incurs standard £15.00 parking & meet/greet fee).
     """
-    if service_type and "arrival" in str(service_type).lower():
-        return True
     p_text = str(pickup).lower()
     airport_kws = [
         "heathrow", "lhr", "t5", "t2", "t3", "t4", "terminal 5", "terminal 2", "terminal 3", "terminal 4",
@@ -696,8 +699,6 @@ def is_airport_departure_journey(dropoff="", service_type=None):
     """
     Detects if the destination is an Airport (which incurs standard £7.00 Heathrow / Airport drop-off fee).
     """
-    if service_type and "departure" in str(service_type).lower():
-        return True
     d_text = str(dropoff).lower()
     airport_kws = [
         "heathrow", "lhr", "t5", "t2", "t3", "t4", "terminal 5", "terminal 2", "terminal 3", "terminal 4",
@@ -721,12 +722,12 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     """
     key = normalize_vehicle_tier(vehicle_class)
     cfg = VEHICLE_CONFIGS.get(key, VEHICLE_CONFIGS["mercedes_s_class"])
-    
+
     detected = detect_service_type(pickup, dropoff, service_type)
     final_type = service_type or detected
-    
+
     hours_int = int(hours or 0)
-    
+
     if "hourly" in final_type.lower() or hours_int > 0:
         h = max(2, hours_int if hours_int > 0 else 2)
         if h == 10:
@@ -740,7 +741,7 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
         text = f"{pickup} {dropoff}".lower()
         heathrow_city_kws = ["heathrow", "lhr", "t5", "t2", "t3", "t4", "city airport", "lcy", "london city"]
         outer_airports_kws = ["gatwick", "lgw", "luton", "ltn", "stansted", "stn", "farnborough", "fab", "biggin hill", "bqh"]
-        
+
         if any(kw in text for kw in heathrow_city_kws) or "lhr" in text or "heathrow" in text:
             net_fare = cfg["heathrow_rate"]
             service_label = "Heathrow / London City Airport Transfer"
@@ -758,24 +759,24 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
             service_label = "Point-to-Point Transfer"
 
     net_fare = round(net_fare, 2)
-    
+
     # Calculate Airport Parking & Meet/Greet (£15.00)
     has_airport_arrival = is_airport_arrival_journey(pickup, final_type)
     parking_fee = 15.0 if has_airport_arrival else 0.0
 
     # Calculate Heathrow / Airport Drop-off Charge (£7.00)
     has_airport_departure = is_airport_departure_journey(dropoff, final_type)
-    dropoff_fee = 7.0 if has_airport_departure else 0.0
-    
+    dropoff_fee = (10.0 if re.search(r"\b(gatwick|lgw)\b", str(dropoff), re.I) else 7.0) if has_airport_departure else 0.0
+
     # Calculate London Congestion Charge (£18.00)
     has_congestion = is_congestion_charge_zone(pickup) or is_congestion_charge_zone(dropoff)
     congestion_charge = 18.0 if has_congestion else 0.0
-    
+
     # Subtotal before VAT
     subtotal = round(net_fare + parking_fee + dropoff_fee + congestion_charge, 2)
     vat_amount = round(subtotal * 0.20, 2)
     total_fare = round(subtotal + vat_amount, 2)
-    
+
     return {
         "base_fare": net_fare,
         "net_fare": net_fare,
@@ -872,7 +873,7 @@ def send_smtp_email(to_email, subject, html_content, text_content=""):
 
     return True, "Simulated delivery (Outbound email credentials not configured in Render)"
 
-def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None, parking_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None):
+def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None, parking_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, dropoff_fee=0.0):
     tier_key = normalize_vehicle_tier(vehicle_tier)
     vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
 
@@ -884,8 +885,8 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     net_fare = float(net_fare)
     parking_fee = float(parking_fee or 0.0)
     congestion_charge = float(congestion_charge or 0.0)
-    subtotal = round(net_fare + parking_fee + congestion_charge, 2)
-    
+    subtotal = round(net_fare + parking_fee + float(dropoff_fee or 0) + congestion_charge, 2)
+
     if vat_amt is None:
         vat_amt = round(subtotal * 0.20, 2)
     if total_fare is None:
@@ -912,6 +913,8 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
         </tr>
         """
 
+    if dropoff_fee:
+        parking_row += f'<tr><td style="color:#aab5ae;padding-top:6px">Airport drop-off</td><td style="text-align:right;color:#fff">£{float(dropoff_fee):.2f} GBP</td></tr>'
     congestion_row = ""
     if congestion_charge > 0:
         congestion_row = f"""
@@ -937,7 +940,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     if flight:
         flight_block = f"""
         <div style="background: rgba(56,189,248,0.08); border-left: 3px solid #38bdf8; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #cbd5e1;">
-          <strong style="color: #38bdf8;">Flight Monitoring:</strong> {flight} — 45 minutes complimentary waiting time commences after flight landing.
+          <strong style="color: #38bdf8;">Flight reference:</strong> {flight} — 45 minutes complimentary waiting time commences after flight landing.
         </div>
         """
 
@@ -952,7 +955,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     </head>
     <body style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #121715; color: #edf0ea; margin: 0; padding: 24px;">
       <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 620px; margin: 0 auto; background-color: #171f1b; border: 1px solid #2e3b33; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-        
+
         <!-- Header Monogram -->
         <tr>
           <td style="background-color: #121715; padding: 28px 40px; text-align: center; border-bottom: 2px solid #c9b894;">
@@ -1178,6 +1181,21 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_sse()
             return
 
+        if path == "/api/flight-monitor":
+            conn=db.get_connection()
+            try:
+                flight_monitor.schema(conn)
+                rows=conn.execute("SELECT booking_id,subscription_id,state,snapshot,fetched_at FROM flight_watches").fetchall()
+                watches=[]
+                for row in rows:
+                    item=dict(row)
+                    snapshot=json.loads(item.pop('snapshot') or '{}')
+                    item['flight_status']=flight_monitor.status(snapshot) if snapshot else 'Awaiting verified flight status'
+                    watches.append(item)
+                self.send_json({"connected": bool(flight_monitor.ready()),"watches":watches,"limit":3})
+            finally:conn.close()
+            return
+
         if path == "/api/bookings":
             self.handle_get_bookings(query)
             return
@@ -1218,7 +1236,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         # Retain the existing Sites-hosted Ideal Postcodes connection after migration.
         if path in ("/api/forms-config", "/api/postcode"):
             if path == "/api/forms-config":
-                self.send_json({"postcode": True})
+                self.send_json({"postcode": True, "server_quotes": quote_service.enabled()})
                 return
             postcode = re.sub(r"\s+", "", query.get("postcode", [""])[0]).upper()
             page = query.get("page", ["0"])[0]
@@ -1254,7 +1272,28 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "House-number lookup is temporarily unavailable. Please enter the full address."}, 503)
             return
 
+        if path == "/api/route-quote":
+            try:
+                result = quote_service.issue({key:values[0] for key,values in query.items()}, normalize_vehicle_tier, calculate_fare, self.client_address[0])
+                self.send_json(result)
+            except QuoteUnavailable as error:
+                self.send_json({"error": str(error)}, 422)
+            except Exception as error:
+                print(f"Route quote failure: {type(error).__name__}", file=sys.stderr, flush=True)
+                self.send_json({"error": "We could not verify this driving route. Please try again."}, 503)
+            return
+
         if path == "/api/quote":
+            if quote_service.enabled():
+                try:
+                    data={key:values[0] for key,values in query.items()}
+                    if 'hourly' not in str(data.get('service_type','')).lower(): data['hours']=0
+                    q=quote_service.issue(data,normalize_vehicle_tier,calculate_fare,self.client_address[0])
+                    q.update(subtotal=round(q['total_fare']-q['vat_amount'],2),has_parking=q['parking_fee']>0,has_congestion=q['congestion_charge']>0)
+                    self.send_json(q)
+                except QuoteUnavailable as error:self.send_json({"error":str(error)},422)
+                except Exception:self.send_json({"error":"Verified quote unavailable"},503)
+                return
             vehicle = query.get("vehicle", ["mercedes_s_class"])[0]
             pickup = query.get("pickup", [""])[0]
             dropoff = query.get("dropoff", [""])[0]
@@ -1354,6 +1393,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         except Exception:
             payload = {}
 
+        if path == "/api/flight-webhook":
+            if len(post_data)>500000:
+                self.send_json({"error":"Payload too large"},413);return
+            conn=db.get_connection()
+            try:
+                flight_monitor.receive(conn,post_data,self.headers.get('x-flightbyte-signature',''))
+                self.send_json({"ok":True})
+            except (flight_monitor.MonitoringUnavailable,ValueError,TypeError):
+                self.send_json({"error":"Webhook could not be verified"},400)
+            finally:conn.close()
+            return
+
         # Login endpoint (Public)
         if path == "/api/login":
             username = payload.get("username", "").strip()
@@ -1378,6 +1429,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if not check_auth(self.headers):
                 self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                 return
+
+        if path == "/api/flight-monitor":
+            conn=db.get_connection()
+            try:
+                booking_id=str(payload.get('booking_id',''))
+                if not conn.execute('SELECT 1 FROM bookings WHERE id=?',(booking_id,)).fetchone():
+                    self.send_json({"error":"Booking not found"},404);return
+                result=flight_monitor.subscribe(conn,booking_id,payload)
+                self.send_json(result)
+            except flight_monitor.MonitoringUnavailable as error:
+                self.send_json({"error":str(error)},422)
+            finally:conn.close()
+            return
 
         if path == "/api/bookings":
             self.handle_create_booking(payload)
@@ -1517,8 +1581,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         cursor = conn.cursor()
 
         sql = """
-        SELECT b.*, 
-               c.name as chauffeur_name, c.phone as chauffeur_phone, 
+        SELECT b.*,
+               c.name as chauffeur_name, c.phone as chauffeur_phone,
                c.vehicle_model, c.license_plate, c.rating as chauffeur_rating,
                c.lat as chauffeur_lat, c.lng as chauffeur_lng
         FROM bookings b
@@ -1542,8 +1606,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-        SELECT b.*, 
-               c.name as chauffeur_name, c.phone as chauffeur_phone, 
+        SELECT b.*,
+               c.name as chauffeur_name, c.phone as chauffeur_phone,
                c.vehicle_model, c.license_plate, c.rating as chauffeur_rating,
                c.lat as chauffeur_lat, c.lng as chauffeur_lng
         FROM bookings b
@@ -1592,6 +1656,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": f"Missing required field: {field}"}, 400)
                 return
 
+        verified_quote = None
+        if quote_service.enabled():
+            try:
+                verified_quote = quote_service.accept(payload, normalize_vehicle_tier)
+            except QuoteUnavailable as error:
+                self.send_json({"error": str(error)}, 409)
+                return
+
         conn = db.get_connection()
         cursor = conn.cursor()
 
@@ -1600,49 +1672,65 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         source = payload.get("source", "WEBSITE_GACHAUFFEURS" if "website" in str(payload.get("source", "")).lower() else "DISPATCH_PORTAL")
 
-        pickup_lat = float(payload.get("pickup_lat", 51.5074 + (random.random() - 0.5) * 0.08))
-        pickup_lng = float(payload.get("pickup_lng", -0.1278 + (random.random() - 0.5) * 0.08))
-        dropoff_lat = float(payload.get("dropoff_lat", 51.4700 + (random.random() - 0.5) * 0.08))
-        dropoff_lng = float(payload.get("dropoff_lng", -0.4543 + (random.random() - 0.5) * 0.08))
-
-        dlat = (dropoff_lat - pickup_lat) * 69.0
-        dlng = (dropoff_lng - pickup_lng) * 43.0
-        calculated_dist = max(round(math.sqrt(dlat*dlat + dlng*dlng), 1), 3.0)
-        calculated_dur = int(calculated_dist * 2.4 + 10)
-
-        distance_mi = float(payload.get("estimated_distance_mi", calculated_dist))
-        duration_min = int(payload.get("estimated_duration_min", calculated_dur))
-
         normalized_vehicle = normalize_vehicle_tier(payload["vehicle_class"])
-        
-        # Service type detection & fare computation
         detected_service = detect_service_type(payload["pickup_address"], payload["dropoff_address"], payload.get("service_type"))
         service_type = payload.get("service_type") or detected_service
         hours_booked = int(payload.get("hours_booked", payload.get("hours", 0)) or 0)
-        
-        fare_result = calculate_fare(
-            vehicle_class=normalized_vehicle,
-            service_type=service_type,
-            pickup=payload["pickup_address"],
-            dropoff=payload["dropoff_address"],
-            hours=hours_booked,
-            distance_mi=distance_mi
-        )
-        
-        net_fare = fare_result["net_fare"]
-        parking_fee = float(payload.get("parking_fee", fare_result.get("parking_fee", 0.0)))
-        dropoff_fee = float(payload.get("airport_dropoff_fee", payload.get("dropoff_fee", fare_result.get("dropoff_fee", 0.0))))
-        congestion_charge = float(payload.get("congestion_charge", fare_result.get("congestion_charge", 0.0)))
-        subtotal = round(net_fare + parking_fee + dropoff_fee + congestion_charge, 2)
-        vat_amount = round(subtotal * 0.20, 2)
-        total_fare = round(subtotal + vat_amount, 2)
-        if payload.get("total_fare"):
-            try:
-                tf = float(payload["total_fare"])
-                if tf > 0:
-                    total_fare = round(tf, 2)
-            except Exception:
-                pass
+        if verified_quote:
+            net_fare = verified_quote["base_fare"]
+            parking_fee = verified_quote["parking_fee"]
+            dropoff_fee = verified_quote["dropoff_fee"]
+            congestion_charge = verified_quote["congestion_charge"]
+            vat_amount = verified_quote["vat_amount"]
+            total_fare = verified_quote["total_fare"]
+            distance_mi = verified_quote["distance_miles"]
+            duration_min = round(verified_quote["duration_minutes"])
+            pickup_lat, pickup_lng = (verified_quote["pickup_location"][k] for k in ("lat", "lng"))
+            dropoff_lat, dropoff_lng = (verified_quote["dropoff_location"][k] for k in ("lat", "lng"))
+
+        else:
+            pickup_lat = float(payload.get("pickup_lat", 51.5074 + (random.random() - 0.5) * 0.08))
+            pickup_lng = float(payload.get("pickup_lng", -0.1278 + (random.random() - 0.5) * 0.08))
+            dropoff_lat = float(payload.get("dropoff_lat", 51.4700 + (random.random() - 0.5) * 0.08))
+            dropoff_lng = float(payload.get("dropoff_lng", -0.4543 + (random.random() - 0.5) * 0.08))
+
+            dlat = (dropoff_lat - pickup_lat) * 69.0
+            dlng = (dropoff_lng - pickup_lng) * 43.0
+            calculated_dist = max(round(math.sqrt(dlat*dlat + dlng*dlng), 1), 3.0)
+            calculated_dur = int(calculated_dist * 2.4 + 10)
+
+            distance_mi = float(payload.get("estimated_distance_mi", calculated_dist))
+            duration_min = int(payload.get("estimated_duration_min", calculated_dur))
+
+            normalized_vehicle = normalize_vehicle_tier(payload["vehicle_class"])
+
+            # Service type detection & fare computation
+            detected_service = detect_service_type(payload["pickup_address"], payload["dropoff_address"], payload.get("service_type"))
+            service_type = payload.get("service_type") or detected_service
+            hours_booked = int(payload.get("hours_booked", payload.get("hours", 0)) or 0)
+
+            fare_result = calculate_fare(
+                vehicle_class=normalized_vehicle,
+                service_type=service_type,
+                pickup=payload["pickup_address"],
+                dropoff=payload["dropoff_address"],
+                hours=hours_booked,
+                distance_mi=distance_mi
+            )
+
+            net_fare = fare_result["net_fare"]
+            parking_fee = fare_result.get("parking_fee", 0.0)
+            dropoff_fee = fare_result.get("dropoff_fee", 0.0)
+            congestion_charge = float(payload.get("congestion_charge", fare_result.get("congestion_charge", 0.0)))
+            subtotal = round(net_fare + parking_fee + dropoff_fee + congestion_charge, 2)
+            vat_amount = round(subtotal * 0.20, 2)
+            total_fare = round(subtotal + vat_amount, 2)
+            # Legacy mode only; signed-quote mode above never trusts browser totals.
+            if payload.get("total_fare"):
+                try:
+                    legacy_total=float(payload["total_fare"])
+                    if math.isfinite(legacy_total) and legacy_total>0: total_fare=round(legacy_total,2)
+                except (ValueError,TypeError): pass
 
         # Credit Card Payment Pre-Authorization Processing (Strict Stripe Verification)
         payment_method_id = payload.get("payment_method_id")
@@ -1715,7 +1803,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             preauth_at = None
 
         flight_num = payload.get("flight_number")
-        flight_status = "Airport Monitoring Active (45m free wait)" if flight_num else None
+        flight_status = "Manual flight check required — automatic monitoring not connected" if flight_num else None
 
         pickup_unit = payload.get("pickup_unit", "")
         dropoff_unit = payload.get("dropoff_unit", "")
@@ -1751,6 +1839,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             stripe_intent_id, now_str, now_str
         ))
 
+        cursor.execute("UPDATE bookings SET dropoff_fee=? WHERE id=?", (dropoff_fee, booking_id))
+
         vehicle_name = VEHICLE_CONFIGS[normalized_vehicle]["name"]
         email_subject = f"Booking Confirmation: {code} - GA Chauffeur Services Limited"
         html_email = build_luxury_email_html(
@@ -1770,6 +1860,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             hand_luggage=hand_luggage,
             flight=flight_num,
             parking_fee=parking_fee,
+            dropoff_fee=dropoff_fee,
             congestion_charge=congestion_charge,
             card_brand=card_brand,
             card_last4=card_last4,
@@ -1786,7 +1877,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             f"Destination: {payload['dropoff_address']}\n"
             f"Vehicle: {vehicle_name}\n"
             f"Passengers: {passenger_count} | Luggage: {large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand\n"
-            + (f"Flight Monitoring: {flight_num} (Complimentary 45m waiting time included)\n" if flight_num else "")
+            + (f"Flight reference: {flight_num} (Complimentary 45m waiting time included)\n" if flight_num else "")
             + (f"Special Requirements: {payload.get('special_requests')}\n" if payload.get('special_requests') else "")
             + f"Base Journey Fare: £{net_fare:.2f} GBP\n"
             + (f"Airport Parking & Meet/Greet: £{parking_fee:.2f} GBP\n" if parking_fee > 0 else "")
@@ -1890,7 +1981,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if not chauffeur_id or chauffeur_id == "auto":
             # Exact vehicle class match first
             cursor.execute("""
-            SELECT * FROM chauffeurs 
+            SELECT * FROM chauffeurs
             WHERE status = 'AVAILABLE' AND vehicle_class = ?
             ORDER BY rating DESC, trips_count DESC
             LIMIT 1
@@ -1900,7 +1991,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             # Otherwise any available among the 3 vehicles
             if not chauffeur:
                 cursor.execute("""
-                SELECT * FROM chauffeurs 
+                SELECT * FROM chauffeurs
                 WHERE status = 'AVAILABLE'
                 ORDER BY rating DESC
                 LIMIT 1
@@ -1954,7 +2045,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             medium_cases=booking.get('medium_cases', 0),
             hand_luggage=booking.get('hand_luggage', 0),
             chauffeur=chauffeur,
-            flight=booking.get('flight_number')
+            flight=booking.get('flight_number'),
+            parking_fee=booking.get('parking_fee',0),
+            dropoff_fee=booking.get('dropoff_fee',0),
+            congestion_charge=booking.get('congestion_charge',0)
         )
         plain_text_email = (
             f"Dear {booking['customer_name']},\n\n"
@@ -2079,7 +2173,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             new_booking_status = "COMPLETED"
             if chauffeur_id:
                 cursor.execute("""
-                UPDATE chauffeurs 
+                UPDATE chauffeurs
                 SET lat = ?, lng = ?, status = 'AVAILABLE', active_booking_id = NULL,
                     trips_count = trips_count + 1, current_zone = 'Stanmore / London Base'
                 WHERE id = ?

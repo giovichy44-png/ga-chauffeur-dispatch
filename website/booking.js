@@ -12,6 +12,17 @@
   const status = document.querySelector('#booking-status');
   const submitBtn = document.querySelector('#booking-submit-btn');
   const query = new URLSearchParams(location.search);
+  let serverQuotes=false, verifiedQuote=null, verifiedKey='';
+  function quoteSpec(){return {
+    pickup:getAddressVal('booking-pickup'),
+    dropoff:getAddressVal('booking-destination') || (form.elements.serviceType?.value==='Hourly chauffeur service'?'As directed':''),
+    vehicle:form.elements.vehicle?.value || 'Mercedes-Benz S-Class',
+    service:form.elements.serviceType?.value || 'Point-to-point transfer',
+    hours:form.elements.hours?.value || (form.elements.serviceType?.value==='Hourly chauffeur service'?'2':'0')
+  };}
+  function currentQuote(){return verifiedQuote && verifiedKey===window.GAServerQuote.key(quoteSpec()) && verifiedQuote.expires>Date.now()/1000+10 ? verifiedQuote:null;}
+  window.GAServerQuote?.config.then(config=>{serverQuotes=Boolean(config.server_quotes);if(serverQuotes)updateRouteAndMetrics();}).catch(()=>{});
+
 
   // 4 Streamlined Steps
   let currentStep = 1;
@@ -440,6 +451,31 @@
 
     updateConditionalFlightDisplay();
 
+    if (serverQuotes) {
+      verifiedQuote=null; updatePricingAndReview();
+      await new Promise(resolve=>setTimeout(resolve,450));
+      if(requestId!==routeRequestId)return;
+      const spec=quoteSpec();
+      if(!spec.pickup||!spec.dropoff)return;
+      try {
+        const q=await window.GAServerQuote.get(spec);
+        if(requestId!==routeRequestId || window.GAServerQuote.key(spec)!==window.GAServerQuote.key(quoteSpec()))return;
+        verifiedQuote=q;verifiedKey=window.GAServerQuote.key(spec);
+        journeyDistanceMiles=q.distance_miles;journeyDurationMinutes=Math.round(q.duration_minutes);
+        if(gMap && q.path.length){
+          const path=q.path.map(([lng,lat])=>({lat,lng}));
+          const line=new google.maps.Polyline({map:gMap,path,strokeColor:'#34d399',strokeWeight:6});routeLines=[line];
+          const bounds=new google.maps.LatLngBounds();path.forEach(p=>bounds.extend(p));
+          updatePins(q.pickup_location,q.dropoff_location,bounds);gMap.fitBounds(bounds,40);
+        }
+        if(distEl)distEl.textContent=q.as_directed?'As directed':q.distance_miles.toFixed(1)+' miles';
+        if(durEl)durEl.textContent=q.as_directed?spec.hours+' hours':Math.round(q.duration_minutes)+' minutes';
+        if(locsEl)locsEl.textContent=spec.pickup+' → '+spec.dropoff;
+        updatePricingAndReview();
+      }catch(error){if(requestId===routeRequestId && locsEl)locsEl.textContent=error.message;}
+      return;
+    }
+
     if (isHourly) {
       journeyDistanceMiles = 20.0;
       journeyDurationMinutes = 120;
@@ -555,21 +591,28 @@
     }
 
     // Airport Parking: £15 (on airport collections / arrivals)
-    const hasParking = s === 'Airport arrival' || isAirportLocation(pVal);
-    const parkingFee = hasParking ? 15 : 0;
+    let hasParking = isAirportLocation(pVal);
+    let parkingFee = hasParking ? 15 : 0;
 
     // Airport Drop-off Charge: £7 (e.g. London to Heathrow or Airport departures)
-    const hasDropoffCharge = isHeathrowOrAirportDropoff(dVal) || s === 'Airport departure';
-    const dropoffFee = hasDropoffCharge ? 7 : 0;
+    let hasDropoffCharge = isHeathrowOrAirportDropoff(dVal);
+    let dropoffFee = hasDropoffCharge ? (/\b(gatwick|lgw)\b/i.test(dVal) ? 10 : 7) : 0;
 
     // London Congestion Charge: £18 (auto-added if pickup or drop-off in CC zone)
-    const hasCongestion = isCongestionLocation(pVal) || isCongestionLocation(dVal);
-    const congestionFee = hasCongestion ? 18 : 0;
+    let hasCongestion = isCongestionLocation(pVal) || isCongestionLocation(dVal);
+    let congestionFee = hasCongestion ? 18 : 0;
 
     const subtotal = base + parkingFee + dropoffFee + congestionFee;
-    const tax = Math.round(subtotal * 0.20 * 100) / 100;
-    const total = Math.round((subtotal + tax) * 100) / 100;
+    let tax = Math.round(subtotal * 0.20 * 100) / 100;
+    let total = Math.round((subtotal + tax) * 100) / 100;
 
+    if(serverQuotes){
+      const q=currentQuote();
+      if(!q){if(submitBtn){submitBtn.disabled=true;submitBtn.textContent='Verifying journey price…';}const totalEl=document.querySelector('#review-total-fare');if(totalEl)totalEl.textContent='—';return;}
+      base=q.base_fare;parkingFee=q.parking_fee;dropoffFee=q.dropoff_fee;congestionFee=q.congestion_charge;tax=q.vat_amount;total=q.total_fare;
+      hasParking=parkingFee>0;hasDropoffCharge=dropoffFee>0;hasCongestion=congestionFee>0;
+      if(submitBtn)submitBtn.disabled=false;
+    }
     // Update vehicle card prices in Step 2
     const sPrice = document.querySelector('#price-sclass');
     const vPrice = document.querySelector('#price-vclass');
@@ -601,7 +644,7 @@
     if (revParkingRow) revParkingRow.style.display = hasParking ? 'flex' : 'none';
     if (revParkingVal) revParkingVal.textContent = '+£15.00';
     if (revDropoffRow) revDropoffRow.style.display = hasDropoffCharge ? 'flex' : 'none';
-    if (revDropoffVal) revDropoffVal.textContent = '+£7.00';
+    if (revDropoffVal) revDropoffVal.textContent = '+£' + dropoffFee.toFixed(2);
     if (revCongRow) revCongRow.style.display = hasCongestion ? 'flex' : 'none';
     if (revCongVal) revCongVal.textContent = '+£18.00';
     if (revTax) revTax.textContent = `£${tax.toFixed(2)}`;
@@ -825,6 +868,8 @@
     if (flightEl) flightEl.addEventListener(ev, updateWhatsAppLinks);
   });
 
+  form.addEventListener('change',event=>{if(serverQuotes && ['vehicle','serviceType','hours'].includes(event.target.name))updateRouteAndMetrics();});
+
   // Form Submission (Step 4 Pre-Authorisation)
   let sending = false;
   let requestId = crypto.randomUUID();
@@ -840,6 +885,11 @@
       return;
     }
 
+    try {
+      const config=await window.GAServerQuote.config;
+      serverQuotes=Boolean(config.server_quotes);
+      if(serverQuotes&&!currentQuote()){await updateRouteAndMetrics();if(!currentQuote())throw Error('Please verify your route and price before booking.');return;}
+    }catch(error){status.style.display='block';status.textContent=error.message;return;}
     const data = Object.fromEntries(new FormData(form));
     const isHourly = data.serviceType === 'Hourly chauffeur service';
     const flightNo = form.querySelector('#booking-flight')?.value || '';
@@ -866,12 +916,12 @@
       else base = 165;
     }
 
-    const hasParking = data.serviceType === 'Airport arrival' || isAirportLocation(pVal);
-    const hasDropoffCharge = isHeathrowOrAirportDropoff(dVal) || data.serviceType === 'Airport departure';
+    const hasParking = isAirportLocation(pVal);
+    const hasDropoffCharge = isHeathrowOrAirportDropoff(dVal);
     const hasCongestion = isCongestionLocation(pVal) || isCongestionLocation(dVal);
 
     const parkingFee = hasParking ? 15 : 0;
-    const dropoffFee = hasDropoffCharge ? 7 : 0;
+    const dropoffFee = hasDropoffCharge ? (/\b(gatwick|lgw)\b/i.test(dVal) ? 10 : 7) : 0;
     const congestionFee = hasCongestion ? 18 : 0;
 
     const subtotal = base + parkingFee + dropoffFee + congestionFee;
@@ -931,6 +981,12 @@
       source: 'WEBSITE_GACHAUFFEURS'
     };
 
+    if(serverQuotes){
+      const q=currentQuote();if(!q){sending=false;return;}
+      payload.quote_token=q.quote_token;payload.hours=quoteSpec().hours;
+      payload.total_fare=q.total_fare;payload.fare_amount=q.base_fare;payload.vat_amount=q.vat_amount;
+      payload.parking_fee=q.parking_fee;payload.airport_dropoff_fee=q.dropoff_fee;payload.congestion_charge=q.congestion_charge;
+    }
     let dispatchSuccess = false;
     let paymentPreAuthorized = false;
     let dispatchRef = null;

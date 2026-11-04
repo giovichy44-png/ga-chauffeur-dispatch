@@ -46,13 +46,32 @@ if (typeof document !== 'undefined') (() => {
       destination:document.querySelector('#destination').value.trim()
     };
   }
-  function render(focus=false) {
+  let quoteRevision=0;
+  async function render(focus=false) {
+    const revision=++quoteRevision;
     const stops = addresses();
     const vehicle = form.querySelector('[name=vehicle]:checked').value;
     result.replaceChildren();
     const line = (text, tag='p') => { const el=document.createElement(tag); el.textContent=text; result.append(el); };
     if(!stops.pickup || !stops.destination){line('Enter your pickup and destination to see your estimate.');return;}
     const detected=detectAirportService(stops.pickup,stops.destination);service.value=detected.service||'';
+    try{
+      const config=await window.GAServerQuote.config;
+      if(revision!==quoteRevision)return;
+      if(config.server_quotes){
+        line('Verifying journey price…');
+        const spec=window.GAServerQuote.homeSpec(),q=await window.GAServerQuote.get(spec);
+        if(revision!==quoteRevision)return;
+        result.replaceChildren();line(q.service_label,'h3');line(money(q.total_fare),'h2');
+        line('Journey: '+money(q.base_fare));
+        if(q.parking_fee)line('Airport collection and meet-and-greet: '+money(q.parking_fee));
+        if(q.dropoff_fee)line('Airport drop-off: '+money(q.dropoff_fee));
+        if(q.congestion_charge)line('London congestion-zone surcharge: '+money(q.congestion_charge));
+        const link=document.createElement('a');link.textContent='Book this journey';link.className='text-link';
+        link.href='/book/?'+new URLSearchParams({pickup:spec.pickup,destination:spec.dropoff,vehicle:vehicle==='s'?'Mercedes-Benz S-Class':vehicle==='v'?'Mercedes-Benz V-Class':'Range Rover Autobiography Long Wheelbase'});result.append(link);
+        void window.GAJourney?.route();return;
+      }
+    }catch(error){if(revision===quoteRevision){result.replaceChildren();line(error.message);}return;}
     let tariff;
     try { tariff=calculateTariff(vehicle,service.value,Number(hours.value)); }
     catch(error) { line(error.message); return; }
@@ -87,7 +106,7 @@ if (typeof document !== 'undefined') (() => {
     hours.required = service.value === 'hourly';
     render();
   }
-  form.addEventListener('input',update);
+  let timer;form.addEventListener('input',()=>{quoteRevision++;clearTimeout(timer);timer=setTimeout(update,650);});
   form.addEventListener('change',update);
   form.addEventListener('invalid',()=>{result.textContent='Please enter both stops and check the highlighted field to continue.';},true);
   document.addEventListener('ga-address-change',update);

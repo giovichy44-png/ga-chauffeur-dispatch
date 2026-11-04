@@ -102,6 +102,7 @@ def init_db():
         ("vat_amount", "REAL DEFAULT 0.0"),
         ("total_fare", "REAL DEFAULT 0.0"),
         ("parking_fee", "REAL DEFAULT 0.0"),
+        ("dropoff_fee", "REAL DEFAULT 0.0"),
         ("congestion_charge", "REAL DEFAULT 0.0"),
         ("payment_status", "TEXT DEFAULT 'PENDING'"),
         ("payment_method", "TEXT DEFAULT 'INVOICE'"),
