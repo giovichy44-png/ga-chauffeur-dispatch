@@ -207,6 +207,7 @@
       }
     });
     checkCapacity();
+    if(serverQuotes)updateRouteAndMetrics();
     updatePricingAndReview();
     updateWhatsAppLinks();
   };
