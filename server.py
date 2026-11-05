@@ -1181,6 +1181,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_sse()
             return
 
+        if path == "/api/quote-preview":
+            # Private dispatch authentication above is mandatory; never whitelist this route.
+            try:
+                result=quote_service.issue({k:v[0] for k,v in query.items()},normalize_vehicle_tier,calculate_fare,self.client_address[0],preview=True)
+                result.pop('quote_token',None)
+                result['stripe_mode']='test' if STRIPE_SECRET_KEY.startswith('sk_test_') else ('live' if STRIPE_SECRET_KEY.startswith('sk_live_') else 'unknown')
+                self.send_json(result)
+            except Exception:
+                self.send_json({'error':'Google route verification failed. Check enabled APIs, key restrictions and full addresses.'},400)
+            return
+
         if path == "/api/flight-monitor":
             conn=db.get_connection()
             try:

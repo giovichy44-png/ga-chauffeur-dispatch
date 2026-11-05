@@ -21,8 +21,8 @@ def inputs(data,normalize):
     if 'hourly' in service.lower() and hours<2: hours=2
     return dict(pickup=pickup,dropoff=dropoff,vehicle=vehicle,service=service,hours=hours)
 
-def issue(data,normalize,tariff,client):
-    if not enabled() or not ready(): raise zone.QuoteUnavailable('Verified journey quotes are not available yet.')
+def issue(data,normalize,tariff,client, *, preview=False):
+    if (not enabled() and not preview) or not ready(): raise zone.QuoteUnavailable('Verified journey quotes are not available yet.')
     spec=inputs(data,normalize);now=time.time()
     with _lock:
         # Bound both per-client and total spend; trust socket address, not supplied forwarding headers.
