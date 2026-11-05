@@ -639,6 +639,14 @@ function initForm() {
       };
 
       try {
+        const config=await fetch('/api/forms-config').then(r=>r.json());
+        if(config.server_quotes){
+          const spec={pickup:payload.pickup_address,dropoff:payload.dropoff_address,vehicle:payload.vehicle_class,service:payload.service_type,hours:payload.hours_booked};
+          const qr=await fetch('/api/route-quote?'+new URLSearchParams(spec));const q=await qr.json();
+          if(!qr.ok)throw Error(q.error||'Unable to verify route.');
+          if(!confirm('Verified journey total: £'+q.total_fare.toFixed(2)+'. Create this booking?')){submitBtn.disabled=false;submitBtn.textContent='Confirm Booking & Send Email ↗';return;}
+          payload.quote_token=q.quote_token;
+        }
         const res = await fetch('/api/bookings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

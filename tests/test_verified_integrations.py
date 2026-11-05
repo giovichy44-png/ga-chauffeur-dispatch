@@ -33,6 +33,19 @@ class Integrations(unittest.TestCase):
   p['dropoff_address']='Different destination'
   with patch.object(server.db,'get_connection') as conn:
    handler.handle_create_booking(p);conn.assert_not_called()
+ def test_payment_authentication_binding_and_amount(self):
+  intent={'id':'pi_test','amount':22200,'currency':'gbp','metadata':{'booking_binding':'correct'},'status':'requires_action','client_secret':'test-secret'}
+  with patch.object(server,'stripe_api_request',return_value=intent):
+   self.assertTrue(server.stripe_create_preauth_hold(222,'pm_test','','','test',binding='correct',existing_intent='pi_test')['requires_action'])
+   self.assertIn('error',server.stripe_create_preauth_hold(1,'pm_test','','','test',binding='correct',existing_intent='pi_test'))
+   self.assertIn('error',server.stripe_create_preauth_hold(222,'pm_test','','','test',binding='changed',existing_intent='pi_test'))
+ def test_payment_creation_disallows_redirects(self):
+  with patch.object(server,'stripe_api_request',return_value={'error':'stop'}) as api:
+   server.stripe_create_preauth_hold(222,'pm_test','','','test')
+   data=api.call_args.kwargs['data']
+   self.assertEqual(data['amount'],'22200')
+   self.assertEqual(data['capture_method'],'manual')
+   self.assertEqual(data['automatic_payment_methods[allow_redirects]'],'never')
  def test_webhook_signature_timestamp(self):
   raw=b'{"id":"test"}';stamp=str(int(time.time()));secret='w'*40
   sig=hmac.new(secret.encode(),stamp.encode()+b'.'+raw,hashlib.sha256).hexdigest()

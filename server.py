@@ -138,26 +138,37 @@ def stripe_create_payment_method_from_card(card_number, exp_str, cvc, name):
     }
     return stripe_api_request("payment_methods", method="POST", data=data)
 
-def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, customer_name, description):
+def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, customer_name, description, binding="", existing_intent=None):
     """Places a manual capture pre-authorisation hold on a card via Stripe PaymentIntent."""
     amount_pence = int(round(amount_gbp * 100))
     data = {
         "amount": str(amount_pence),
         "currency": "gbp",
         "capture_method": "manual",
+        "automatic_payment_methods[enabled]": "true",
+        "automatic_payment_methods[allow_redirects]": "never",
         "confirm": "true",
         "payment_method": payment_method_id,
         "description": description,
         "receipt_email": customer_email or "",
         "metadata[customer_name]": customer_name or "",
         "metadata[company]": COMPANY_NAME,
-        "metadata[service]": "GA Chauffeur Services Pre-Auth Hold"
+        "metadata[service]": "GA Chauffeur Services Pre-Auth Hold",
+        "metadata[booking_binding]": binding
     }
-    res = stripe_api_request("payment_intents", method="POST", data=data)
+    if existing_intent:
+        if not re.fullmatch(r'pi_[A-Za-z0-9]+',existing_intent):return {'error':'Invalid payment reference.'}
+        res=stripe_api_request('payment_intents/'+existing_intent,method='GET')
+        if res.get('amount')!=amount_pence or res.get('currency')!='gbp' or res.get('metadata',{}).get('booking_binding')!=binding:
+            return {'error':'Payment does not match these booking details.'}
+    else:
+        res = stripe_api_request("payment_intents", method="POST", data=data)
     if "error" in res:
         return res
 
     status = res.get("status")
+    if status == 'requires_action':
+        return {'requires_action':True,'client_secret':res['client_secret'],'payment_intent_id':res['id']}
     if status not in ("requires_capture", "succeeded"):
         return {
             "error": f"Stripe pre-authorisation failed: status is '{status}', expected 'requires_capture'",
@@ -1692,6 +1703,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         service_type = payload.get("service_type") or detected_service
         hours_booked = int(payload.get("hours_booked", payload.get("hours", 0)) or 0)
         if verified_quote:
+            subtotal = round(verified_quote["total_fare"] - verified_quote["vat_amount"], 2)
             net_fare = verified_quote["base_fare"]
             parking_fee = verified_quote["parking_fee"]
             dropoff_fee = verified_quote["dropoff_fee"]
@@ -1763,7 +1775,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         preauth_amount = 0.0
         preauth_at = None
 
-        if STRIPE_SECRET_KEY and (payment_method_id or (card_num_raw and len(card_num_raw) >= 12)):
+        existing_intent=payload.get('payment_intent_id')
+        binding_fields=['customer_name','customer_email','customer_phone','pickup_address','dropoff_address','pickup_datetime','vehicle_class','service_type','hours','passenger_count','large_cases','medium_cases','hand_luggage']
+        binding=hashlib.sha256(json.dumps({k:payload.get(k) for k in binding_fields},sort_keys=True).encode()).hexdigest()
+        if STRIPE_SECRET_KEY and (payment_method_id or existing_intent or (card_num_raw and len(card_num_raw) >= 12)):
+            if existing_intent:
+                prior=cursor.execute('SELECT id,confirmation_code,total_fare,payment_status FROM bookings WHERE stripe_payment_intent_id=?',(existing_intent,)).fetchone()
+                if prior:
+                    conn.close(); self.send_json({'error':'This payment has already been used for a booking. Contact us with your payment reference.'},409); return
             pm_id = payment_method_id
             if not pm_id and card_num_raw:
                 pm_res = stripe_create_payment_method_from_card(card_num_raw, card_exp, card_cvc, card_holder)
@@ -1778,8 +1797,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 payment_method_id=pm_id,
                 customer_email=payload.get("customer_email"),
                 customer_name=payload.get("customer_name"),
-                description=f"GA Chauffeur Booking {code}"
+                description=f"GA Chauffeur Booking {code}", binding=binding, existing_intent=existing_intent
             )
+            if stripe_res.get('requires_action'):
+                conn.close();self.send_json(stripe_res);return
             if "error" in stripe_res:
                 conn.close()
                 self.send_json({"error": f"Card pre-authorisation declined by Stripe: {stripe_res['error']}"}, 400)

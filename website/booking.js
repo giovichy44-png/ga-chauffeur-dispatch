@@ -619,7 +619,10 @@
     const vPrice = document.querySelector('#price-vclass');
     const rPrice = document.querySelector('#price-rr');
 
-    if (isHourly) {
+    if (serverQuotes) {
+      const spec=quoteSpec(), key=window.GAServerQuote.key(spec);
+      [[sPrice,'mercedes_s_class'],[vPrice,'mercedes_v_class'],[rPrice,'range_rover_autobiography']].forEach(async([el,vehicle])=>{if(!el)return;el.textContent='Verifying…';try{const q=await window.GAServerQuote.get({...spec,vehicle});if(window.GAServerQuote.key(quoteSpec())===key)el.textContent='£'+q.total_fare.toFixed(2);}catch(e){el.textContent='Quote unavailable';}});
+    } else if (isHourly) {
       if (sPrice) sPrice.textContent = `£170.00`;
       if (vPrice) vPrice.textContent = `£190.00`;
       if (rPrice) rPrice.textContent = `£230.00`;
@@ -835,29 +838,16 @@
     });
   });
 
-  // Credit Card Formatting (Step 4)
-  const cardNum = form.querySelector('#booking-cardnumber');
-  const cardExp = form.querySelector('#booking-cardexpiry');
-  const cardCvc = form.querySelector('#booking-cardcvc');
-
-  if (cardNum) {
-    cardNum.addEventListener('input', e => {
-      let val = e.target.value.replace(/\D/g, '').slice(0, 16);
-      e.target.value = val.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
-    });
-  }
-  if (cardExp) {
-    cardExp.addEventListener('input', e => {
-      let val = e.target.value.replace(/\D/g, '').slice(0, 4);
-      if (val.length >= 2) e.target.value = val.slice(0, 2) + ' / ' + val.slice(2);
-      else e.target.value = val;
-    });
-  }
-  if (cardCvc) {
-    cardCvc.addEventListener('input', e => {
-      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
-    });
-  }
+  let stripeClient, stripeCard;
+  const secureCardReady=(async()=>{
+    const c=await fetch('/api/stripe-config').then(r=>r.json());
+    if(!c.enabled||!c.publishable_key)throw Error('Secure card payments are unavailable.');
+    if(!window.Stripe)await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://js.stripe.com/v3/';script.onload=resolve;script.onerror=reject;document.head.append(script);});
+    stripeClient=Stripe(c.publishable_key);
+    stripeCard=stripeClient.elements().create('card',{hidePostalCode:true});
+    stripeCard.mount('#booking-secure-card');
+  })();
+  secureCardReady.catch(()=>{});
 
   // Real-time Event Listeners
   ['input', 'change'].forEach(ev => {
@@ -965,10 +955,6 @@
       special_requests: data.specialRequests,
       notes: fullNotes,
       flight_number: flightNo,
-      card_number: (data.cardNumber || '').replace(/\s+/g, ''),
-      cardholder_name: data.cardholderName || data.name,
-      card_expiry: data.cardExpiry || '',
-      card_cvc: data.cardCvc || '',
       payment_method: 'CREDIT_CARD',
       parking_fee: parkingFee,
       airport_dropoff_fee: dropoffFee,
@@ -994,13 +980,24 @@
     let dispatchError = null;
 
     try {
-      const res = await fetch('https://dispatch.gachauffeurs.co.uk/api/bookings', {
+      await secureCardReady;
+      const cardResult=await stripeClient.createPaymentMethod({type:'card',card:stripeCard,billing_details:{name:data.cardholderName||data.name,email:data.email}});
+      if(cardResult.error)throw Error(cardResult.error.message);
+      payload.payment_method_id=cardResult.paymentMethod.id;
+      const sendBooking=()=>fetch('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(18000)
       });
-      const jsonRes = await res.json().catch(() => ({}));
+      let res=await sendBooking();
+      let jsonRes = await res.json().catch(() => ({}));
+      if(jsonRes.requires_action){
+        const auth=await stripeClient.confirmCardPayment(jsonRes.client_secret);
+        if(auth.error)throw Error(auth.error.message);
+        payload.payment_intent_id=auth.paymentIntent.id;
+        res=await sendBooking(); jsonRes=await res.json();
+      }
 
       if (res.ok && (jsonRes.ok || jsonRes.success)) {
         dispatchSuccess = true;
@@ -1015,19 +1012,12 @@
 
     const {cardNumber, cardExpiry, cardCvc, cardholderName, ...bookingData} = data;
     const {card_number, card_expiry, card_cvc, cardholder_name, ...bookingPayload} = payload;
-    fetch('/api/booking', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...bookingData, ...bookingPayload, notes: fullNotes, requestId }),
-      signal: AbortSignal.timeout(10000)
-    }).catch(() => {});
-
     sending = false;
     submitBtn.disabled = false;
 
     if (dispatchSuccess && paymentPreAuthorized) {
       const ref = dispatchRef || 'GA-CONFIRMED';
-      renderSuccessConfirmation(ref, total, data, payload);
+      renderSuccessConfirmation(ref, payload.total_fare, data, payload);
       return;
     }
 
