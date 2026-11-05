@@ -1188,8 +1188,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 result.pop('quote_token',None)
                 result['stripe_mode']='test' if STRIPE_SECRET_KEY.startswith('sk_test_') else ('live' if STRIPE_SECRET_KEY.startswith('sk_live_') else 'unknown')
                 self.send_json(result)
-            except Exception:
-                self.send_json({'error':'Google route verification failed. Check enabled APIs, key restrictions and full addresses.'},400)
+            except quote_service.zone.QuoteUnavailable as error:
+                self.send_json({'error':str(error)},400)
+            except urllib.error.HTTPError as error:
+                self.send_json({'error':'Google HTTP status '+str(error.code)},400)
+            except Exception as error:
+                self.send_json({'error':'Route verification error: '+type(error).__name__},400)
             return
 
         if path == "/api/flight-monitor":

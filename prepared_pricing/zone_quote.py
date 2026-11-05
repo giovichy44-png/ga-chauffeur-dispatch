@@ -51,6 +51,10 @@ def geocode(address,key):
     url='https://maps.googleapis.com/maps/api/geocode/json?'+urllib.parse.urlencode({'address':address,'region':'gb','key':key})
     with urllib.request.urlopen(url,timeout=10) as response: data=json.load(response)
     results=data.get('results',[])
+    if data.get('status')!='OK':
+        status=data.get('status','UNKNOWN')
+        if status not in ('ZERO_RESULTS','OVER_DAILY_LIMIT','OVER_QUERY_LIMIT','REQUEST_DENIED','INVALID_REQUEST','UNKNOWN_ERROR'): status='UNKNOWN'
+        raise QuoteUnavailable('Google Geocoding status: '+status)
     if data.get('status')!='OK' or len(results)!=1 or results[0].get('partial_match'):
         raise QuoteUnavailable('Please choose an unambiguous full address.')
     if set(results[0].get('types',[])) & {'postal_code','locality','administrative_area_level_1','administrative_area_level_2'}:
