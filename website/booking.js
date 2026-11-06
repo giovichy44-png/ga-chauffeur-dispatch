@@ -603,9 +603,8 @@
     let hasCongestion = isCongestionLocation(pVal) || isCongestionLocation(dVal);
     let congestionFee = hasCongestion ? 18 : 0;
 
-    const subtotal = base + parkingFee + dropoffFee + congestionFee;
-    let tax = Math.round(subtotal * 0.20 * 100) / 100;
-    let total = Math.round((subtotal + tax) * 100) / 100;
+    let tax = Math.round((base + parkingFee + dropoffFee) * 0.20 * 100) / 100;
+    let total = Math.round((base + parkingFee + dropoffFee + tax + congestionFee) * 100) / 100;
 
     if(serverQuotes){
       const q=currentQuote();
@@ -916,8 +915,8 @@
     const congestionFee = hasCongestion ? 18 : 0;
 
     const subtotal = base + parkingFee + dropoffFee + congestionFee;
-    const tax = Math.round(subtotal * 0.20 * 100) / 100;
-    const total = Math.round((subtotal + tax) * 100) / 100;
+    const tax = Math.round((base + parkingFee + dropoffFee) * 0.20 * 100) / 100;
+    const total = Math.round((base + parkingFee + dropoffFee + tax + congestionFee) * 100) / 100;
 
     sending = true;
     submitBtn.disabled = true;

@@ -55,11 +55,16 @@ def geocode(address,key):
         status=data.get('status','UNKNOWN')
         if status not in ('ZERO_RESULTS','OVER_DAILY_LIMIT','OVER_QUERY_LIMIT','REQUEST_DENIED','INVALID_REQUEST','UNKNOWN_ERROR'): status='UNKNOWN'
         raise QuoteUnavailable('Google Geocoding status: '+status)
-    if data.get('status')!='OK' or len(results)!=1 or results[0].get('partial_match'):
+    specific=[r for r in results if not (set(r.get('types',[])) & {'postal_code','locality','administrative_area_level_1','administrative_area_level_2'})]
+    result=specific[0] if len(specific)==1 else (results[0] if len(results)==1 else None)
+    if not result:
         raise QuoteUnavailable('Please choose an unambiguous full address.')
-    if set(results[0].get('types',[])) & {'postal_code','locality','administrative_area_level_1','administrative_area_level_2'}:
+    types=set(result.get('types',[]))
+    if result.get('partial_match') and not (types & {'airport','street_address','premise','subpremise','establishment','point_of_interest','transit_station'}):
+        raise QuoteUnavailable('Please choose an unambiguous full address.')
+    if types & {'postal_code','locality','administrative_area_level_1','administrative_area_level_2'}:
         raise QuoteUnavailable('Choose the property or airport, rather than only a postcode or town.')
-    return results[0]['geometry']['location']
+    return result['geometry']['location']
 
 def driving_route(pickup,dropoff,key):
     """Geometry, metrics and endpoint surcharge all derive from verified addresses."""

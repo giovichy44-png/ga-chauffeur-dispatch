@@ -695,9 +695,13 @@ function renderOutboxTable() {
     return;
   }
 
-  tbody.innerHTML = App.confirmations.map(c => `
+  tbody.innerHTML = App.confirmations.map(c => {
+    const isFailed = String(c.status || '').toUpperCase().includes('FAIL');
+    const statusLabel = isFailed ? 'Failed' : 'Delivered';
+    const statusColor = isFailed ? 'var(--status-red, #ef4444)' : 'var(--status-green)';
+    return `
     <tr>
-      <td><span style="color: var(--status-green); font-weight: 700;">Delivered</span></td>
+      <td><span style="color: ${statusColor}; font-weight: 700;">${statusLabel}</span></td>
       <td><strong>${escapeHtml(c.recipient)}</strong></td>
       <td><span style="font-family: var(--font-mono); color: var(--gold-accent);">${escapeHtml(c.confirmation_code || '-')}</span></td>
       <td style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(c.subject)}</td>
@@ -706,7 +710,7 @@ function renderOutboxTable() {
         <button class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px;" onclick="resendConf('${c.id}')">Resend</button>
       </td>
     </tr>
-  `).join('');
+  `}).join('');
 }
 
 async function resendConf(confId) {
@@ -719,6 +723,9 @@ async function resendConf(confId) {
     const data = await res.json();
     if (data.success) {
       showToast('Confirmation email resent!');
+      loadData();
+    } else {
+      alert(data.error || 'Could not resend confirmation email.');
       loadData();
     }
   } catch (err) {}

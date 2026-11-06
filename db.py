@@ -146,6 +146,34 @@ def init_db():
     )
     """)
 
+    # System Settings Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS system_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+def get_setting(key, default=""):
+    try:
+        conn = get_connection()
+        row = conn.execute("SELECT value FROM system_settings WHERE key = ?", (key,)).fetchone()
+        conn.close()
+        return row["value"] if row and row["value"] else default
+    except Exception:
+        return default
+
+def set_setting(key, value):
+    conn = get_connection()
+    conn.execute("CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)")
+    conn.execute(
+        "INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+        (key, str(value), datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
     conn.commit()
     conn.close()
 

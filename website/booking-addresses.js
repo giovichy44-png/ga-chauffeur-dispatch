@@ -9,23 +9,23 @@
   if (!form) return;
 
   const AIRPORT_SUGGESTIONS = [
-    { keys: ['t5', 'terminal 5', 'heathrow t5', 'lhr t5'], name: 'London Heathrow Airport Terminal 5, London TW6 2GA', lat: 51.4700, lng: -0.4840, category: 'airport' },
-    { keys: ['t2', 'terminal 2', 'heathrow t2', 'lhr t2'], name: 'London Heathrow Airport Terminal 2, Inner Ring E, Hounslow TW6 1EW', lat: 51.4696, lng: -0.4506, category: 'airport' },
-    { keys: ['t3', 'terminal 3', 'heathrow t3', 'lhr t3'], name: 'London Heathrow Airport Terminal 3, Inner Ring W, Hounslow TW6 1QG', lat: 51.4716, lng: -0.4578, category: 'airport' },
-    { keys: ['t4', 'terminal 4', 'heathrow t4', 'lhr t4'], name: 'London Heathrow Airport Terminal 4, Stratford Rd, Hounslow TW6 3XA', lat: 51.4585, lng: -0.4452, category: 'airport' },
-    { keys: ['lhr', 'heathrow', 'heathrow airport'], name: 'London Heathrow Airport (LHR), Longford, Hounslow TW6', lat: 51.4700, lng: -0.4543, category: 'airport' },
-    { keys: ['lgw', 'gatwick', 'gatwick airport'], name: 'London Gatwick Airport (LGW), Horley, Gatwick RH6 0NP', lat: 51.1537, lng: -0.1821, category: 'airport' },
-    { keys: ['gatwick north'], name: 'London Gatwick Airport North Terminal, Horley RH6 0PJ', lat: 51.1598, lng: -0.1769, category: 'airport' },
-    { keys: ['gatwick south'], name: 'London Gatwick Airport South Terminal, Horley RH6 0NP', lat: 51.1565, lng: -0.1611, category: 'airport' },
+    { keys: ['t5', 'terminal 5', 'heathrow t5', 'lhr t5'], name: 'Heathrow Terminal 5, Wallis Rd, Longford, Hounslow TW6 2GA, UK', lat: 51.4700, lng: -0.4840, category: 'airport' },
+    { keys: ['t2', 'terminal 2', 'heathrow t2', 'lhr t2'], name: 'Heathrow Terminal 2, Inner Ring E, Longford, Hounslow TW6 1EW, UK', lat: 51.4696, lng: -0.4506, category: 'airport' },
+    { keys: ['t3', 'terminal 3', 'heathrow t3', 'lhr t3'], name: 'Heathrow Terminal 3, Nelson Rd, Longford, Hounslow TW6 1QG, UK', lat: 51.4716, lng: -0.4578, category: 'airport' },
+    { keys: ['t4', 'terminal 4', 'heathrow t4', 'lhr t4'], name: 'Heathrow Terminal 4, Hounslow TW6 3XA, UK', lat: 51.4585, lng: -0.4452, category: 'airport' },
+    { keys: ['lhr', 'heathrow', 'heathrow airport'], name: 'Heathrow Airport, Longford, Hounslow, UK', lat: 51.4700, lng: -0.4543, category: 'airport' },
+    { keys: ['lgw', 'gatwick', 'gatwick airport'], name: 'London Gatwick Airport South Terminal, Horley, Gatwick RH6 0NP, UK', lat: 51.1537, lng: -0.1821, category: 'airport' },
+    { keys: ['gatwick north'], name: 'London Gatwick Airport North Terminal, Horley, Gatwick RH6 0PJ, UK', lat: 51.1598, lng: -0.1769, category: 'airport' },
+    { keys: ['gatwick south'], name: 'London Gatwick Airport South Terminal, Horley, Gatwick RH6 0NP, UK', lat: 51.1565, lng: -0.1611, category: 'airport' },
     { keys: ['lcy', 'london city', 'london city airport'], name: 'London City Airport (LCY), Hartmann Rd, London E16 2PX', lat: 51.5048, lng: 0.0495, category: 'airport' },
     { keys: ['ltn', 'luton', 'luton airport'], name: 'London Luton Airport (LTN), Airport Way, Luton LU2 9LY', lat: 51.8763, lng: -0.3717, category: 'airport' },
     { keys: ['stn', 'stansted', 'stansted airport'], name: 'London Stansted Airport (STN), Bassingbourn Rd, Stansted CM24 1QW', lat: 51.8860, lng: 0.2389, category: 'airport' },
-    { keys: ['fab', 'farnborough', 'farnborough airport'], name: 'Farnborough Airport (FAB), Farnborough GU14 6XA', lat: 51.2758, lng: -0.7763, category: 'private_jet' },
+    { keys: ['fab', 'farnborough', 'farnborough airport'], name: 'Farnborough Airport, Farnborough GU14 6XA, UK', lat: 51.2758, lng: -0.7763, category: 'private_jet' },
     { keys: ['bqh', 'biggin', 'biggin hill'], name: 'London Biggin Hill Airport (BQH), Main Rd, Biggin Hill TN16 3BN', lat: 51.3308, lng: 0.0325, category: 'private_jet' },
-    { keys: ['northolt', 'raf northolt'], name: 'RAF Northolt Private Aviation FBO, West End Rd, Ruislip HA4 6NG', lat: 51.5531, lng: -0.4181, category: 'private_jet' },
-    { keys: ['battersea', 'heliport'], name: 'London Heliport Battersea, Bridges Ct, London SW11 3BE', lat: 51.4700, lng: -0.1786, category: 'private_jet' },
-    { keys: ['harrods', 'harrods aviation'], name: 'Harrods Aviation Luton / Stanmore FBO, London LU2 9LU', lat: 51.8790, lng: -0.3660, category: 'private_jet' },
-    { keys: ['signature', 'signature flight support'], name: 'Signature Flight Support LHR Terminal, London TW6 3JH', lat: 51.4640, lng: -0.4480, category: 'private_jet' },
+    { keys: ['northolt', 'raf northolt'], name: 'Northolt Airport, Ruislip, UK', lat: 51.5531, lng: -0.4181, category: 'private_jet' },
+    { keys: ['battersea', 'heliport'], name: 'London Heliport, Bridges Ct, London SW11 3BE, UK', lat: 51.4700, lng: -0.1786, category: 'private_jet' },
+    { keys: ['harrods', 'harrods aviation'], name: 'Harrods Aviation, London Luton Airport, Luton LU2 9NW, UK', lat: 51.8790, lng: -0.3660, category: 'private_jet' },
+    { keys: ['signature', 'signature flight support'], name: 'Signature Flight Support, Luton Airport, Luton LU2 9NW, UK', lat: 51.4640, lng: -0.4480, category: 'private_jet' },
     { keys: ['stanmore', 'glebe road', 'ha7 4ej', 'ha74ej'], name: '1 Glebe Road, Stanmore, Greater London, HA7 4EJ', lat: 51.6167, lng: -0.3167, category: 'hub' },
     { keys: ['savoy', 'the savoy'], name: 'The Savoy, Strand, London WC2R 0EZ', lat: 51.5103, lng: -0.1206, category: 'hotel' },
     { keys: ['ritz', 'the ritz'], name: 'The Ritz London, 150 Piccadilly, St. James\'s, London W1J 9BR', lat: 51.5071, lng: -0.1416, category: 'hotel' },
@@ -34,7 +34,7 @@
     { keys: ['connaught', 'the connaught'], name: 'The Connaught, Carlos Pl, London W1K 2AL', lat: 51.5100, lng: -0.1504, category: 'hotel' },
     { keys: ['maybourne', 'the berkeley'], name: 'The Berkeley, Wilton Pl, London SW1X 7RL', lat: 51.5019, lng: -0.1566, category: 'hotel' },
     { keys: ['harrods store', 'knightsbridge'], name: 'Harrods, 87-135 Brompton Rd, Knightsbridge, London SW1X 7XL', lat: 51.4994, lng: -0.1635, category: 'hub' },
-    { keys: ['mayfair', 'w1k'], name: 'Mayfair, Central London, W1K 7TN', lat: 51.5110, lng: -0.1490, category: 'hub' }
+    { keys: ['mayfair', 'w1k'], name: '100 Piccadilly, Mayfair, London W1J 7NH', lat: 51.5110, lng: -0.1490, category: 'hub' }
   ];
 
   const instances = new Map();

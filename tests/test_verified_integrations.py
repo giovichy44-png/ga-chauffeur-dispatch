@@ -70,5 +70,35 @@ class Integrations(unittest.TestCase):
   self.assertEqual(c.execute('SELECT count(*) FROM flight_events').fetchone()[0],1)
   event['id']='evt2';event['flight']['fetchedAt']='2020-01-01T00:00:00Z';event['flight']['status']['phase']='scheduled';send(event)
   self.assertIn('landed',c.execute('SELECT flight_status FROM bookings').fetchone()[0])
+ def test_congestion_charge_not_taxed_in_calculate_fare(self):
+  q=server.calculate_fare('mercedes_s_class','Airport arrival','Heathrow Airport Terminal 5','The Savoy, Strand, London WC2R 0EZ')
+  self.assertEqual(q['congestion_charge'],18.0)
+  self.assertEqual(q['parking_fee'],15.0)
+  self.assertEqual(q['vat_amount'],round((165.0+15.0)*0.20,2))
+  self.assertEqual(q['total_fare'],round(165.0+15.0+36.0+18.0,2))
+ def test_geocode_allows_airport_partial_match_and_filters_postcode_duplicate(self):
+  fake_resp={'status':'OK','results':[
+   {'types':['airport','establishment','point_of_interest'],'partial_match':True,'formatted_address':'Heathrow Terminal 5','geometry':{'location':{'lat':51.4716,'lng':-0.4879}}},
+   {'types':['postal_code'],'formatted_address':'TW6 2GA','geometry':{'location':{'lat':51.47,'lng':-0.49}}}
+  ]}
+  with patch('urllib.request.urlopen'),patch('json.load',return_value=fake_resp):
+   loc=zone.geocode('Heathrow Airport Terminal 5','test-key')
+   self.assertAlmostEqual(loc['lat'],51.4716)
+ def test_send_smtp_email_uses_user_agent_and_reports_unconfigured(self):
+  with patch.dict(os.environ,{'RESEND_API_KEY':'','SMTP_HOST':''},clear=False),patch.object(server.db,'get_setting',return_value=''):
+   ok,msg=server.send_smtp_email('client@example.com','Test','<p>Hi</p>','Hi')
+   self.assertFalse(ok)
+  captured={}
+  class Resp:
+   status=200
+   def __enter__(self): return self
+   def __exit__(self,*a): pass
+  def fake_urlopen(req,timeout=12):
+   captured['ua']=req.get_header('User-agent')
+   return Resp()
+  with patch.dict(os.environ,{'RESEND_API_KEY':'re_test_key'},clear=False),patch('urllib.request.urlopen',side_effect=fake_urlopen):
+   ok,msg=server.send_smtp_email('client@example.com','Test','<p>Hi</p>','Hi')
+   self.assertTrue(ok)
+   self.assertIn('GAChauffeurs-Dispatch',captured.get('ua',''))
 
 if __name__=='__main__':unittest.main()

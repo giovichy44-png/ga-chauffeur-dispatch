@@ -284,6 +284,7 @@ PUBLIC_PATHS = {
     "/api/route-quote",
     "/api/forms-config",
     "/api/postcode",
+    "/api/enquiry",
     "/embed-booking-widget.js",
     "/api/stripe-config",
     "/api/quote",
@@ -577,37 +578,37 @@ VEHICLE_CONFIGS = {
 # UK AIRPORT TERMINALS & PRESTIGE LOCATIONS FOR INSTANT AUTOCOMPLETE
 UK_AUTOCOMPLETE_DATABASE = [
     # Heathrow Terminals & VIP Suites (LHR, T5, etc.)
-    {"title": "Heathrow Airport (LHR) Terminal 5", "subtitle": "Departures & Arrivals, TW6 2GA", "category": "airport", "code": "LHR"},
-    {"title": "Heathrow Airport (LHR) Terminal 5 - Windsor Suite VIP", "subtitle": "Private Jetbridge VIP Facility, TW6 2GA", "category": "airport", "code": "LHR"},
-    {"title": "Heathrow Airport (LHR) Terminal 2", "subtitle": "The Queen's Terminal, TW6 1EW", "category": "airport", "code": "LHR"},
-    {"title": "Heathrow Airport (LHR) Terminal 3", "subtitle": "Departures & Arrivals, TW6 1QG", "category": "airport", "code": "LHR"},
-    {"title": "Heathrow Airport (LHR) Terminal 4", "subtitle": "Departures & Arrivals, TW6 3XA", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 5", "subtitle": "Wallis Road, Longford, Hounslow", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 5 - Windsor Suite VIP", "subtitle": "Wallis Road, Longford, Hounslow", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 2", "subtitle": "The Queen's Terminal, Inner Ring West, Hounslow", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 3", "subtitle": "Camlet Way, Longford, Hounslow", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 4", "subtitle": "Stratford Road, Hounslow", "category": "airport", "code": "LHR"},
 
     # Gatwick Terminals (LGW)
-    {"title": "Gatwick Airport (LGW) South Terminal", "subtitle": "Departures & Arrivals, RH6 0NP", "category": "airport", "code": "LGW"},
-    {"title": "Gatwick Airport (LGW) North Terminal", "subtitle": "Departures & Arrivals, RH6 0PJ", "category": "airport", "code": "LGW"},
+    {"title": "Gatwick Airport (LGW) South Terminal", "subtitle": "Perimeter Road East, Horley, Gatwick", "category": "airport", "code": "LGW"},
+    {"title": "Gatwick Airport (LGW) North Terminal", "subtitle": "Longbridge Way, Horley, Gatwick", "category": "airport", "code": "LGW"},
 
     # London City Airport (LCY)
     {"title": "London City Airport (LCY)", "subtitle": "Royal Docks, Hartmann Road, London E16 2PB", "category": "airport", "code": "LCY"},
-    {"title": "London City Airport (LCY) Jet Centre", "subtitle": "Private Aviation Terminal, E16 2PB", "category": "airport", "code": "LCY"},
+    {"title": "London City Airport (LCY) Jet Centre", "subtitle": "Hartmann Road, London E16 2PB", "category": "airport", "code": "LCY"},
 
     # Farnborough Airport (FAB)
-    {"title": "Farnborough Airport (FAB)", "subtitle": "Signature Aviation / TAG FBO, GU14 6XA", "category": "airport", "code": "FAB"},
+    {"title": "Farnborough Airport (FAB)", "subtitle": "Business Aviation Centre, Farnborough GU14 6XA", "category": "airport", "code": "FAB"},
 
     # London Luton Airport (LTN)
-    {"title": "London Luton Airport (LTN)", "subtitle": "Main Passenger Terminal, LU2 9LY", "category": "airport", "code": "LTN"},
-    {"title": "London Luton Airport (LTN) Signature Aviation", "subtitle": "Private Jet FBO, LU2 9NW", "category": "airport", "code": "LTN"},
-    {"title": "London Luton Airport (LTN) Harrods Aviation", "subtitle": "VIP Private Terminal, LU2 9PF", "category": "airport", "code": "LTN"},
+    {"title": "London Luton Airport (LTN)", "subtitle": "Airport Way, Luton LU2 9LY", "category": "airport", "code": "LTN"},
+    {"title": "London Luton Airport (LTN) Signature Aviation", "subtitle": "Frank Lester Way, Luton LU2 9NW", "category": "airport", "code": "LTN"},
+    {"title": "London Luton Airport (LTN) Harrods Aviation", "subtitle": "Percival Way, Luton LU2 9PA", "category": "airport", "code": "LTN"},
 
     # London Stansted Airport (STN)
-    {"title": "London Stansted Airport (STN)", "subtitle": "Main Passenger Terminal, CM24 1QW", "category": "airport", "code": "STN"},
-    {"title": "London Stansted Airport (STN) Inflite Jet Centre", "subtitle": "Private VIP Aviation, CM24 1RY", "category": "airport", "code": "STN"},
+    {"title": "London Stansted Airport (STN)", "subtitle": "Bassingbourn Road, Stansted CM24 1QW", "category": "airport", "code": "STN"},
+    {"title": "London Stansted Airport (STN) Inflite Jet Centre", "subtitle": "Hangar 8, Stansted CM24 1RY", "category": "airport", "code": "STN"},
 
     # London Biggin Hill Airport (BQH)
-    {"title": "London Biggin Hill Airport (BQH)", "subtitle": "Executive Handling Terminal, TN16 3BN", "category": "airport", "code": "BQH"},
+    {"title": "London Biggin Hill Airport (BQH)", "subtitle": "Main Road, Biggin Hill TN16 3BH", "category": "airport", "code": "BQH"},
 
     # RAF Northolt (NHT)
-    {"title": "RAF Northolt (NHT)", "subtitle": "VIP & Military Aviation Handling, HA4 6NG", "category": "airport", "code": "NHT"},
+    {"title": "RAF Northolt (NHT)", "subtitle": "West End Road, Ruislip HA4 6NG", "category": "airport", "code": "NHT"},
 
     # Luxury London Hotels & Landmarks
     {"title": "The Connaught", "subtitle": "Carlos Place, Mayfair, London W1K 2AL", "category": "hotel"},
@@ -783,9 +784,9 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     has_congestion = is_congestion_charge_zone(pickup) or is_congestion_charge_zone(dropoff)
     congestion_charge = 18.0 if has_congestion else 0.0
 
-    # Subtotal before VAT
+    # Subtotal and VAT (TfL Congestion Charge is statutory and added once without VAT)
     subtotal = round(net_fare + parking_fee + dropoff_fee + congestion_charge, 2)
-    vat_amount = round(subtotal * 0.20, 2)
+    vat_amount = round((net_fare + parking_fee + dropoff_fee) * 0.20, 2)
     total_fare = round(subtotal + vat_amount, 2)
 
     return {
@@ -834,55 +835,82 @@ def broadcast_event(event_type, data):
             if client in sse_clients:
                 sse_clients.remove(client)
 
-def send_smtp_email(to_email, subject, html_content, text_content=""):
+def get_configured_resend_key():
+    return (os.environ.get("RESEND_API_KEY", RESEND_API_KEY).strip() or db.get_setting("resend_api_key", "")).strip()
+
+def is_email_delivery_configured():
+    if get_configured_resend_key():
+        return True
+    smtp_host = (os.environ.get("SMTP_HOST", SMTP_HOST).strip() or db.get_setting("smtp_host", "")).strip()
+    smtp_user = (os.environ.get("SMTP_USER", SMTP_USER).strip() or db.get_setting("smtp_user", "")).strip()
+    smtp_pass = (os.environ.get("SMTP_PASS", SMTP_PASS).strip() or db.get_setting("smtp_pass", "")).strip()
+    return bool(smtp_host and smtp_user and smtp_pass)
+
+def send_smtp_email(to_email, subject, html_content, text_content="", reply_to=None):
+    res_key = get_configured_resend_key()
+    from_addr = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
+    last_error = ""
+
     # 1. Resend API delivery if RESEND_API_KEY is configured
-    if RESEND_API_KEY:
+    if res_key:
         try:
             req_data = {
-                "from": f"{COMPANY_NAME} <{FROM_EMAIL}>",
+                "from": f"{COMPANY_NAME} <{from_addr}>",
                 "to": [to_email],
                 "subject": subject,
                 "html": html_content,
                 "text": text_content or ""
             }
+            if reply_to:
+                req_data["reply_to"] = reply_to
             req = urllib.request.Request(
                 "https://api.resend.com/emails",
                 data=json.dumps(req_data).encode("utf-8"),
                 headers={
-                    "Authorization": f"Bearer {RESEND_API_KEY}",
-                    "Content-Type": "application/json"
+                    "Authorization": f"Bearer {res_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "GAChauffeurs-Dispatch/1.0 (+https://gachauffeurs.co.uk)"
                 }
             )
             with urllib.request.urlopen(req, timeout=12) as response:
                 if response.status in (200, 201):
                     return True, "Delivered via Resend API"
         except Exception as e:
+            last_error = f"Resend error: {e}"
             sys.stderr.write(f"[Resend Error] Failed to send email to {to_email}: {e}\n")
 
     # 2. SMTP delivery if SMTP_HOST and SMTP_USER are configured
-    if SMTP_HOST and SMTP_USER and SMTP_PASS:
+    smtp_host = os.environ.get("SMTP_HOST", SMTP_HOST).strip()
+    smtp_user = os.environ.get("SMTP_USER", SMTP_USER).strip()
+    smtp_pass = os.environ.get("SMTP_PASS", SMTP_PASS).strip()
+    if smtp_host and smtp_user and smtp_pass:
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"] = f"{COMPANY_NAME} <{FROM_EMAIL}>"
+            msg["From"] = f"{COMPANY_NAME} <{from_addr}>"
             msg["To"] = to_email
+            if reply_to:
+                msg["Reply-To"] = reply_to
 
             if text_content:
                 msg.attach(MIMEText(text_content, "plain"))
             if html_content:
                 msg.attach(MIMEText(html_content, "html"))
 
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
+            server = smtplib.SMTP(smtp_host, SMTP_PORT, timeout=10)
             server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(from_addr, [to_email], msg.as_string())
             server.quit()
             return True, "Delivered via live SMTP"
         except Exception as e:
+            last_error = f"SMTP error: {e}"
             sys.stderr.write(f"[SMTP Error] Failed to send email to {to_email}: {e}\n")
             return False, str(e)
 
-    return True, "Simulated delivery (Outbound email credentials not configured in Render)"
+    if last_error:
+        return False, last_error
+    return False, "Outbound email credentials (RESEND_API_KEY or SMTP) are not configured on server"
 
 def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None, parking_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, dropoff_fee=0.0):
     tier_key = normalize_vehicle_tier(vehicle_tier)
@@ -899,7 +927,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     subtotal = round(net_fare + parking_fee + float(dropoff_fee or 0) + congestion_charge, 2)
 
     if vat_amt is None:
-        vat_amt = round(subtotal * 0.20, 2)
+        vat_amt = round((net_fare + parking_fee + float(dropoff_fee or 0)) * 0.20, 2)
     if total_fare is None:
         total_fare = round(subtotal + float(vat_amt), 2)
 
@@ -1262,7 +1290,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         # Retain the existing Sites-hosted Ideal Postcodes connection after migration.
         if path in ("/api/forms-config", "/api/postcode"):
             if path == "/api/forms-config":
-                self.send_json({"postcode": True, "server_quotes": quote_service.enabled()})
+                self.send_json({
+                    "postcode": True,
+                    "server_quotes": quote_service.enabled(),
+                    "enquiry": is_email_delivery_configured(),
+                    "booking": True
+                })
                 return
             postcode = re.sub(r"\s+", "", query.get("postcode", [""])[0]).upper()
             page = query.get("page", ["0"])[0]
@@ -1310,19 +1343,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/quote":
-            if quote_service.enabled():
+            pickup = query.get("pickup", [""])[0]
+            dropoff = query.get("dropoff", [""])[0]
+            if quote_service.enabled() and pickup.strip() and dropoff.strip():
                 try:
                     data={key:values[0] for key,values in query.items()}
                     if 'hourly' not in str(data.get('service_type','')).lower(): data['hours']=0
                     q=quote_service.issue(data,normalize_vehicle_tier,calculate_fare,self.client_address[0])
-                    q.update(subtotal=round(q['total_fare']-q['vat_amount'],2),has_parking=q['parking_fee']>0,has_congestion=q['congestion_charge']>0)
+                    q.update(net_fare=q['base_fare'],subtotal=round(q['total_fare']-q['vat_amount'],2),has_parking=q['parking_fee']>0,has_congestion=q['congestion_charge']>0)
                     self.send_json(q)
                 except QuoteUnavailable as error:self.send_json({"error":str(error)},422)
                 except Exception:self.send_json({"error":"Verified quote unavailable"},503)
                 return
             vehicle = query.get("vehicle", ["mercedes_s_class"])[0]
-            pickup = query.get("pickup", [""])[0]
-            dropoff = query.get("dropoff", [""])[0]
             service_type = query.get("service_type", [None])[0]
             hours = query.get("hours", [0])[0]
             distance = float(query.get("distance", [15.0])[0])
@@ -1471,6 +1504,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/bookings":
             self.handle_create_booking(payload)
+            return
+
+        if path == "/api/enquiry":
+            self.handle_create_enquiry(payload)
+            return
+
+        if path == "/api/settings/email":
+            self.handle_update_email_settings(payload)
             return
 
         if path.endswith("/allocate"):
@@ -1750,7 +1791,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             dropoff_fee = fare_result.get("dropoff_fee", 0.0)
             congestion_charge = float(payload.get("congestion_charge", fare_result.get("congestion_charge", 0.0)))
             subtotal = round(net_fare + parking_fee + dropoff_fee + congestion_charge, 2)
-            vat_amount = round(subtotal * 0.20, 2)
+            vat_amount = round((net_fare + parking_fee + dropoff_fee) * 0.20, 2)
             total_fare = round(subtotal + vat_amount, 2)
             # Legacy mode only; signed-quote mode above never trusts browser totals.
             if payload.get("total_fare"):
@@ -1930,15 +1971,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         send_success, delivery_note = send_smtp_email(payload["customer_email"], email_subject, html_email, plain_text_email)
         if FROM_EMAIL and FROM_EMAIL.lower() != payload["customer_email"].lower():
-            send_smtp_email(FROM_EMAIL, f"[NEW BOOKING {code}] {email_subject}", html_email, plain_text_email)
+            send_smtp_email(FROM_EMAIL, f"[NEW BOOKING {code}] {email_subject}", html_email, plain_text_email, reply_to=payload["customer_email"])
         cnf_email_id = f"CNF-{random.randint(1000, 9999)}"
+        email_status = "DELIVERED" if send_success else "FAILED"
 
         cursor.execute("""
         INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             cnf_email_id, booking_id, "EMAIL", payload["customer_email"],
-            email_subject, plain_text_email, "DELIVERED", now_str
+            email_subject, plain_text_email, email_status, now_str
         ))
 
         cnf_sms_id = f"CNF-{random.randint(1000, 9999)}"
@@ -2101,14 +2143,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             f"Direct Phone: {COMPANY_PHONE}"
         )
 
-        send_smtp_email(booking["customer_email"], email_subject, html_email, plain_text_email)
+        send_success, _ = send_smtp_email(booking["customer_email"], email_subject, html_email, plain_text_email)
 
         cursor.execute("""
         INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             cnf_email_id, booking_id, "EMAIL", booking["customer_email"],
-            email_subject, plain_text_email, "DELIVERED", now_str
+            email_subject, plain_text_email, "DELIVERED" if send_success else "FAILED", now_str
         ))
 
         cnf_sms_id = f"CNF-{random.randint(1000, 9999)}"
@@ -2231,6 +2273,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     details += f" Card pre-authorisation hold of £{booking['total_fare']:.2f} captured ({card_code})."
 
             cnf_rec_id = f"CNF-{random.randint(1000, 9999)}"
+            receipt_subject = f"Official Receipt: {booking['confirmation_code']} - GA Chauffeur Services Limited"
             receipt_content = (
                 f"GA Chauffeur Services Limited - Official Trip Receipt\n\n"
                 f"Booking Reference: {booking['confirmation_code']}\n"
@@ -2238,15 +2281,40 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 f"Chauffeur: {chauffeur['name'] if chauffeur else 'GA Executive Chauffeur'}\n"
                 f"Route: {booking['pickup_address']} -> {booking['dropoff_address']}\n"
                 f"Distance: {booking['estimated_distance_mi']} miles\n"
-                f"Total Charged: £{booking['fare_amount']:.2f} GBP (Paid via Corporate Account)\n\n"
+                f"Total Charged: £{booking.get('total_fare') or booking['fare_amount']:.2f} GBP\n\n"
                 f"Thank you for traveling with GA Chauffeur Services Limited (gachauffeurs.co.uk)."
             )
+            rec_html = build_luxury_email_html(
+                booking_ref=booking['confirmation_code'],
+                customer_name=booking['customer_name'],
+                pickup_addr=booking['pickup_address'],
+                dropoff_addr=booking['dropoff_address'],
+                pickup_dt=booking['pickup_datetime'],
+                vehicle_tier=booking['vehicle_class'],
+                net_fare=booking.get('fare_amount', 165.0),
+                vat_amt=booking.get('vat_amount'),
+                total_fare=booking.get('total_fare'),
+                service_type=booking.get('service_type', 'Airport Transfer'),
+                passengers=booking.get('passenger_count', 1),
+                large_cases=booking.get('large_cases', 0),
+                medium_cases=booking.get('medium_cases', 0),
+                hand_luggage=booking.get('hand_luggage', 0),
+                chauffeur=chauffeur,
+                flight=booking.get('flight_number'),
+                parking_fee=booking.get('parking_fee', 0),
+                dropoff_fee=booking.get('dropoff_fee', 0),
+                congestion_charge=booking.get('congestion_charge', 0),
+                card_brand=booking.get('card_brand'),
+                card_last4=booking.get('card_last4'),
+                card_auth_code=booking.get('card_auth_code')
+            )
+            rec_sent, _ = send_smtp_email(booking["customer_email"], receipt_subject, rec_html, receipt_content)
             cursor.execute("""
             INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 cnf_rec_id, booking_id, "EMAIL", booking["customer_email"],
-                f"Official Receipt: {booking['confirmation_code']} - GA Chauffeur Services Limited", receipt_content, "DELIVERED", now_str
+                receipt_subject, receipt_content, "DELIVERED" if rec_sent else "FAILED", now_str
             ))
 
         elif action == "CANCEL":
@@ -2486,25 +2554,103 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conf = dict(row)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         new_id = f"CNF-{random.randint(1000, 9999)}"
+        resent_subject = conf["subject"] if "(Resent)" in conf["subject"] else conf["subject"] + " (Resent)"
+        send_status = "DELIVERED"
+        delivery_note = ""
+
+        if conf["channel"] == "EMAIL":
+            b_row = cursor.execute("SELECT * FROM bookings WHERE id = ?", (conf["booking_id"],)).fetchone()
+            html_body = ""
+            if b_row:
+                booking = dict(b_row)
+                ch_row = None
+                if booking.get("chauffeur_id"):
+                    ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (booking["chauffeur_id"],)).fetchone()
+                html_body = build_luxury_email_html(
+                    booking_ref=booking["confirmation_code"],
+                    customer_name=booking["customer_name"],
+                    pickup_addr=booking["pickup_address"],
+                    dropoff_addr=booking["dropoff_address"],
+                    pickup_dt=booking["pickup_datetime"],
+                    vehicle_tier=booking["vehicle_class"],
+                    net_fare=booking.get("fare_amount", 165.0),
+                    vat_amt=booking.get("vat_amount"),
+                    total_fare=booking.get("total_fare"),
+                    service_type=booking.get("service_type", "Airport Transfer"),
+                    passengers=booking.get("passenger_count", 1),
+                    large_cases=booking.get("large_cases", 0),
+                    medium_cases=booking.get("medium_cases", 0),
+                    hand_luggage=booking.get("hand_luggage", 0),
+                    chauffeur=dict(ch_row) if ch_row else None,
+                    flight=booking.get("flight_number"),
+                    parking_fee=booking.get("parking_fee", 0),
+                    dropoff_fee=booking.get("dropoff_fee", 0),
+                    congestion_charge=booking.get("congestion_charge", 0),
+                    card_brand=booking.get("card_brand"),
+                    card_last4=booking.get("card_last4"),
+                    card_auth_code=booking.get("card_auth_code")
+                )
+            ok, delivery_note = send_smtp_email(conf["recipient"], resent_subject, html_body, conf["content"])
+            send_status = "DELIVERED" if ok else "FAILED"
 
         cursor.execute("""
         INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             new_id, conf["booking_id"], conf["channel"], conf["recipient"],
-            conf["subject"] + " (Resent)", conf["content"], "DELIVERED", now_str
+            resent_subject, conf["content"], send_status, now_str
         ))
 
         cursor.execute("""
         INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
         VALUES (?, ?, ?, ?, ?, ?)
-        """, (conf["booking_id"], None, "CONFIRMATION_RESENT", "Dispatcher", f"Resent {conf['channel']} to {conf['recipient']}", now_str))
+        """, (conf["booking_id"], None, "CONFIRMATION_RESENT", "Dispatcher", f"Resent {conf['channel']} to {conf['recipient']} ({send_status})", now_str))
 
         conn.commit()
         conn.close()
 
-        broadcast_event("confirmation_resent", {"id": new_id, "booking_id": conf["booking_id"]})
+        broadcast_event("confirmation_resent", {"id": new_id, "booking_id": conf["booking_id"], "status": send_status})
+        if send_status == "FAILED":
+            self.send_json({"error": f"Failed to send email to {conf['recipient']}: {delivery_note}", "id": new_id}, 502)
+            return
         self.send_json({"success": True, "message": f"Confirmation resent via {conf['channel']} to {conf['recipient']}", "id": new_id})
+
+    def handle_create_enquiry(self, payload):
+        name = str(payload.get("name") or "").strip()[:120]
+        email = str(payload.get("email") or "").strip()[:160]
+        phone = str(payload.get("phone") or "").strip()[:80]
+        message = str(payload.get("message") or "").strip()[:4000]
+        if not name or not email or not message or "@" not in email:
+            self.send_json({"error": "Please enter your name, email address, and enquiry message."}, 400)
+            return
+        text_body = f"New Website Enquiry — GA Chauffeur Services Limited\n\nName: {name}\nEmail: {email}\nPhone: {phone}\n\nMessage:\n{message}"
+        html_body = (
+            f"<h3>New Website Enquiry — {COMPANY_NAME}</h3>"
+            f"<p><strong>Name:</strong> {name}<br><strong>Email:</strong> {email}<br><strong>Phone:</strong> {phone}</p>"
+            f"<pre style='white-space:pre-wrap;font-family:sans-serif;'>{message}</pre>"
+        )
+        ok_team, err_team = send_smtp_email("enquiries@gachauffeurs.co.uk", f"Website Enquiry from {name}", html_body, text_body, reply_to=email)
+        if not ok_team:
+            self.send_json({"ok": False, "error": err_team}, 502)
+            return
+        ack_text = f"Dear {name},\n\nThank you for contacting {COMPANY_NAME}. We have received your enquiry and will respond shortly.\n\nWarm regards,\n{COMPANY_NAME}\n{COMPANY_PHONE}"
+        ack_html = f"<p>Dear {name},</p><p>Thank you for contacting <strong>{COMPANY_NAME}</strong>. We have received your enquiry and a member of our dispatch team will respond shortly.</p><p>Warm regards,<br><strong>{COMPANY_NAME}</strong><br>{COMPANY_PHONE}</p>"
+        send_smtp_email(email, f"Enquiry Received | {COMPANY_NAME}", ack_html, ack_text)
+        self.send_json({"ok": True})
+
+    def handle_update_email_settings(self, payload):
+        resend_key = str(payload.get("resend_api_key") or "").strip()
+        from_email = str(payload.get("from_email") or "").strip()
+        if resend_key:
+            db.set_setting("resend_api_key", resend_key)
+        if from_email:
+            db.set_setting("from_email", from_email)
+        test_to = str(payload.get("test_to") or "").strip()
+        test_result = None
+        if test_to:
+            ok, msg = send_smtp_email(test_to, f"Email Delivery Verified | {COMPANY_NAME}", "<p>Outbound confirmation emails are active.</p>", "Outbound confirmation emails are active.")
+            test_result = {"ok": ok, "message": msg}
+        self.send_json({"ok": True, "configured": is_email_delivery_configured(), "test": test_result})
 
     def handle_get_action_logs(self):
         conn = db.get_connection()

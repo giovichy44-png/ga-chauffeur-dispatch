@@ -6,8 +6,12 @@ _lock=threading.RLock()
 _cache=collections.OrderedDict()
 _limits={}
 
-def enabled(): return os.environ.get('SERVER_QUOTES_ENABLED') == '1'
 def ready(): return bool(os.environ.get('GOOGLE_MAPS_SERVER_KEY') and len(os.environ.get('QUOTE_SIGNING_SECRET',''))>=32)
+def enabled():
+    flag = os.environ.get('SERVER_QUOTES_ENABLED', '').strip().lower()
+    if flag in ('off', 'false', 'disabled'):
+        return False
+    return flag == '1' or ready()
 
 def inputs(data,normalize):
     pickup=str(data.get('pickup') or data.get('pickup_address') or '').strip()

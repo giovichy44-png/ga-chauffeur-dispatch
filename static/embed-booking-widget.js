@@ -279,7 +279,7 @@
             </div>
             <div id="ga-row-congestion" style="display: none; justify-content: space-between; color: #facc15;">
               <span>London Congestion Charge Zone:</span>
-              <span id="ga-val-congestion" style="font-weight: 600;">+£15.00</span>
+              <span id="ga-val-congestion" style="font-weight: 600;">+£18.00</span>
             </div>
             <div style="display: flex; justify-content: space-between; color: #cbd5e1; border-top: 1px solid #2e3b33; padding-top: 4px;">
               <span>UK VAT (20%):</span>
