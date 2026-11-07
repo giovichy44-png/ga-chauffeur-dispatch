@@ -1,18 +1,18 @@
 /* Approved 2026 passenger tariffs,; additional charges may apply. */
 const GA_RATES = {
-  s: {oneway:170, hourly:85, day10:850, day12:960, airport165:165, airport305:305},
-  v: {oneway:190, hourly:95, day10:900, day12:1080, airport165:175, airport305:315},
-  r: {oneway:230, hourly:115, day10:1150, day12:1380, airport165:225, airport305:405}
+  s: {oneway:340, hourly:85, day10:850, day12:960, airport165:165, airport305:305},
+  v: {oneway:380, hourly:95, day10:900, day12:1080, airport165:175, airport305:315},
+  r: {oneway:460, hourly:115, day10:1150, day12:1380, airport165:225, airport305:405}
 };
 function calculateTariff(vehicle, service, hours) {
   const rates = GA_RATES[vehicle];
   if (!rates || !Object.hasOwn(rates, service)) return null;
-  if (service === 'hourly' && (!Number.isInteger(hours) || hours < 2 || hours > 72)) {
-    throw new Error('Please choose 2 to 72 whole hours.');
+  if (service === 'hourly' && (!Number.isInteger(hours) || hours < 4 || hours > 72)) {
+    throw new Error('Please choose 4 to 72 whole hours.');
   }
   const base = service === 'hourly' ? rates.hourly * hours : rates[service];
   return {base, vat:Math.round(base * 100 / 6)/100, total:base,
-    included:service === 'day10' ? 80 : service === 'day12' ? 100 : service === 'hourly' ? hours * 10 : null};
+    included:service === 'day10' ? 80 : service === 'day12' ? 100 : service === 'hourly' ? hours * 10 : 40};
 }
 function detectAirportService(pickup,destination){
  const find=value=>{
@@ -64,9 +64,13 @@ if (typeof document !== 'undefined') (() => {
         if(revision!==quoteRevision)return;
         result.replaceChildren();line(q.service_label,'h3');line(money(q.total_fare),'h2');
         line('Journey: '+money(q.base_fare));
+        if(q.base_to_base_miles && q.billable_hours && !/airport/i.test(q.service_label||'')){
+          line(`Base-to-base (Hyde Park Corner): ${Number(q.base_to_base_miles).toFixed(1)} miles · ${Number(q.billable_hours).toFixed(2).replace(/\.00$/,'')} hrs (${Number(q.included_miles||0).toFixed(0)} miles included, £4/mile thereafter)`);
+        }
         if(q.parking_fee)line('Airport collection and meet-and-greet: '+money(q.parking_fee));
         if(q.dropoff_fee)line('Airport drop-off: '+money(q.dropoff_fee));
         if(q.congestion_charge)line('London congestion-zone surcharge: '+money(q.congestion_charge));
+        if(q.vat_amount)line('VAT (20%): '+money(q.vat_amount));
         const link=document.createElement('a');link.textContent='Book this journey';link.className='text-link';
         link.href='/book/?'+new URLSearchParams({pickup:spec.pickup,destination:spec.dropoff,vehicle:vehicle==='s'?'Mercedes-Benz S-Class':vehicle==='v'?'Mercedes-Benz V-Class':'Range Rover Autobiography Long Wheelbase'});result.append(link);
         void window.GAJourney?.route();return;

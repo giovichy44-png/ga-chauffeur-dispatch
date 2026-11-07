@@ -720,17 +720,17 @@ def is_airport_departure_journey(dropoff="", service_type=None):
     ]
     return any(kw in d_text for kw in airport_kws)
 
-def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hours=0, distance_mi=15.0):
+def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hours=0, distance_mi=15.0, duration_min=None, base_to_base_miles=None, base_to_base_minutes=None):
     """
     Calculate executive luxury pricing in GBP (£) based on GA Chauffeur Services Limited published structure.
     - Heathrow / London City Airport: S-Class £165 + VAT, V-Class £175 + VAT, Range Rover £225 + VAT
     - Gatwick / Luton / Stansted / Farnborough: S-Class £305 + VAT, V-Class £315 + VAT, Range Rover £405 + VAT
-    - Hourly: S-Class £85/hr (min 2 hrs = £170 + VAT), V-Class £95/hr (min 2 hrs = £190 + VAT), Range Rover £115/hr (min 2 hrs = £230 + VAT)
-    - Point-to-point: minimum 2 hours base, £4/mile excess.
+    - Hourly: S-Class £85/hr (min 4 hrs = £340 + VAT), V-Class £95/hr (min 4 hrs = £380 + VAT), Range Rover £115/hr (min 4 hrs = £460 + VAT), 10 miles/hr included
+    - Point-to-point: calculated base-to-base from Hyde Park Corner through the itinerary and back to Hyde Park Corner; 10 miles per hour included, £4/mile thereafter.
     - Airport Parking & Meet/Greet: £15.00 (added automatically for airport collections)
     - Airport Drop-off Charge: £7.00 (added automatically for Heathrow / Airport departures)
     - London Congestion Charge: £18.00 (added automatically if pickup or dropoff is in Congestion Charge zone)
-    - VAT: 20% applied to subtotal (Base + Parking + Dropoff + Congestion Charge)
+    - VAT: 20% applied to net fare + parking + drop-off
     """
     key = normalize_vehicle_tier(vehicle_class)
     cfg = VEHICLE_CONFIGS.get(key, VEHICLE_CONFIGS["mercedes_s_class"])
@@ -739,15 +739,27 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     final_type = service_type or detected
 
     hours_int = int(hours or 0)
+    b2b_miles = round(float(base_to_base_miles) if base_to_base_miles is not None else float(distance_mi or 15.0) * 2.0, 2)
+    b2b_mins = float(base_to_base_minutes) if base_to_base_minutes is not None else (float(duration_min) * 2.0 if duration_min else max(120.0, b2b_miles * 2.8))
+    billable_hours = 0.0
+    included_miles = 0.0
+    excess_miles = 0.0
 
     if "hourly" in final_type.lower() or hours_int > 0:
-        h = max(2, hours_int if hours_int > 0 else 2)
+        h = max(4, hours_int if hours_int > 0 else 4)
+        billable_hours = float(h)
         if h == 10:
             net_fare = cfg["ten_hour_rate"]
+            included_miles = 80.0
         elif h == 12:
             net_fare = cfg["twelve_hour_rate"]
+            included_miles = 100.0
         else:
             net_fare = h * cfg["hourly_rate"]
+            included_miles = h * 10.0
+        if base_to_base_miles is not None and b2b_miles > included_miles:
+            excess_miles = round(b2b_miles - included_miles, 2)
+            net_fare += excess_miles * cfg["excess_mile_rate"]
         service_label = f"Hourly Chauffeur Service ({h} Hours)"
     else:
         text = f"{pickup} {dropoff}".lower()
@@ -764,10 +776,12 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
             net_fare = cfg["heathrow_rate"]
             service_label = "Airport Transfer"
         else:
-            # Point-to-point
-            base_p2p = cfg["hourly_rate"] * 2.0
-            excess_mi = max(0.0, float(distance_mi) - 20.0)
-            net_fare = base_p2p + (excess_mi * cfg["excess_mile_rate"])
+            # Point-to-point calculated base-to-base (Hyde Park Corner -> Pickup -> Drop-off -> Hyde Park Corner)
+            # 10 miles per hour of hire time included; £4/mile thereafter
+            billable_hours = round(max(2.0, b2b_mins / 60.0), 2)
+            included_miles = round(billable_hours * 10.0, 2)
+            excess_miles = round(max(0.0, b2b_miles - included_miles), 2)
+            net_fare = (billable_hours * cfg["hourly_rate"]) + (excess_miles * cfg["excess_mile_rate"])
             service_label = "Point-to-Point Transfer"
 
     net_fare = round(net_fare, 2)
@@ -802,6 +816,10 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
         "vat_amount": vat_amount,
         "total_fare": total_fare,
         "fare_amount": net_fare,
+        "base_to_base_miles": b2b_miles,
+        "billable_hours": billable_hours,
+        "included_miles": included_miles,
+        "excess_miles": excess_miles,
         "service_type": detected,
         "service_label": service_label,
         "breakdown": {

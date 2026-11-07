@@ -77,11 +77,9 @@
 
         <!-- Hours Selector (for Hourly Service) -->
         <div id="ga-wrap-hours" style="display: none; background: #1c2420; border: 1px solid #2e3b33; border-radius: 4px; padding: 12px 14px;">
-          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Hours of Service (Minimum 2 Hours) *</label>
+          <label style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: #c9b894; font-weight: 600; margin-bottom: 6px;">Hours of Service (Minimum 4 Hours · 10 Miles/Hr Included) *</label>
           <select id="ga-hours" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #c9b894; border-radius: 4px; padding: 10px 14px; color: #fff; font-size: 13px; font-family: inherit;">
-            <option value="2">2 Hours (Minimum: £170 S / £190 V / £230 RR + VAT)</option>
-            <option value="3">3 Hours</option>
-            <option value="4">4 Hours</option>
+            <option value="4">4 Hours (Minimum: £340 S / £380 V / £460 RR + VAT · 40 mi)</option>
             <option value="5">5 Hours</option>
             <option value="6">6 Hours</option>
             <option value="8">8 Hours</option>

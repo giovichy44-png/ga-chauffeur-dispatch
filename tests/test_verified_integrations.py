@@ -100,5 +100,18 @@ class Integrations(unittest.TestCase):
    ok,msg=server.send_smtp_email('client@example.com','Test','<p>Hi</p>','Hi')
    self.assertTrue(ok)
    self.assertIn('GAChauffeurs-Dispatch',captured.get('ua',''))
+ def test_claridges_to_coworth_park_base_to_base_fare_and_4hr_hourly_min(self):
+  q=server.calculate_fare('mercedes_s_class','Point-to-point transfer',"Claridge's Hotel, Brook Street, Mayfair, London W1K 4HR",'Coworth Park Hotel, Ascot SL5 7SE',0,25.0,duration_min=75.0,base_to_base_miles=50.0,base_to_base_minutes=150.0)
+  self.assertEqual(q['billable_hours'],2.5)
+  self.assertEqual(q['included_miles'],25.0)
+  self.assertEqual(q['excess_miles'],25.0)
+  self.assertEqual(q['net_fare'],312.5) # 2.5*85 + 25*4 = 212.50 + 100.00
+  self.assertEqual(q['congestion_charge'],18.0)
+  self.assertEqual(q['vat_amount'],62.5)
+  self.assertEqual(q['total_fare'],393.0)
+  h=server.calculate_fare('mercedes_s_class','Hourly chauffeur service','Mayfair, London W1K 4HR','As directed',2)
+  self.assertEqual(h['billable_hours'],4.0)
+  self.assertEqual(h['included_miles'],40.0)
+  self.assertEqual(h['net_fare'],340.0)
 
 if __name__=='__main__':unittest.main()

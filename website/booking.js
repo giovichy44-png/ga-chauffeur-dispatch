@@ -582,7 +582,7 @@
     let base = 165;
     if (isHourly) {
       const rate = v === 'Mercedes-Benz S-Class' ? 85 : v === 'Mercedes-Benz V-Class' ? 95 : v === 'Range Rover Autobiography Long Wheelbase' ? 115 : 85;
-      base = rate * 2; // minimum 2 hours base
+      base = rate * 4; // minimum 4 hours base
     } else {
       const isOuter = /\b(gatwick|lgw|luton|ltn|stansted|stn|farnborough|fab|biggin hill|bqh)\b/i.test(pVal + ' ' + dVal);
       if (v === 'Mercedes-Benz S-Class') base = isOuter ? 305 : 165;
@@ -622,9 +622,9 @@
       const spec=quoteSpec(), key=window.GAServerQuote.key(spec);
       [[sPrice,'mercedes_s_class'],[vPrice,'mercedes_v_class'],[rPrice,'range_rover_autobiography']].forEach(async([el,vehicle])=>{if(!el)return;el.textContent='Verifying…';try{const q=await window.GAServerQuote.get({...spec,vehicle});if(window.GAServerQuote.key(quoteSpec())===key)el.textContent='£'+q.total_fare.toFixed(2);}catch(e){el.textContent='Quote unavailable';}});
     } else if (isHourly) {
-      if (sPrice) sPrice.textContent = `£170.00`;
-      if (vPrice) vPrice.textContent = `£190.00`;
-      if (rPrice) rPrice.textContent = `£230.00`;
+      if (sPrice) sPrice.textContent = `£340.00`;
+      if (vPrice) vPrice.textContent = `£380.00`;
+      if (rPrice) rPrice.textContent = `£460.00`;
     } else {
       const isOuter = /\b(gatwick|lgw|luton|ltn|stansted|stn|farnborough|fab|biggin hill|bqh)\b/i.test(pVal + ' ' + dVal);
       if (sPrice) sPrice.textContent = isOuter ? '£305.00' : '£165.00';
@@ -897,7 +897,7 @@
     let base = 165;
     if (isHourly) {
       const rate = v === 'Mercedes-Benz S-Class' ? 85 : v === 'Mercedes-Benz V-Class' ? 95 : v === 'Range Rover Autobiography Long Wheelbase' ? 115 : 85;
-      base = rate * 2;
+      base = rate * 4;
     } else {
       const isOuter = /\b(gatwick|lgw|luton|ltn|stansted|stn|farnborough|fab|biggin hill|bqh)\b/i.test(pVal + ' ' + dVal);
       if (v === 'Mercedes-Benz S-Class') base = isOuter ? 305 : 165;

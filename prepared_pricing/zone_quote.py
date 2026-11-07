@@ -11,6 +11,7 @@ from pathlib import Path
 
 ZONE = json.loads(Path(__file__).with_name('congestion-zone.geojson').read_text())
 SOURCE = 'https://www.arcgis.com/home/item.html?id=d93282183f124fa7b08763ed693cbdc5'
+HYDE_PARK_CORNER = {'lat': 51.5027, 'lng': -0.1527}
 
 class QuoteUnavailable(ValueError): pass
 
@@ -69,14 +70,33 @@ def geocode(address,key):
 def driving_route(pickup,dropoff,key):
     """Geometry, metrics and endpoint surcharge all derive from verified addresses."""
     p,d=geocode(pickup,key),geocode(dropoff,key)
-    body={'origin':{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},'destination':{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}},'travelMode':'DRIVE','routingPreference':'TRAFFIC_UNAWARE','polylineEncoding':'GEO_JSON_LINESTRING'}
-    request=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring'})
-    with urllib.request.urlopen(request,timeout=15) as response: data=json.load(response)
+    body={'origin':{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},'destination':{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}},'travelMode':'DRIVE','routingPreference':'TRAFFIC_AWARE','polylineEncoding':'GEO_JSON_LINESTRING'}
+    try:
+        request=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring'})
+        with urllib.request.urlopen(request,timeout=15) as response: data=json.load(response)
+    except Exception:
+        body['routingPreference']='TRAFFIC_UNAWARE'
+        request=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring'})
+        with urllib.request.urlopen(request,timeout=15) as response: data=json.load(response)
     routes=data.get('routes',[])
     if not routes: raise QuoteUnavailable('No driving route is available.')
     route=routes[0];path=route['polyline']['geoJsonLinestring']['coordinates']
     if len(path)<3: raise QuoteUnavailable('A complete road route could not be verified.')
-    return {'path':path,'distance_miles':route['distanceMeters']/1609.344,'duration_minutes':float(route['duration'].rstrip('s'))/60,'pickup_location':p,'dropoff_location':d,'congestion_charge':surcharge(p,d)}
+    oneway_miles=route['distanceMeters']/1609.344
+    oneway_minutes=float(route['duration'].rstrip('s'))/60
+    b2b_miles=oneway_miles*2.0
+    b2b_minutes=oneway_minutes*2.0
+    try:
+        b2b_body={'origin':{'location':{'latLng':{'latitude':HYDE_PARK_CORNER['lat'],'longitude':HYDE_PARK_CORNER['lng']}}},'destination':{'location':{'latLng':{'latitude':HYDE_PARK_CORNER['lat'],'longitude':HYDE_PARK_CORNER['lng']}}},'intermediates':[{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}}],'travelMode':'DRIVE','routingPreference':'TRAFFIC_AWARE'}
+        b2b_req=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(b2b_body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration'})
+        with urllib.request.urlopen(b2b_req,timeout=15) as b2b_resp: b2b_data=json.load(b2b_resp)
+        b2b_routes=b2b_data.get('routes',[])
+        if b2b_routes and b2b_routes[0].get('distanceMeters'):
+            b2b_miles=b2b_routes[0]['distanceMeters']/1609.344
+            b2b_minutes=float(b2b_routes[0]['duration'].rstrip('s'))/60
+    except Exception:
+        pass
+    return {'path':path,'distance_miles':oneway_miles,'duration_minutes':oneway_minutes,'base_to_base_miles':b2b_miles,'base_to_base_minutes':b2b_minutes,'pickup_location':p,'dropoff_location':d,'congestion_charge':surcharge(p,d)}
 
 def totals(base,parking,dropoff,zone_charge):
     """Requested £18 added once to final bill. Existing tax on other fares retained."""

@@ -22,7 +22,7 @@ def inputs(data,normalize):
     except (ValueError,TypeError): raise zone.QuoteUnavailable('Select a valid duration.')
     if not pickup or not dropoff or len(pickup)>500 or len(dropoff)>500 or not 0<=hours<=72:
         raise zone.QuoteUnavailable('Enter complete pickup and drop-off addresses and a valid duration.')
-    if 'hourly' in service.lower() and hours<2: hours=2
+    if 'hourly' in service.lower() and hours<4: hours=4
     return dict(pickup=pickup,dropoff=dropoff,vehicle=vehicle,service=service,hours=hours)
 
 def issue(data,normalize,tariff,client, *, preview=False):
@@ -49,9 +49,24 @@ def issue(data,normalize,tariff,client, *, preview=False):
         with _lock:
             _cache[cache_key]=(now+300,route)
             while len(_cache)>200: _cache.popitem(last=False)
-    fare=tariff(spec['vehicle'],spec['service'],spec['pickup'],spec['dropoff'],spec['hours'],route['distance_miles'])
+    try:
+        fare=tariff(spec['vehicle'],spec['service'],spec['pickup'],spec['dropoff'],spec['hours'],route['distance_miles'],duration_min=route.get('duration_minutes'),base_to_base_miles=route.get('base_to_base_miles'),base_to_base_minutes=route.get('base_to_base_minutes'))
+    except TypeError:
+        fare=tariff(spec['vehicle'],spec['service'],spec['pickup'],spec['dropoff'],spec['hours'],route['distance_miles'])
     amounts=zone.totals(fare['net_fare'],fare['parking_fee'],fare['dropoff_fee'],route['congestion_charge'])
-    summary=dict(spec,**amounts,distance_miles=route['distance_miles'],duration_minutes=route['duration_minutes'],pickup_location=route['pickup_location'],dropoff_location=route['dropoff_location'],service_label=fare['service_label'])
+    summary=dict(
+        spec,
+        **amounts,
+        distance_miles=route['distance_miles'],
+        duration_minutes=route['duration_minutes'],
+        base_to_base_miles=fare.get('base_to_base_miles', route.get('base_to_base_miles', route['distance_miles']*2.0)),
+        billable_hours=fare.get('billable_hours', 0),
+        included_miles=fare.get('included_miles', 0),
+        excess_miles=fare.get('excess_miles', 0),
+        pickup_location=route['pickup_location'],
+        dropoff_location=route['dropoff_location'],
+        service_label=fare['service_label']
+    )
     return dict(summary,path=route['path'],as_directed=route.get('as_directed',False),expires=int(now)+900,quote_token=zone.sign_quote(summary,os.environ['QUOTE_SIGNING_SECRET'],now))
 
 def accept(payload,normalize):
