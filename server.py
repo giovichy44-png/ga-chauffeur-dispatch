@@ -1860,6 +1860,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_manual_card_auth(booking_id, payload)
             return
 
+        if path.endswith("/delete"):
+            parts = path.split("/")
+            booking_id = parts[3]
+            self.handle_delete_booking(booking_id)
+            return
+
+        if path == "/api/bookings/clear-all":
+            self.handle_clear_all_bookings()
+            return
+
         if path == "/api/confirmations/resend":
             self.handle_resend_confirmation(payload)
             return
@@ -2572,9 +2582,41 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "status": "ASSIGNED"
         })
 
+    def handle_delete_booking(self, booking_id):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, confirmation_code, chauffeur_id FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.send_json({"error": "Booking not found"}, 404)
+            return
+        b_id = row["id"]
+        if row["chauffeur_id"]:
+            cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ?", (row["chauffeur_id"],))
+        cursor.execute("DELETE FROM confirmations WHERE booking_id = ?", (b_id,))
+        cursor.execute("DELETE FROM action_logs WHERE booking_id = ?", (b_id,))
+        cursor.execute("DELETE FROM bookings WHERE id = ?", (b_id,))
+        conn.commit()
+        conn.close()
+        broadcast_event("booking_deleted", {"booking_id": b_id})
+        self.send_json({"success": True, "deleted_id": b_id})
+
+    def handle_clear_all_bookings(self):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM confirmations")
+        cursor.execute("DELETE FROM action_logs")
+        cursor.execute("DELETE FROM bookings")
+        cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL")
+        conn.commit()
+        conn.close()
+        broadcast_event("system_reset", {"message": "All bookings cleared"})
+        self.send_json({"success": True, "message": "All bookings cleared from Dispatch Console."})
+
     def handle_live_action(self, booking_id, payload):
         action = payload.get("action", "").upper()
-        allowed = ["ACCEPT", "EN_ROUTE_PICKUP", "ARRIVED", "ON_BOARD", "COMPLETED", "CANCEL"]
+        allowed = ["CONFIRMED", "ACCEPT", "EN_ROUTE_PICKUP", "ARRIVED", "ON_BOARD", "NEXT_STOP", "COMPLETED", "CANCEL"]
         if action not in allowed:
             self.send_json({"error": f"Invalid action: {action}. Allowed: {allowed}"}, 400)
             return
@@ -2603,9 +2645,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         sms_alert = None
         actor = payload.get("actor", "Chauffeur Mobile App")
 
-        if action == "ACCEPT":
-            new_booking_status = "ACCEPTED"
-            details = f"Chauffeur {chauffeur['name'] if chauffeur else 'Assigned'} acknowledged and locked in the booking."
+        if action in ("ACCEPT", "CONFIRMED"):
+            new_booking_status = "CONFIRMED" if action == "CONFIRMED" else "ACCEPTED"
+            details = f"Chauffeur {chauffeur['name'] if chauffeur else 'Dispatch'} confirmed and locked in the booking."
 
         elif action == "EN_ROUTE_PICKUP":
             new_booking_status = "EN_ROUTE"
@@ -2624,6 +2666,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             new_booking_status = "ON_BOARD"
             details = f"Passenger {booking['customer_name']} safely on board. Commenced journey to destination."
             sms_alert = f"GA Chauffeurs: Journey commenced to {booking['dropoff_address']}. Wi-Fi and amenities ready."
+
+        elif action == "NEXT_STOP":
+            new_booking_status = "NEXT_STOP"
+            stop_note = payload.get("stop_note") or booking['dropoff_address']
+            details = f"En route to next stop: {stop_note}."
+            sms_alert = f"GA Chauffeurs: Proceeding to next stop ({stop_note}) for booking {booking['confirmation_code']}."
 
         elif action == "COMPLETED":
             new_booking_status = "COMPLETED"

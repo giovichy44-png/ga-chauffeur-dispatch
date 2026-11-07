@@ -178,39 +178,26 @@ function renderJobsList() {
     const isCompleted = b.status === 'COMPLETED';
     const isAllocated = !!b.chauffeur_id;
     
-    // Determine the next live action button
-    let actionBtnHtml = '';
-    if (!isAllocated) {
-      actionBtnHtml = `
-        <button class="btn-live-action allocate" onclick="openAllocateModal('${b.id}')">
-          Allocate Car &rarr;
-        </button>
-      `;
-    } else if (b.status === 'CONFIRMED' || b.status === 'ASSIGNED' || b.status === 'ACCEPTED') {
-      actionBtnHtml = `
-        <button class="btn-live-action en_route" onclick="triggerAction('${b.id}', 'EN_ROUTE_PICKUP')">
-          Driver En Route &rarr;
-        </button>
-      `;
-    } else if (b.status === 'EN_ROUTE') {
-      actionBtnHtml = `
-        <button class="btn-live-action arrived" onclick="triggerAction('${b.id}', 'ARRIVED')">
-          Arrived at Pickup &rarr;
-        </button>
-      `;
-    } else if (b.status === 'ARRIVED') {
-      actionBtnHtml = `
-        <button class="btn-live-action on_board" onclick="triggerAction('${b.id}', 'ON_BOARD')">
-          Passenger On Board &rarr;
-        </button>
-      `;
-    } else if (b.status === 'ON_BOARD') {
-      actionBtnHtml = `
-        <button class="btn-live-action completed" onclick="triggerAction('${b.id}', 'COMPLETED')">
-          Complete Journey ✓
-        </button>
-      `;
-    }
+    // Live Status Pipeline Stages
+    const stages = [
+      { key: 'CONFIRMED', action: 'CONFIRMED', label: '✓ Confirmed', match: ['PENDING', 'CONFIRMED', 'ASSIGNED', 'ACCEPTED'] },
+      { key: 'EN_ROUTE', action: 'EN_ROUTE_PICKUP', label: '🚗 En Route', match: ['EN_ROUTE'] },
+      { key: 'ARRIVED', action: 'ARRIVED', label: '📍 At Pickup', match: ['ARRIVED'] },
+      { key: 'ON_BOARD', action: 'ON_BOARD', label: '👥 On Board', match: ['ON_BOARD'] },
+      { key: 'NEXT_STOP', action: 'NEXT_STOP', label: '➡️ Next Stop', match: ['NEXT_STOP'] },
+      { key: 'COMPLETED', action: 'COMPLETED', label: '🏁 Complete', match: ['COMPLETED'] }
+    ];
+
+    const stageButtonsHtml = stages.map(st => {
+      const isCurrent = st.match.includes(b.status);
+      return `<button type="button" onclick="triggerAction('${b.id}', '${st.action}')" style="padding: 6px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid ${isCurrent ? '#c9b894' : 'rgba(255,255,255,0.14)'}; background: ${isCurrent ? 'rgba(201,184,148,0.22)' : 'rgba(255,255,255,0.04)'}; color: ${isCurrent ? '#c9b894' : '#cbd5e1'};">${st.label}</button>`;
+    }).join('');
+
+    let actionBtnHtml = `
+      <button class="btn-live-action allocate" onclick="openAllocateModal('${b.id}')" style="padding: 6px 12px; font-size: 12px;">
+        ${isAllocated ? 'Change Car' : 'Allocate Car →'}
+      </button>
+    `;
 
     const cleanPhone = b.customer_phone.replace(/[^0-9+]/g, '');
 
@@ -260,6 +247,13 @@ function renderJobsList() {
           </div>
         ` : ''}
 
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px 12px; margin-top: 8px;">
+          <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .12em; margin-bottom: 6px; font-weight: 700;">Live Job Status Actions (Tap Stage to Update):</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            ${stageButtonsHtml}
+          </div>
+        </div>
+
         <div class="job-card-footer">
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <span class="job-car-tag">
@@ -280,7 +274,8 @@ function renderJobsList() {
           <div class="action-btn-group">
             <button class="btn btn-secondary" onclick="viewVoucher('${b.id}')">Voucher</button>
             ${b.payment_status === 'PRE_AUTHORIZED' ? `<button class="btn btn-secondary" onclick="captureBookingPayment('${b.id}', ${b.total_fare})" style="border-color: #4ade80; color: #4ade80; font-weight: 600;" title="Capture pre-authorised hold">💳 Capture £${parseFloat(b.total_fare).toFixed(2)}</button>` : ''}
-            ${!isCompleted ? actionBtnHtml : '<span style="color: var(--status-green); font-weight: 700;">Completed ✓</span>'}
+            ${actionBtnHtml}
+            <button class="btn btn-secondary" onclick="deleteBooking('${b.id}', '${b.confirmation_code}')" style="border-color: rgba(239,68,68,0.4); color: #f87171;" title="Delete booking">🗑️ Delete</button>
           </div>
         </div>
       </div>
@@ -303,6 +298,38 @@ async function triggerAction(bookingId, action) {
     }
   } catch (err) {
     showToast('Action failed');
+  }
+}
+
+async function deleteBooking(bookingId, code) {
+  if (!confirm(`Delete booking ${code || bookingId}?`)) return;
+  try {
+    const res = await fetch(`/api/bookings/${bookingId}/delete`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`Booking ${code || bookingId} deleted.`);
+      loadData();
+    } else {
+      alert(data.error || 'Could not delete booking');
+    }
+  } catch (err) {
+    alert('Failed to delete booking');
+  }
+}
+
+async function clearAllBookings() {
+  if (!confirm('Delete all bookings from the Dispatch Console so your job board is completely clean?')) return;
+  try {
+    const res = await fetch('/api/bookings/clear-all', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('All bookings cleared from Dispatch Console.');
+      loadData();
+    } else {
+      alert(data.error || 'Could not clear bookings');
+    }
+  } catch (err) {
+    alert('Failed to clear bookings');
   }
 }
 
@@ -393,17 +420,17 @@ function renderDriverView() {
   }
 
   const b = activeBooking;
-  let nextBtn = '';
-
-  if (b.status === 'ASSIGNED' || b.status === 'CONFIRMED') {
-    nextBtn = `<button class="btn btn-gold btn-block" onclick="triggerAction('${b.id}', 'EN_ROUTE_PICKUP')">🚗 Start En Route to Pickup</button>`;
-  } else if (b.status === 'EN_ROUTE') {
-    nextBtn = `<button class="btn btn-gold btn-block" onclick="triggerAction('${b.id}', 'ARRIVED')">📍 Arrived at Pickup (Display Nameboard)</button>`;
-  } else if (b.status === 'ARRIVED') {
-    nextBtn = `<button class="btn btn-gold btn-block" onclick="triggerAction('${b.id}', 'ON_BOARD')">👥 Passenger Boarded (Start Trip)</button>`;
-  } else if (b.status === 'ON_BOARD') {
-    nextBtn = `<button class="btn btn-gold btn-block" onclick="triggerAction('${b.id}', 'COMPLETED')">✓ Complete Journey</button>`;
-  }
+  const driverStages = [
+    { action: 'CONFIRMED', label: '1. ✓ Confirmed' },
+    { action: 'EN_ROUTE_PICKUP', label: '2. 🚗 En Route to Pickup' },
+    { action: 'ARRIVED', label: '3. 📍 At Pickup (Nameboard Active)' },
+    { action: 'ON_BOARD', label: '4. 👥 Passenger On Board' },
+    { action: 'NEXT_STOP', label: '5. ➡️ Proceeding to Next Stop' },
+    { action: 'COMPLETED', label: '6. 🏁 Job Finished & Complete' }
+  ];
+  const nextBtn = driverStages.map(st => `
+    <button class="btn btn-gold btn-block" style="margin-bottom: 8px;" onclick="triggerAction('${b.id}', '${st.action}')">${st.label}</button>
+  `).join('');
 
   container.innerHTML = `
     <div style="background: #111116; border: 1px solid var(--gold-border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px;">

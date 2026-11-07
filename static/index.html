@@ -137,8 +137,9 @@
             <button class="pill-btn" data-filter="PENDING">Pending Allocation</button>
             <button class="pill-btn" data-filter="COMPLETED">Completed</button>
           </div>
-          <div class="search-wrap">
+          <div class="search-wrap" style="display: flex; gap: 8px; align-items: center;">
             <input type="text" id="jobs-search-input" placeholder="Search reference, customer or airport...">
+            <button type="button" class="btn btn-secondary" onclick="clearAllBookings()" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; border-color: rgba(239,68,68,0.4); color: #f87171;">🗑️ Clear All</button>
           </div>
         </div>
 

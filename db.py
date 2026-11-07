@@ -189,6 +189,15 @@ def seed_data(force=False):
         conn.commit()
         init_db()
 
+    # Remove legacy demo/test bookings if present
+    demo_ids = ("BK-5001", "BK-5002", "BK-5003", "BK-8595")
+    demo_codes = ("GA-84920", "GA-84921", "GA-84922", "GA-F5MTE")
+    cursor.execute("DELETE FROM confirmations WHERE booking_id IN (?, ?, ?, ?)", demo_ids)
+    cursor.execute("DELETE FROM action_logs WHERE booking_id IN (?, ?, ?, ?)", demo_ids)
+    cursor.execute("DELETE FROM bookings WHERE id IN (?, ?, ?, ?) OR confirmation_code IN (?, ?, ?, ?)", demo_ids + demo_codes)
+    cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE active_booking_id IN (?, ?, ?, ?)", demo_ids)
+    conn.commit()
+
     cursor.execute("SELECT COUNT(*) as count FROM chauffeurs")
     chauffeur_count = cursor.fetchone()["count"]
 
@@ -222,75 +231,6 @@ def seed_data(force=False):
     INSERT INTO chauffeurs (id, name, phone, avatar, rating, trips_count, vehicle_model, vehicle_class, license_plate, passenger_capacity, luggage_capacity, status, lat, lng, current_zone, active_booking_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, chauffeurs)
-
-    # Initial Bookings for GA Chauffeur Services Limited
-    now = datetime.now()
-    t_plus_45m = (now + timedelta(minutes=45)).strftime("%Y-%m-%d %H:%M")
-    t_plus_2h = (now + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
-    t_plus_4h = (now + timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")
-
-    bookings = [
-        (
-            "BK-5001", "GA-84920", "Lord Henry Cavendish", "+44 7700 900891", "h.cavendish@foreignoffice.gov.uk", "VIP / Diplomatic",
-            "Airport arrival", "Heathrow Airport (LHR) Terminal 5", "Windsor Suite VIP", 51.4700, -0.4543,
-            "The Connaught, Carlos Place, Mayfair, London W1K 2AL", "Main Entrance", 51.5100, -0.1492,
-            t_plus_45m, 0, "BA 178", "Landed - On Time", "mercedes_s_class",
-            2, 2, 2, 0, 1, "VIP Meet & Greet with nameboard at jetbridge, chilled Hildon sparkling water, phone charger ready",
-            17.2, 42, 165.00, 33.00, 198.00, "GBP", "WEBSITE_GACHAUFFEURS", "CONFIRMED", None,
-            now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d %H:%M:%S")
-        ),
-        (
-            "BK-5002", "GA-84921", "Victoria Kensington", "+44 7700 900904", "victoria@vanguardglobal.co.uk", "Executive",
-            "Airport departure", "Canary Wharf, One Canada Square, London E14 5AA", "Floor 32 Reception", 51.5048, -0.0195,
-            "Farnborough Airport (FAB), Signature Aviation Private FBO", "Terminal Gate 2", 51.2758, -0.7763,
-            t_plus_2h, 0, "G-OEDG (Challenger 350)", "Ready for Departure", "range_rover_autobiography",
-            3, 3, 3, 0, 2, "Luggage assist for 3 Rimowa suitcases, privacy glass, Wi-Fi",
-            44.6, 68, 405.00, 81.00, 486.00, "GBP", "WEBSITE_GACHAUFFEURS", "PENDING", None,
-            now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d %H:%M:%S")
-        ),
-        (
-            "BK-5003", "GA-84922", "Sir Alistair Finch & Party", "+44 7700 900612", "afinch@finchpartners.co.uk", "Corporate Standard",
-            "Hourly chauffeur service", "The Savoy, Strand, London WC2R 0EZ", "River Entrance", 51.5103, -0.1207,
-            "As Directed / Central London", None, 51.4344, -0.2144,
-            t_plus_4h, 4, None, None, "mercedes_v_class",
-            6, 5, 4, 1, 3, "Party of 6 with luggage, 4 hours disposal, mineral water, umbrellas ready",
-            24.0, 240, 380.00, 76.00, 456.00, "GBP", "DISPATCH_PORTAL", "PENDING", None,
-            now.strftime("%Y-%m-%d %H:%M:%S"), now.strftime("%Y-%m-%d %H:%M:%S")
-        )
-    ]
-
-    cursor.executemany("""
-    INSERT INTO bookings (id, confirmation_code, customer_name, customer_phone, customer_email, vip_level,
-                          service_type, pickup_address, pickup_unit, pickup_lat, pickup_lng,
-                          dropoff_address, dropoff_unit, dropoff_lat, dropoff_lng,
-                          pickup_datetime, hours_booked, flight_number, flight_status, vehicle_class,
-                          passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
-                          special_requests, estimated_distance_mi, estimated_duration_min,
-                          fare_amount, vat_amount, total_fare, currency, source, status, chauffeur_id,
-                          created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, bookings)
-
-    # Initial Confirmation Log
-    cursor.execute("""
-    INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        "CNF-9001", "BK-5001", "EMAIL", "h.cavendish@foreignoffice.gov.uk",
-        "Booking Confirmation: GA-84920 - GA Chauffeur Services Limited",
-        "Dear Lord Henry Cavendish,\n\nThank you for choosing GA Chauffeur Services Limited (gachauffeurs.co.uk). Your private luxury transfer is confirmed.\n\nBooking Reference: GA-84920\nPickup: Heathrow Airport (LHR) Terminal 5 at " + t_plus_45m + "\nDestination: The Connaught, Mayfair, London\nVehicle: Mercedes-Benz S-Class Saloon\nFlight Monitoring: BA 178 (Landed - On Time)\nAll-Inclusive Fare: £175.00 GBP\n\nYour executive chauffeur will be assigned shortly. You will receive driver contact details and real-time live tracking.\n\nGA Chauffeur Services Limited\n1 Glebe Road, Stanmore, Greater London, HA7 4EJ\nWebsite: https://gachauffeurs.co.uk\nPhone: +44 7886 622082\nEmail: enquiries@gachauffeurs.co.uk",
-        "DELIVERED",
-        now.strftime("%Y-%m-%d %H:%M:%S")
-    ))
-
-    cursor.execute("""
-    INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        "BK-5001", None, "BOOKING_CREATED", "Website Booking Engine (gachauffeurs.co.uk)",
-        "Booking request GA-84920 received from gachauffeurs.co.uk for Lord Henry Cavendish. Confirmation email & SMS dispatched.",
-        now.strftime("%Y-%m-%d %H:%M:%S")
-    ))
 
     conn.commit()
     conn.close()
