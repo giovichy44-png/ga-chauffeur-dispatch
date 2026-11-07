@@ -89,7 +89,7 @@ if (typeof document !== 'undefined') (() => {
       line(money(tariff.total)+(service.value==='oneway'?' plus VAT':''),'h2');
       if (service.value === 'airport165') line('Applies only between Central London and Heathrow or London City Airport. Other pickup or destination points require a personal quote.');
       if (service.value === 'airport305') line('Applies only between Central London and Gatwick, Luton, Farnborough, Biggin Hill or Stansted. Other pickup or destination points require a personal quote.');
-      if (service.value === 'oneway') line('Two-hour minimum estimated charge: '+money(tariff.base)+' plus VAT. The final price depends on your journey and will be confirmed before booking.');
+      if (service.value === 'oneway') line('Four-hour minimum hire · 10 miles included per hour. Final journey fee will be calculated at the end of the journey.');
       if (tariff.included !== null) line(`${tariff.included} miles included.`);
       line('Excludes excess mileage, parking, drop-off, congestion and waiting charges. This is not the final payable total.');
     }
