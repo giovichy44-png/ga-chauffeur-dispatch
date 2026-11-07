@@ -207,10 +207,12 @@
 
             <!-- Route with Autocomplete Dropdown & Postcode Lookup -->
             <div class="form-group-grid two-col">
-              <div class="field" style="position: relative;">
-                <label>Collection Point / Airport (Type LHR, T5 or Postcode) *</label>
-                <input type="text" id="f-pickup" required placeholder="e.g. LHR, T5, or Postcode" autocomplete="off">
-                <div class="autocomplete-dropdown" id="dropdown-pickup" style="display: none;"></div>
+              <div class="field">
+                <label>Collection Point / Airport (Type LHR, T5, Hotel or Address) *</label>
+                <div style="position: relative;">
+                  <input type="text" id="f-pickup" required placeholder="e.g. Claridge's, LHR, T5, or Postcode" autocomplete="off">
+                  <div class="autocomplete-dropdown" id="dropdown-pickup" style="display: none;"></div>
+                </div>
                 
                 <input type="text" id="f-pickup-unit" placeholder="House / Flat / Terminal (e.g. No. 12 or Terminal 5)" style="margin-top: 6px; font-size: 13px;">
 
@@ -218,22 +220,27 @@
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 5, TW6 2GA')">Heathrow T5</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 2, TW6 1EW')">Heathrow T2</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Gatwick Airport (LGW) South Terminal, RH6 0NP')">Gatwick</span>
-                  <span class="quick-chip" onclick="applySuggestion('pickup', '1 Glebe Road, Stanmore, Greater London, HA7 4EJ')">Stanmore Base</span>
+                  <span class="quick-chip" onclick="applySuggestion('pickup', 'Claridge\'s, Brook Street, Mayfair, London W1K 4HR')">Claridge's</span>
+                  <span class="quick-chip" onclick="applySuggestion('pickup', 'Coworth Park Hotel, Blacknest Rd, Ascot SL5 7SE')">Coworth Park</span>
                 </div>
               </div>
 
-              <div class="field" style="position: relative;">
+              <div class="field">
                 <label id="lbl-dropoff">Destination / Drop-off Location *</label>
-                <input type="text" id="f-dropoff" required placeholder="e.g. The Connaught, Mayfair" autocomplete="off">
-                <div class="autocomplete-dropdown" id="dropdown-dropoff" style="display: none;"></div>
+                <div style="position: relative;">
+                  <input type="text" id="f-dropoff" required placeholder="e.g. Coworth Park, LHR T5, The Connaught, or Address" autocomplete="off">
+                  <div class="autocomplete-dropdown" id="dropdown-dropoff" style="display: none;"></div>
+                </div>
 
                 <input type="text" id="f-dropoff-unit" placeholder="House / Flat / Building Unit (optional)" style="margin-top: 6px; font-size: 13px;">
 
                 <div class="chip-shortcuts">
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Heathrow Airport (LHR) Terminal 5, TW6 2GA')">Heathrow T5</span>
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Heathrow Airport (LHR) Terminal 2, TW6 1EW')">Heathrow T2</span>
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Claridge\'s, Brook Street, Mayfair, London W1K 4HR')">Claridge's</span>
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Coworth Park Hotel, Blacknest Rd, Ascot SL5 7SE')">Coworth Park</span>
                   <span class="quick-chip" onclick="applySuggestion('dropoff', 'The Connaught, Carlos Place, Mayfair, London W1K 2AL')">The Connaught</span>
                   <span class="quick-chip" onclick="applySuggestion('dropoff', 'The Dorchester, 53 Park Lane, Mayfair, London W1K 1QA')">The Dorchester</span>
-                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Canary Wharf, One Canada Square, London E14 5AA')">Canary Wharf</span>
-                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Farnborough Airport (FAB), Signature Aviation, GU14 6XA')">Farnborough FBO</span>
                 </div>
               </div>
             </div>
@@ -483,6 +490,7 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDNHZ7EWxRbvZVpuzAMJzfnKL4n4EPr9Xo&libraries=places&loading=async&v=weekly" async defer></script>
+  <script src="app.js?v=20261107a2"></script>
 </body>
 </html>

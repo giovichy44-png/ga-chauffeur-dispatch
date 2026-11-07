@@ -529,12 +529,13 @@ VEHICLE_CONFIGS = {
     "mercedes_s_class": {
         "name": "Mercedes-Benz S-Class",
         "description": "Executive Saloon • Pure Elegance",
+        "image_url": "https://gachauffeurs.co.uk/assets/fleet/sclass-front.png",
         "passengers": 4,
         "large_cases": 2,
         "medium_cases": 2,
         "hand_luggage": 2,
         "hourly_rate": 85.0,
-        "min_hours": 2,
+        "min_hours": 4,
         "heathrow_rate": 165.0,        # Heathrow & London City Airport to Central London
         "outer_airports_rate": 305.0,  # Gatwick, Luton, Stansted, Farnborough, Biggin Hill
         "ten_hour_rate": 850.0,
@@ -545,12 +546,13 @@ VEHICLE_CONFIGS = {
     "mercedes_v_class": {
         "name": "Mercedes-Benz V-Class",
         "description": "Luxury MPV • 6-Passenger Luxury Cabin",
+        "image_url": "https://gachauffeurs.co.uk/assets/fleet/v-black-white-0.png",
         "passengers": 6,
         "large_cases": 6,
         "medium_cases": 6,
         "hand_luggage": 6,
         "hourly_rate": 95.0,
-        "min_hours": 2,
+        "min_hours": 4,
         "heathrow_rate": 175.0,        # Heathrow & London City Airport to Central London
         "outer_airports_rate": 315.0,  # Gatwick, Luton, Stansted, Farnborough, Biggin Hill
         "ten_hour_rate": 900.0,
@@ -561,12 +563,13 @@ VEHICLE_CONFIGS = {
     "range_rover_autobiography": {
         "name": "Range Rover Autobiography LWB",
         "description": "Prestige Long Wheelbase Luxury 4x4",
+        "image_url": "https://gachauffeurs.co.uk/assets/fleet/range-rover-front.png",
         "passengers": 4,
         "large_cases": 3,
         "medium_cases": 2,
         "hand_luggage": 3,
         "hourly_rate": 115.0,
-        "min_hours": 2,
+        "min_hours": 4,
         "heathrow_rate": 225.0,        # Heathrow & London City Airport to Central London
         "outer_airports_rate": 405.0,  # Gatwick, Luton, Stansted, Farnborough, Biggin Hill
         "ten_hour_rate": 1150.0,
@@ -579,19 +582,19 @@ VEHICLE_CONFIGS = {
 # UK AIRPORT TERMINALS & PRESTIGE LOCATIONS FOR INSTANT AUTOCOMPLETE
 UK_AUTOCOMPLETE_DATABASE = [
     # Heathrow Terminals & VIP Suites (LHR, T5, etc.)
-    {"title": "Heathrow Airport (LHR) Terminal 5", "subtitle": "Wallis Road, Longford, Hounslow", "category": "airport", "code": "LHR"},
-    {"title": "Heathrow Airport (LHR) Terminal 5 - Windsor Suite VIP", "subtitle": "Wallis Road, Longford, Hounslow", "category": "airport", "code": "LHR"},
-    {"title": "Heathrow Airport (LHR) Terminal 2", "subtitle": "The Queen's Terminal, Inner Ring West, Hounslow", "category": "airport", "code": "LHR"},
-    {"title": "Heathrow Airport (LHR) Terminal 3", "subtitle": "Camlet Way, Longford, Hounslow", "category": "airport", "code": "LHR"},
-    {"title": "Heathrow Airport (LHR) Terminal 4", "subtitle": "Stratford Road, Hounslow", "category": "airport", "code": "LHR"},
+    {"title": "Heathrow Airport (LHR) Terminal 5", "subtitle": "Wallis Road, Longford, Hounslow TW6 2GA", "category": "airport", "code": "LHR T5"},
+    {"title": "Heathrow Airport (LHR) Terminal 5 - Windsor Suite VIP", "subtitle": "Wallis Road, Longford, Hounslow TW6 2GA", "category": "airport", "code": "LHR T5 VIP"},
+    {"title": "Heathrow Airport (LHR) Terminal 2", "subtitle": "The Queen's Terminal, Inner Ring West, Hounslow TW6 1EW", "category": "airport", "code": "LHR T2"},
+    {"title": "Heathrow Airport (LHR) Terminal 3", "subtitle": "Camlet Way, Longford, Hounslow TW6 1QG", "category": "airport", "code": "LHR T3"},
+    {"title": "Heathrow Airport (LHR) Terminal 4", "subtitle": "Stratford Road, Hounslow TW6 3XA", "category": "airport", "code": "LHR T4"},
 
     # Gatwick Terminals (LGW)
-    {"title": "Gatwick Airport (LGW) South Terminal", "subtitle": "Perimeter Road East, Horley, Gatwick", "category": "airport", "code": "LGW"},
-    {"title": "Gatwick Airport (LGW) North Terminal", "subtitle": "Longbridge Way, Horley, Gatwick", "category": "airport", "code": "LGW"},
+    {"title": "Gatwick Airport (LGW) South Terminal", "subtitle": "Perimeter Road East, Horley, Gatwick RH6 0NP", "category": "airport", "code": "LGW"},
+    {"title": "Gatwick Airport (LGW) North Terminal", "subtitle": "Longbridge Way, Horley, Gatwick RH6 0PJ", "category": "airport", "code": "LGW"},
 
     # London City Airport (LCY)
-    {"title": "London City Airport (LCY)", "subtitle": "Royal Docks, Hartmann Road, London E16 2PB", "category": "airport", "code": "LCY"},
-    {"title": "London City Airport (LCY) Jet Centre", "subtitle": "Hartmann Road, London E16 2PB", "category": "airport", "code": "LCY"},
+    {"title": "London City Airport (LCY)", "subtitle": "Royal Docks, Hartmann Road, London E16 2PX", "category": "airport", "code": "LCY"},
+    {"title": "London City Airport (LCY) Private Jet Centre", "subtitle": "Hartmann Road, London E16 2PX", "category": "airport", "code": "LCY"},
 
     # Farnborough Airport (FAB)
     {"title": "Farnborough Airport (FAB)", "subtitle": "Business Aviation Centre, Farnborough GU14 6XA", "category": "airport", "code": "FAB"},
@@ -606,22 +609,27 @@ UK_AUTOCOMPLETE_DATABASE = [
     {"title": "London Stansted Airport (STN) Inflite Jet Centre", "subtitle": "Hangar 8, Stansted CM24 1RY", "category": "airport", "code": "STN"},
 
     # London Biggin Hill Airport (BQH)
-    {"title": "London Biggin Hill Airport (BQH)", "subtitle": "Main Road, Biggin Hill TN16 3BH", "category": "airport", "code": "BQH"},
+    {"title": "London Biggin Hill Airport (BQH)", "subtitle": "Main Road, Biggin Hill TN16 3BN", "category": "airport", "code": "BQH"},
 
     # RAF Northolt (NHT)
     {"title": "RAF Northolt (NHT)", "subtitle": "West End Road, Ruislip HA4 6NG", "category": "airport", "code": "NHT"},
 
-    # Luxury London Hotels & Landmarks
-    {"title": "The Connaught", "subtitle": "Carlos Place, Mayfair, London W1K 2AL", "category": "hotel"},
-    {"title": "The Dorchester", "subtitle": "53 Park Lane, Mayfair, London W1K 1QA", "category": "hotel"},
-    {"title": "The Ritz London", "subtitle": "150 Piccadilly, St. James's, London W1J 9BR", "category": "hotel"},
-    {"title": "The Savoy", "subtitle": "Strand, London WC2R 0EZ", "category": "hotel"},
-    {"title": "Claridge's", "subtitle": "Brook Street, Mayfair, London W1K 4HR", "category": "hotel"},
-    {"title": "Rosewood London", "subtitle": "252 High Holborn, London WC1V 7EN", "category": "hotel"},
-    {"title": "The Berkeley", "subtitle": "Wilton Place, Knightsbridge, London SW1X 7RL", "category": "hotel"},
-    {"title": "Harrods", "subtitle": "87-135 Brompton Rd, Knightsbridge, London SW1X 7XL", "category": "landmark"},
-    {"title": "One Canada Square", "subtitle": "Canary Wharf, London E14 5AA", "category": "business"},
-    {"title": "1 Glebe Road", "subtitle": "Stanmore, Greater London HA7 4EJ", "category": "base"}
+    # Luxury London & Country Hotels & Landmarks
+    {"title": "Claridge's Hotel", "subtitle": "Brook Street, Mayfair, London W1K 4HR", "category": "hotel", "code": "CLARIDGES"},
+    {"title": "Coworth Park Hotel", "subtitle": "Blacknest Road, Ascot SL5 7SE", "category": "hotel", "code": "COWORTH"},
+    {"title": "The Connaught", "subtitle": "Carlos Place, Mayfair, London W1K 2AL", "category": "hotel", "code": "CONNAUGHT"},
+    {"title": "The Dorchester", "subtitle": "53 Park Lane, Mayfair, London W1K 1QA", "category": "hotel", "code": "DORCHESTER"},
+    {"title": "The Ritz London", "subtitle": "150 Piccadilly, St. James's, London W1J 9BR", "category": "hotel", "code": "RITZ"},
+    {"title": "The Savoy", "subtitle": "Strand, London WC2R 0EZ", "category": "hotel", "code": "SAVOY"},
+    {"title": "The Berkeley", "subtitle": "Wilton Place, Knightsbridge, London SW1X 7RL", "category": "hotel", "code": "BERKELEY"},
+    {"title": "Mandarin Oriental Hyde Park", "subtitle": "66 Knightsbridge, London SW1X 7LA", "category": "hotel", "code": "MANDARIN"},
+    {"title": "Four Seasons Hotel London at Park Lane", "subtitle": "Hamilton Place, Park Lane, London W1J 7DR", "category": "hotel", "code": "FOUR SEASONS"},
+    {"title": "The Peninsula London", "subtitle": "1 Grosvenor Place, London SW1X 7HJ", "category": "hotel", "code": "PENINSULA"},
+    {"title": "Raffles London at The OWO", "subtitle": "Whitehall, London SW1A 2BX", "category": "hotel", "code": "RAFFLES OWO"},
+    {"title": "Rosewood London", "subtitle": "252 High Holborn, London WC1V 7EN", "category": "hotel", "code": "ROSEWOOD"},
+    {"title": "Harrods", "subtitle": "87-135 Brompton Rd, Knightsbridge, London SW1X 7XL", "category": "landmark", "code": "HARRODS"},
+    {"title": "One Canada Square", "subtitle": "Canary Wharf, London E14 5AA", "category": "business", "code": "CANARY WHARF"},
+    {"title": "Hyde Park Corner", "subtitle": " Piccadilly, Mayfair, London W1J 7NT", "category": "landmark", "code": "HYDE PARK CORNER"}
 ]
 
 # Compatibility aliases
@@ -1092,8 +1100,26 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
         </div>
         """
 
-    luggage_summary = f"{large_cases} Large Cases, {medium_cases} Medium Cases, {hand_luggage} Hand Luggage"
-    vehicle_cap = f"Up to {vehicle_info.get('max_passengers', 4)} Passengers • {vehicle_info.get('max_large', 2)} Large + {vehicle_info.get('max_medium', 2)} Medium Cases"
+    luggage_summary = f"{large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand"
+    vehicle_img_url = vehicle_info.get("image_url", "https://gachauffeurs.co.uk/assets/fleet/sclass-front.png")
+    passenger_contact_rows = ""
+    if customer_phone or customer_email:
+        passenger_contact_rows = f"""
+        <tr>
+          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Passenger</td>
+          <td style="text-align: right; color: #ffffff; font-size: 13px; font-weight: 600; padding-top: 8px;">{customer_name}</td>
+        </tr>
+        """ + (f"""
+        <tr>
+          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Contact Phone</td>
+          <td style="text-align: right; color: #c9b894; font-size: 13px; padding-top: 8px;">{customer_phone}</td>
+        </tr>
+        """ if customer_phone else "") + (f"""
+        <tr>
+          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Email</td>
+          <td style="text-align: right; color: #aab5ae; font-size: 13px; padding-top: 8px;">{customer_email}</td>
+        </tr>
+        """ if customer_email else "")
 
     return f"""
     <!DOCTYPE html>
@@ -1102,83 +1128,76 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
       <meta charset="utf-8">
       <title>Booking Confirmation {booking_ref} - GA Chauffeur Services Limited</title>
     </head>
-    <body style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #121715; color: #edf0ea; margin: 0; padding: 24px;">
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 640px; margin: 0 auto; background-color: #171f1b; border: 1px solid #2e3b33; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+    <body style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #121715; color: #edf0ea; margin: 0; padding: 20px;">
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 620px; margin: 0 auto; background-color: #171f1b; border: 1px solid #2e3b33; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
 
         <!-- Header Monogram -->
         <tr>
-          <td style="background-color: #121715; padding: 28px 40px; text-align: center; border-bottom: 2px solid #c9b894;">
+          <td style="background-color: #121715; padding: 24px 36px; text-align: center; border-bottom: 2px solid #c9b894;">
             <div style="display: inline-block;">
               <span style="font-family: Georgia, serif; font-size: 34px; letter-spacing: -4px; color: #c9b894; line-height: 1;">GA</span>
               <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #3e4e44; padding-left: 14px; margin-left: 10px; color: #d0d8d1; line-height: 1.4; display: inline-block; vertical-align: middle; text-align: left;">Chauffeur<br>Services</span>
             </div>
-            <p style="color: #c9b894; font-size: 11px; margin: 10px 0 0 0; letter-spacing: 2px; text-transform: uppercase;">gachauffeurs.co.uk • Official Reservation</p>
+            <p style="color: #c9b894; font-size: 11px; margin: 8px 0 0 0; letter-spacing: 2px; text-transform: uppercase;">Booking Confirmation • {booking_ref}</p>
           </td>
         </tr>
 
         <!-- Content -->
         <tr>
-          <td style="padding: 36px 40px;">
-            <span style="background-color: rgba(201, 184, 148, 0.12); color: #c9b894; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 3px; text-transform: uppercase; letter-spacing: .12em; border: 1px solid rgba(201, 184, 148, 0.3);">Booking Confirmed</span>
-            <h2 style="font-family: Georgia, serif; color: #ffffff; font-size: 22px; font-weight: normal; margin: 16px 0 8px 0;">Dear {customer_name},</h2>
-            <p style="color: #aab5ae; font-size: 14px; line-height: 1.6; margin-top: 0;">
-              Thank you for choosing <strong>GA Chauffeur Services Limited</strong>. Your private luxury chauffeur booking has been confirmed and registered with our dispatch team. Below is your complete reservation summary, fee breakdown, and booking terms.
+          <td style="padding: 30px 36px;">
+            <h2 style="font-family: Georgia, serif; color: #ffffff; font-size: 21px; font-weight: normal; margin: 0 0 8px 0;">Dear {customer_name},</h2>
+            <p style="color: #aab5ae; font-size: 14px; line-height: 1.55; margin-top: 0;">
+              Thank you for booking with <strong>GA Chauffeur Services Limited</strong>. Your reservation is confirmed below.
             </p>
 
+            <!-- Booked Vehicle Image Card (Exact Website Image) -->
+            <div style="background-color: #ffffff; border: 2px solid #c9b894; border-radius: 8px; padding: 16px 20px; margin: 18px 0; text-align: center;">
+              <img src="{vehicle_img_url}" alt="{vehicle_info['name']}" style="max-width: 280px; width: 100%; height: auto; display: block; margin: 0 auto 10px auto;">
+              <div style="font-family: Georgia, serif; font-size: 19px; color: #171c1c; font-weight: bold;">{vehicle_info['name']}</div>
+              <div style="font-size: 12px; color: #475569; margin-top: 3px;">{passengers} {'Passenger' if int(passengers or 1) == 1 else 'Passengers'} • Luggage: {luggage_summary}</div>
+            </div>
+
+            {driver_block}
+
             <!-- Route & Pickup/Drop-off Times -->
-            <div style="background-color: #121715; border-left: 3px solid #c9b894; padding: 16px 18px; margin: 20px 0; border-radius: 0 6px 6px 0; border-top: 1px solid #2e3b33; border-right: 1px solid #2e3b33; border-bottom: 1px solid #2e3b33;">
-              <div style="margin-bottom: 12px;">
+            <div style="background-color: #121715; border-left: 3px solid #c9b894; padding: 14px 18px; margin: 18px 0; border-radius: 0 6px 6px 0; border-top: 1px solid #2e3b33; border-right: 1px solid #2e3b33; border-bottom: 1px solid #2e3b33;">
+              <div style="margin-bottom: 10px;">
                 <span style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Collection Point &amp; Pickup Time</span>
                 <div style="color: #ffffff; font-size: 14px; font-weight: 600; margin-top: 3px;">{pickup_addr}</div>
                 <div style="color: #c9b894; font-size: 12px; margin-top: 2px;">Pickup: {pickup_display}</div>
               </div>
               <div style="border-top: 1px dashed #2e3b33; padding-top: 10px;">
-                <span style="color: #38bdf8; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Destination &amp; Estimated Drop-off Time</span>
+                <span style="color: #38bdf8; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Destination &amp; Estimated Drop-off</span>
                 <div style="color: #ffffff; font-size: 14px; font-weight: 600; margin-top: 3px;">{dropoff_addr}</div>
-                <div style="color: #94a3b8; font-size: 12px; margin-top: 2px;">Drop-off / Completion: {dropoff_display}</div>
+                <div style="color: #94a3b8; font-size: 12px; margin-top: 2px;">Drop-off: {dropoff_display}</div>
               </div>
             </div>
 
             {flight_block}
             {notes_block}
-            {driver_block}
 
-            <!-- Full Reservation & Fee Breakdown Table -->
-            <table width="100%" style="background-color: #121715; border-radius: 6px; padding: 18px; margin: 22px 0; border: 1px solid #2e3b33;">
+            <!-- Passenger, Journey & Fee Summary Table -->
+            <table width="100%" style="background-color: #121715; border-radius: 6px; padding: 16px 18px; margin: 18px 0; border: 1px solid #2e3b33;">
               <tr>
                 <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600;">Booking Reference</td>
-                <td style="text-align: right; color: #c9b894; font-size: 18px; font-weight: bold; font-family: 'JetBrains Mono', monospace;">{booking_ref}</td>
+                <td style="text-align: right; color: #c9b894; font-size: 17px; font-weight: bold; font-family: monospace;">{booking_ref}</td>
+              </tr>
+              {passenger_contact_rows}
+              <tr>
+                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Service Type</td>
+                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 8px;">{service_type}</td>
               </tr>
               <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Service Type</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{service_type}</td>
+                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Vehicle Booked</td>
+                <td style="text-align: right; color: #c9b894; font-size: 13px; padding-top: 8px; font-weight: 600;">{vehicle_info['name']}</td>
               </tr>
               <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Pickup Date &amp; Time</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{pickup_display}</td>
-              </tr>
-              <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Estimated Drop-off / Duration</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{dropoff_display}</td>
-              </tr>
-              <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Vehicle Details</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px; font-weight: 600;">
-                  {vehicle_info['name']}<br>
-                  <span style="color: #aab5ae; font-size: 11px; font-weight: normal;">{vehicle_cap}</span>
-                </td>
-              </tr>
-              <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Number of Passengers</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{passengers} {'Passenger' if int(passengers or 1) == 1 else 'Passengers'}</td>
-              </tr>
-              <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Luggage Details</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 10px;">{luggage_summary}</td>
+                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Passengers &amp; Luggage</td>
+                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 8px;">{passengers} Pax • {luggage_summary}</td>
               </tr>
               {payment_line}
               <tr>
-                <td colspan="2" style="border-top: 1px solid #2e3b33; padding-top: 12px; margin-top: 12px;"></td>
+                <td colspan="2" style="border-top: 1px solid #2e3b33; padding-top: 10px; margin-top: 10px;"></td>
               </tr>
               <tr>
                 <td style="color: #aab5ae; font-size: 13px;">Base Journey Fare</td>
@@ -1191,54 +1210,23 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
                 <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{vat_amt:.2f} GBP</td>
               </tr>
               <tr>
-                <td style="color: #c9b894; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding-top: 12px;">Estimated / Pre-Authorised Total</td>
-                <td style="text-align: right; color: #c9b894; font-size: 20px; font-weight: bold; padding-top: 12px; font-family: Georgia, serif;">£{total_fare:.2f} GBP</td>
+                <td style="color: #c9b894; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding-top: 10px;">Total</td>
+                <td style="text-align: right; color: #c9b894; font-size: 20px; font-weight: bold; padding-top: 10px; font-family: Georgia, serif;">£{total_fare:.2f} GBP</td>
               </tr>
               <tr>
-                <td colspan="2" style="padding-top: 6px; text-align: right; color: #aab5ae; font-size: 11px; font-style: italic;">
+                <td colspan="2" style="padding-top: 4px; text-align: right; color: #aab5ae; font-size: 11px;">
                   Final journey fee will be calculated at the end of the journey.
                 </td>
               </tr>
             </table>
-
-            <!-- Complete Website Terms & Conditions Relevant to the Job -->
-            <div style="background: rgba(255,255,255,0.02); border: 1px solid #2e3b33; border-radius: 6px; padding: 16px 18px; margin: 24px 0; font-size: 12px; color: #aab5ae; line-height: 1.65;">
-              <div style="color: #c9b894; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; margin-bottom: 10px;">Terms &amp; Conditions of Hire</div>
-              <p style="margin: 0 0 8px 0;">
-                <strong style="color: #edf0ea;">1. Base-to-Base Calculation &amp; Final Fee:</strong> Hire time and mileage are calculated base-to-base from <strong>Hyde Park Corner</strong>, through your itinerary, and back to <strong>Hyde Park Corner</strong>. Final journey fee will be calculated at the end of the journey.
-              </p>
-              <p style="margin: 0 0 8px 0;">
-                <strong style="color: #edf0ea;">2. Minimum Hire &amp; Mileage Allowance:</strong> As-directed and hourly bookings are subject to a <strong>4-hour minimum hire</strong>. For every <strong>1 hour</strong>, <strong>10 miles are included</strong>; additional mileage is charged at <strong>£4.00 per mile</strong> (+ VAT).
-              </p>
-              <p style="margin: 0 0 8px 0;">
-                <strong style="color: #edf0ea;">3. Additional Charges &amp; Congestion Charge:</strong> Car park charges, airport drop-off fees, and the <strong>£18.00 London Congestion Charge</strong> apply where incurred—including pickups or drop-offs within the zone, or if we drive into the zone whilst providing an as-directed service. All prices are subject to 20% VAT (except the statutory £18.00 Congestion Charge).
-              </p>
-              <p style="margin: 0 0 8px 0;">
-                <strong style="color: #edf0ea;">4. Airport &amp; Waiting Time Policy:</strong> For airport arrivals, waiting time commences <strong>45 minutes after the flight has landed</strong>. For airport departures and point-to-point collections, the <strong>first 15 minutes are complimentary</strong>; thereafter, waiting time is charged at the vehicle's hourly rate (minimum 30-minute charge).
-              </p>
-              <p style="margin: 0;">
-                <strong style="color: #edf0ea;">5. Cancellation Policy:</strong> Cancellations require at least <strong>12 hours' notice</strong> prior to the scheduled pickup time. Cancellations with less notice may be accepted at our discretion only if the chauffeur has not yet been dispatched. Once the chauffeur has been dispatched, cancellation incurs the <strong>full booking charge</strong>.
-              </p>
-            </div>
-
-            <p style="color: #aab5ae; font-size: 13px; line-height: 1.6;">
-              Your dedicated chauffeur will arrive with complimentary high-speed in-vehicle Wi-Fi, bottled chilled mineral water, and phone charging facilities. Should you need to amend any aspect of your reservation, please reply directly to this email or call us on <strong>{COMPANY_PHONE}</strong>.
-            </p>
-
-            <div style="text-align: center; margin-top: 28px;">
-              <a href="{COMPANY_WEBSITE}" style="background: #c9b894; color: #171f1b; text-decoration: none; font-weight: 600; font-size: 13px; padding: 12px 28px; border-radius: 4px; display: inline-block;">
-                Visit GA Chauffeurs ↗
-              </a>
-            </div>
           </td>
         </tr>
 
-        <!-- Footer -->
+        <!-- Clean Footer (No Street Address) -->
         <tr>
-          <td style="background-color: #121715; padding: 22px 40px; text-align: center; border-top: 1px solid #2e3b33; color: #717d76; font-size: 12px; line-height: 1.6;">
-            <strong style="color: #edf0ea;">GA Chauffeur Services Limited</strong><br>
-            Stanmore, Greater London • Company No: 11136878<br>
-            Direct Phone: <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a> • Email: <a href="mailto:{FROM_EMAIL}" style="color: #c9b894; text-decoration: none;">{FROM_EMAIL}</a><br>
+          <td style="background-color: #121715; padding: 20px 36px; text-align: center; border-top: 1px solid #2e3b33; color: #aab5ae; font-size: 12px; line-height: 1.7;">
+            <strong style="color: #edf0ea; font-size: 13px;">GA Chauffeur Services Limited</strong><br>
+            Direct Line: <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a> • Email: <a href="mailto:{FROM_EMAIL}" style="color: #c9b894; text-decoration: none;">{FROM_EMAIL}</a><br>
             Website: <a href="{COMPANY_WEBSITE}" style="color: #c9b894; text-decoration: none;">gachauffeurs.co.uk</a>
           </td>
         </tr>
@@ -1254,46 +1242,36 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
     )
     return (
         f"Dear {customer_name},\n\n"
-        f"Thank you for choosing GA Chauffeur Services Limited (gachauffeurs.co.uk).\n"
-        f"Your private luxury chauffeur booking has been confirmed.\n\n"
-        f"=== RESERVATION DETAILS ===\n"
+        f"Thank you for booking with GA Chauffeur Services Limited.\n"
+        f"Your chauffeur and vehicle details will be sent to you as soon as possible.\n\n"
         f"Booking Reference: {booking_ref}\n"
         f"Service Type: {service_type}\n"
+        f"Vehicle Booked: {vehicle_name}\n"
+        f"Passengers & Luggage: {passengers} Pax • {large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand\n"
         f"Pickup Date & Time: {pickup_display}\n"
         f"Collection Point: {pickup_addr}\n"
         f"Destination: {dropoff_addr}\n"
-        f"Estimated Drop-off / Duration: {dropoff_display}\n"
-        f"Vehicle Selected: {vehicle_name}\n"
-        f"Passengers: {passengers}\n"
-        f"Luggage: {large_cases} Large Cases, {medium_cases} Medium Cases, {hand_luggage} Hand Luggage\n"
-        + (f"Flight Reference: {flight} (Complimentary waiting time commences 45 mins after landing)\n" if flight else "")
-        + (f"Special Requests / Notes: {special_requests}\n" if special_requests else "")
-        + f"\nChauffeur & Vehicle Details: Your chauffeur and vehicle details will be sent to you as soon as possible.\n"
-        + f"\n=== FEE BREAKDOWN ===\n"
-        + f"Base Journey Fare: £{float(net_fare):.2f} GBP\n"
+        f"Estimated Drop-off: {dropoff_display}\n"
+        + (f"Flight Number: {flight}\n" if flight else "")
+        + (f"Special Requests: {special_requests}\n" if special_requests else "")
+        + f"\nBase Journey Fare: £{float(net_fare):.2f} GBP\n"
         + (f"Airport Parking & Meet/Greet: £{float(parking_fee):.2f} GBP\n" if float(parking_fee or 0) > 0 else "")
         + (f"Airport Drop-off Fee: £{float(dropoff_fee):.2f} GBP\n" if float(dropoff_fee or 0) > 0 else "")
-        + (f"London Congestion Charge (No VAT): £{float(congestion_charge):.2f} GBP\n" if float(congestion_charge or 0) > 0 else "")
+        + (f"London Congestion Charge: £{float(congestion_charge):.2f} GBP\n" if float(congestion_charge or 0) > 0 else "")
         + f"VAT (20%): £{float(vat_amt):.2f} GBP\n"
-        + f"Estimated / Pre-Authorised Total: £{float(total_fare):.2f} GBP\n"
-        + f"(Note: Final journey fee will be calculated at the end of the journey.)\n"
-        + (f"Card Pre-Authorisation: {card_brand or 'Card'} ending in •••• {card_last4} (Hold Ref: {card_auth_code})\n" if card_last4 else "")
-        + f"\n=== TERMS & CONDITIONS OF HIRE ===\n"
-        f"1. Base-to-Base Calculation & Final Fee: Hire time and mileage are calculated base-to-base from Hyde Park Corner, through your itinerary, and back to Hyde Park Corner. Final journey fee will be calculated at the end of the journey.\n"
-        f"2. Minimum Hire & Mileage Allowance: As-directed and hourly bookings are subject to a 4-hour minimum hire. For every 1 hour, 10 miles are included; additional mileage is charged at £4.00 per mile (+ VAT).\n"
-        f"3. Additional Charges & Congestion Charge: Car park charges, airport drop-off fees, and the £18.00 London Congestion Charge apply where incurred—including pickups or drop-offs within the zone, or if we drive into the zone whilst providing an as-directed service. All prices are subject to 20% VAT (except the statutory £18.00 Congestion Charge).\n"
-        f"4. Airport & Waiting Time Policy: For airport arrivals, waiting time commences 45 minutes after the flight has landed. For airport departures and point-to-point collections, the first 15 minutes are complimentary; thereafter, waiting time is charged at the vehicle's hourly rate (minimum 30-minute charge).\n"
-        f"5. Cancellation Policy: Cancellations require at least 12 hours' notice prior to the scheduled pickup time. Once the chauffeur has been dispatched, cancellation incurs the full booking charge.\n\n"
+        + f"Total: £{float(total_fare):.2f} GBP\n"
+        + f"(Final journey fee will be calculated at the end of the journey.)\n\n"
         f"GA Chauffeur Services Limited\n"
-        f"Website: {COMPANY_WEBSITE}\n"
-        f"Direct Phone: {COMPANY_PHONE}\n"
-        f"Email: {FROM_EMAIL}"
+        f"Direct Line: {COMPANY_PHONE}\n"
+        f"Email: {FROM_EMAIL}\n"
+        f"Website: {COMPANY_WEBSITE}"
     )
 
 
 def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, customer_email, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare, vat_amt, total_fare, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, flight=None, special_requests="", parking_fee=0.0, dropoff_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, payment_status="PRE_AUTHORIZED", source="WEBSITE_GACHAUFFEURS", duration_min=0, hours_booked=0, distance_mi=0.0):
     tier_key = normalize_vehicle_tier(vehicle_tier)
     vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
+    vehicle_img_url = vehicle_info.get("image_url", "https://gachauffeurs.co.uk/assets/fleet/sclass-front.png")
     pickup_display, dropoff_display = format_pickup_and_dropoff_times(
         pickup_dt, duration_min=duration_min, hours_booked=hours_booked, distance_mi=distance_mi, service_type=service_type
     )
@@ -1309,7 +1287,7 @@ def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, c
     <html>
     <head><meta charset="utf-8"><title>New Booking Alert {booking_ref}</title></head>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: #0e1311; color: #edf0ea; margin: 0; padding: 20px;">
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 640px; margin: 0 auto; background-color: #171f1b; border: 2px solid #c9b894; border-radius: 8px; overflow: hidden;">
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 620px; margin: 0 auto; background-color: #171f1b; border: 2px solid #c9b894; border-radius: 8px; overflow: hidden;">
         <tr>
           <td style="background-color: #121715; padding: 20px 30px; border-bottom: 1px solid #2e3b33;">
             <span style="background: #4ade80; color: #09140e; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: .1em;">New Booking Alert</span>
@@ -1320,6 +1298,11 @@ def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, c
         </tr>
         <tr>
           <td style="padding: 24px 30px;">
+            <div style="background-color: #ffffff; border: 2px solid #c9b894; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; text-align: center;">
+              <img src="{vehicle_img_url}" alt="{vehicle_info['name']}" style="max-width: 240px; width: 100%; height: auto; display: block; margin: 0 auto 8px auto;">
+              <div style="font-family: Georgia, serif; font-size: 18px; color: #171c1c; font-weight: bold;">{vehicle_info['name']}</div>
+            </div>
+
             <h3 style="color: #c9b894; font-size: 12px; text-transform: uppercase; letter-spacing: .14em; margin: 0 0 10px 0;">1. Passenger Contact Details</h3>
             <table width="100%" style="background: #121715; border: 1px solid #2e3b33; border-radius: 6px; padding: 14px; margin-bottom: 20px;">
               <tr>
@@ -1401,7 +1384,7 @@ def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, c
                 <td style="text-align: right; color: #ffffff; font-size: 13px;">£{float(vat_amt):.2f} GBP</td>
               </tr>
               <tr>
-                <td style="color: #c9b894; font-size: 14px; font-weight: bold; padding-top: 8px; border-top: 1px solid #2e3b33;">Total Pre-Authorised / Estimated:</td>
+                <td style="color: #c9b894; font-size: 14px; font-weight: bold; padding-top: 8px; border-top: 1px solid #2e3b33;">Total:</td>
                 <td style="text-align: right; color: #c9b894; font-size: 18px; font-weight: bold; padding-top: 8px; border-top: 1px solid #2e3b33;">£{float(total_fare):.2f} GBP</td>
               </tr>
             </table>
@@ -1411,6 +1394,12 @@ def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, c
                 Open Dispatch Console (Allocate Chauffeur) ↗
               </a>
             </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: #121715; padding: 18px 30px; text-align: center; border-top: 1px solid #2e3b33; color: #aab5ae; font-size: 12px; line-height: 1.6;">
+            <strong style="color: #edf0ea;">GA Chauffeur Services Limited</strong><br>
+            Direct Line: <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a> • Email: <a href="mailto:{FROM_EMAIL}" style="color: #c9b894; text-decoration: none;">{FROM_EMAIL}</a> • Website: <a href="{COMPANY_WEBSITE}" style="color: #c9b894; text-decoration: none;">gachauffeurs.co.uk</a>
           </td>
         </tr>
       </table>
@@ -1680,33 +1669,63 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/suggestions":
-            q = query.get("q", [""])[0].strip().lower()
+            q_raw = query.get("q", [""])[0].strip()
+            q = q_raw.lower().replace("’", "'")
+            q_norm = q.replace("'", "")
             if not q:
-                # Return popular top airports and destinations
-                self.send_json({"suggestions": UK_AUTOCOMPLETE_DATABASE[:10]})
+                # Return popular top airports and luxury hotel destinations
+                popular = UK_AUTOCOMPLETE_DATABASE[:6] + [i for i in UK_AUTOCOMPLETE_DATABASE if i.get("category") == "hotel"][:6]
+                self.send_json({"suggestions": popular})
                 return
 
             results = []
             for item in UK_AUTOCOMPLETE_DATABASE:
                 title = item["title"].lower()
+                title_norm = title.replace("'", "")
                 subtitle = item["subtitle"].lower()
                 code = item.get("code", "").lower()
 
-                # Priority scoring
                 score = 0
-                if q == code or q == "t5" and "terminal 5" in title:
+                if q == code or q_norm == code or (q in ("t5", "t2", "t3", "t4") and f"terminal {q[1]}" in title):
                     score = 100
-                elif q in code or q in title:
-                    score = 50
+                elif q in code or q in title or q_norm in title_norm:
+                    score = 60
                 elif q in subtitle:
-                    score = 20
+                    score = 30
 
                 if score > 0:
                     results.append((score, item))
 
             results.sort(key=lambda x: x[0], reverse=True)
             matched = [item for _, item in results]
-            self.send_json({"suggestions": matched[:12], "query": q})
+
+            gkey = os.environ.get("GOOGLE_MAPS_SERVER_KEY", "").strip()
+            if len(q_raw) >= 2 and gkey and len(matched) < 10:
+                try:
+                    g_url = "https://maps.googleapis.com/maps/api/place/autocomplete/json?" + urllib.parse.urlencode({
+                        "input": q_raw,
+                        "components": "country:gb",
+                        "key": gkey
+                    })
+                    req = urllib.request.Request(g_url, headers={"User-Agent": "GAChauffeurs-Dispatch/1.0"})
+                    with urllib.request.urlopen(req, timeout=4, context=_get_ssl_context()) as resp:
+                        g_data = json.loads(resp.read(65536))
+                    for pred in g_data.get("predictions", [])[:8]:
+                        fmt = pred.get("structured_formatting") or {}
+                        main_txt = fmt.get("main_text") or pred.get("description", "")
+                        sec_txt = fmt.get("secondary_text") or ""
+                        full_desc = pred.get("description") or f"{main_txt}, {sec_txt}".strip(", ")
+                        if not any(m["title"].lower() == main_txt.lower() for m in matched):
+                            matched.append({
+                                "title": main_txt,
+                                "subtitle": sec_txt,
+                                "full_address": full_desc,
+                                "category": "airport" if "airport" in full_desc.lower() or "terminal" in full_desc.lower() else ("hotel" if "hotel" in full_desc.lower() else "address")
+                            })
+                except Exception:
+                    pass
+
+            self.send_json({"suggestions": matched[:12], "query": q_raw})
             return
 
         if path == "/api/lookup-postcode":

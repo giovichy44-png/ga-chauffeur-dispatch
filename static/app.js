@@ -484,49 +484,166 @@ function initForm() {
   }
 
   // Autocomplete setup
+  let googlePlacesLib = null;
   setupAutocomplete(pInput, pDropdown, 'pickup');
   setupAutocomplete(dInput, dDropdown, 'dropoff');
+
+  function renderSuggestionItems(dropdown, field, items) {
+    dropdown.replaceChildren();
+    if (!items || items.length === 0) {
+      dropdown.style.display = 'none';
+      return;
+    }
+
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'autocomplete-item';
+
+      const icon = document.createElement('span');
+      icon.className = 'auto-icon';
+      icon.textContent = item.category === 'airport' ? '✈️' : item.category === 'hotel' ? '🏨' : item.category === 'fbo' ? '🛩️' : '📍';
+
+      const textWrap = document.createElement('div');
+      textWrap.className = 'auto-text';
+      const strong = document.createElement('strong');
+      strong.textContent = item.title || '';
+      const span = document.createElement('span');
+      span.textContent = item.subtitle || '';
+      textWrap.appendChild(strong);
+      textWrap.appendChild(span);
+
+      row.appendChild(icon);
+      row.appendChild(textWrap);
+
+      const handleSelect = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        let fullText = item.subtitle
+          ? (item.subtitle.toLowerCase().includes((item.title || '').toLowerCase()) ? item.subtitle : `${item.title}, ${item.subtitle}`)
+          : (item.title || '');
+
+        if (item.placePrediction) {
+          try {
+            const place = item.placePrediction.toPlace();
+            await place.fetchFields({ fields: ['displayName', 'formattedAddress'] });
+            const addr = place.formattedAddress || '';
+            const dName = place.displayName || item.title || '';
+            if (addr) {
+              fullText = dName && !addr.toLowerCase().includes(dName.toLowerCase())
+                ? `${dName}, ${addr}`
+                : addr;
+            }
+          } catch (_) {}
+        }
+        window.applySuggestion(field, fullText);
+      };
+
+      row.addEventListener('mousedown', handleSelect);
+      row.addEventListener('click', handleSelect);
+      dropdown.appendChild(row);
+    });
+
+    dropdown.style.display = 'block';
+  }
 
   function setupAutocomplete(input, dropdown, field) {
     if (!input || !dropdown) return;
     let timer;
+    let reqSeq = 0;
+
+    async function fetchAndShowSuggestions(rawVal) {
+      const mySeq = ++reqSeq;
+      const val = (rawVal || '').trim();
+
+      try {
+        const res = await fetch(`/api/suggestions?q=${encodeURIComponent(val)}`);
+        const data = await res.json();
+        if (mySeq !== reqSeq) return;
+        const serverItems = data.suggestions || [];
+
+        // Show server suggestions immediately
+        if (serverItems.length > 0) {
+          renderSuggestionItems(dropdown, field, serverItems);
+        }
+
+        // Also enrich with client-side Google Places Autocomplete for any UK address/airport/hotel
+        if (val.length >= 2 && window.google && window.google.maps && window.google.maps.importLibrary) {
+          try {
+            if (!googlePlacesLib) {
+              googlePlacesLib = await window.google.maps.importLibrary('places');
+            }
+            const { suggestions } = await googlePlacesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+              input: val,
+              includedRegionCodes: ['gb']
+            });
+            if (mySeq !== reqSeq) return;
+            const googleItems = (suggestions || [])
+              .filter(s => s.placePrediction)
+              .map(s => {
+                const full = s.placePrediction.text ? s.placePrediction.text.toString() : '';
+                const parts = full.split(',');
+                const title = (parts[0] || full).trim();
+                const subtitle = parts.slice(1).join(',').trim() || full;
+                const low = full.toLowerCase();
+                const category = (low.includes('airport') || low.includes('terminal') || low.includes('heathrow') || low.includes('gatwick'))
+                  ? 'airport'
+                  : (low.includes('hotel') || low.includes('claridge') || low.includes('connaught') || low.includes('dorchester') || low.includes('ritz') || low.includes('savoy') || low.includes('coworth'))
+                    ? 'hotel'
+                    : 'address';
+                return {
+                  title,
+                  subtitle,
+                  category,
+                  placePrediction: s.placePrediction
+                };
+              });
+
+            if (googleItems.length > 0) {
+              const seen = new Set(serverItems.map(i => (i.title + ' ' + i.subtitle).toLowerCase()));
+              const merged = [...serverItems];
+              for (const g of googleItems) {
+                const key = (g.title + ' ' + g.subtitle).toLowerCase();
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  merged.push(g);
+                }
+              }
+              renderSuggestionItems(dropdown, field, merged.slice(0, 10));
+            } else if (serverItems.length === 0) {
+              dropdown.style.display = 'none';
+            }
+          } catch (_) {
+            if (serverItems.length === 0) dropdown.style.display = 'none';
+          }
+        } else if (serverItems.length === 0) {
+          dropdown.style.display = 'none';
+        }
+      } catch (e) {
+        if (mySeq === reqSeq) dropdown.style.display = 'none';
+      }
+    }
 
     input.addEventListener('input', () => {
+      if (input.dataset.suppressAutocomplete === '1') {
+        delete input.dataset.suppressAutocomplete;
+        return;
+      }
       clearTimeout(timer);
       const val = input.value.trim();
       autoDetectServiceType();
       updatePricePreview();
 
-      if (val.length < 2) {
-        dropdown.style.display = 'none';
+      if (val.length === 0) {
+        timer = setTimeout(() => fetchAndShowSuggestions(''), 100);
         return;
       }
 
-      timer = setTimeout(async () => {
-        try {
-          const res = await fetch(`/api/suggestions?q=${encodeURIComponent(val)}`);
-          const data = await res.json();
-          const items = data.suggestions || [];
+      timer = setTimeout(() => fetchAndShowSuggestions(val), 120);
+    });
 
-          if (items.length === 0) {
-            dropdown.style.display = 'none';
-            return;
-          }
-
-          dropdown.innerHTML = items.map(item => `
-            <div class="autocomplete-item" onclick="applySuggestion('${field}', '${escapeHtml(item.title + ', ' + item.subtitle)}')">
-              <span class="auto-icon">${item.category === 'airport' ? '✈️' : item.category === 'hotel' ? '🏨' : '📍'}</span>
-              <div class="auto-text">
-                <strong>${escapeHtml(item.title)}</strong>
-                <span>${escapeHtml(item.subtitle)}</span>
-              </div>
-            </div>
-          `).join('');
-          dropdown.style.display = 'block';
-        } catch (e) {
-          dropdown.style.display = 'none';
-        }
-      }, 150);
+    input.addEventListener('focus', () => {
+      clearTimeout(timer);
+      fetchAndShowSuggestions(input.value.trim());
     });
 
     document.addEventListener('click', (e) => {
@@ -577,6 +694,8 @@ function initForm() {
       }
       if (isHourly && dInput && !dInput.value) {
         dInput.value = 'As Directed / Central London';
+      } else if (!isHourly && dInput && dInput.value === 'As Directed / Central London') {
+        dInput.value = '';
       }
       updatePricePreview();
     });
@@ -707,9 +826,11 @@ window.applySuggestion = function(field, text) {
   const input = document.getElementById(field === 'pickup' ? 'f-pickup' : 'f-dropoff');
   const dropdown = document.getElementById(field === 'pickup' ? 'dropdown-pickup' : 'dropdown-dropoff');
   if (input) {
+    input.dataset.suppressAutocomplete = '1';
     input.value = text;
     if (dropdown) dropdown.style.display = 'none';
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   }
 };
 
@@ -859,5 +980,6 @@ function escapeHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
