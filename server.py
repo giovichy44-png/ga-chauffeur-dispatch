@@ -1446,14 +1446,19 @@ def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, c
     </html>
     """
 
+DEFAULT_INVOICE2GO_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/29373772/49nb043/"
+
 def get_invoice2go_webhook_url():
     env_url = os.environ.get("INVOICE2GO_WEBHOOK_URL", "").strip()
     if env_url:
         return env_url
     try:
-        return (db.get_setting("invoice2go_webhook_url", "") or "").strip()
+        saved = (db.get_setting("invoice2go_webhook_url", "") or "").strip()
+        if saved:
+            return saved
     except Exception:
-        return ""
+        pass
+    return DEFAULT_INVOICE2GO_WEBHOOK_URL
 
 
 def send_invoice2go_webhook(booking, invoice_number, net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare, notes="", trigger_event="INVOICE_ISSUED"):
@@ -1464,6 +1469,8 @@ def send_invoice2go_webhook(booking, invoice_number, net_fare, parking_fee, drop
     tier_key = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
     vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
     issue_date = datetime.now().strftime("%Y-%m-%d")
+    item_desc = f"{booking.get('service_type', 'Chauffeur Journey')} ({vehicle_info['name']}) — {booking.get('pickup_address')} to {booking.get('dropoff_address')} on {booking.get('pickup_datetime')}"
+    subtotal_ex_vat = round(float(net_fare or 0) + float(parking_fee or 0) + float(dropoff_fee or 0) + float(congestion_charge or 0), 2)
 
     payload = {
         "event": trigger_event,
@@ -1473,6 +1480,16 @@ def send_invoice2go_webhook(booking, invoice_number, net_fare, parking_fee, drop
         "company_name": "GA Chauffeur Services Limited",
         "company_number": "11136878",
         "currency": "GBP",
+        "client_name": booking.get("customer_name"),
+        "client_email": booking.get("customer_email"),
+        "client_phone": booking.get("customer_phone"),
+        "item_name": f"Chauffeur Service ({booking.get('confirmation_code')}) — {vehicle_info['name']}",
+        "item_description": item_desc,
+        "unit_price_ex_vat": subtotal_ex_vat,
+        "unit_price_inc_vat": round(float(total_fare or 0), 2),
+        "tax_rate": 20.0,
+        "vat_amount": round(float(vat_amount or 0), 2),
+        "total_gbp": round(float(total_fare or 0), 2),
         "client": {
             "name": booking.get("customer_name"),
             "email": booking.get("customer_email"),
