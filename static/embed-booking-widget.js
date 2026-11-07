@@ -81,7 +81,7 @@
           <select id="ga-hours" style="width: 100%; box-sizing: border-box; background: #131916; border: 1px solid #c9b894; border-radius: 4px; padding: 10px 14px; color: #fff; font-size: 13px; font-family: inherit;">
             <option value="2">2 Hours (Minimum: £170 S / £190 V / £230 RR + VAT)</option>
             <option value="3">3 Hours</option>
-            <option value="4">4 Hours (Half Day: £340 S / £380 V / £460 RR + VAT)</option>
+            <option value="4">4 Hours</option>
             <option value="5">5 Hours</option>
             <option value="6">6 Hours</option>
             <option value="8">8 Hours</option>

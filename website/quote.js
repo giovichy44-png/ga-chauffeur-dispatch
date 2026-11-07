@@ -12,7 +12,7 @@ function calculateTariff(vehicle, service, hours) {
   }
   const base = service === 'hourly' ? rates.hourly * hours : rates[service];
   return {base, vat:Math.round(base * 100 / 6)/100, total:base,
-    included:service === 'day10' ? 80 : service === 'day12' ? 100 : service === 'hourly' && hours >= 4 ? 40 : null};
+    included:service === 'day10' ? 80 : service === 'day12' ? 100 : service === 'hourly' ? hours * 10 : null};
 }
 function detectAirportService(pickup,destination){
  const find=value=>{

@@ -1072,7 +1072,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
 
             <!-- Important Terms & Additional Charges Disclaimer -->
             <div style="background: rgba(255,255,255,0.02); border: 1px solid #2e3b33; border-radius: 4px; padding: 14px 16px; margin: 22px 0; font-size: 12px; color: #aab5ae; line-height: 1.6;">
-              <strong style="color: #edf0ea;">Additional Charges Note:</strong> Parking, airport drop-off fee and London Congestion Charge will be added where applicable and included in your final settlement.<br>
+              <strong style="color: #edf0ea;">Pricing &amp; Additional Charges:</strong> Hire time and mileage are calculated base-to-base from Hyde Park Corner, through your itinerary, and back to Hyde Park Corner. Parking, airport drop-off fees, and the £18 Congestion Charge (for pickups or drop-offs within the zone, or when driving into the zone during an as-directed service) apply where incurred.<br>
               <strong>Airport Waiting Policy:</strong> For airport arrivals, 45 minutes complimentary waiting time commences after flight landing. For departures, 15 minutes complimentary waiting time is provided.
             </div>
 
