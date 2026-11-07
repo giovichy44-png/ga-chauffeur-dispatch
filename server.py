@@ -1446,6 +1446,272 @@ def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, c
     </html>
     """
 
+def get_invoice2go_webhook_url():
+    env_url = os.environ.get("INVOICE2GO_WEBHOOK_URL", "").strip()
+    if env_url:
+        return env_url
+    try:
+        return (db.get_setting("invoice2go_webhook_url", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def send_invoice2go_webhook(booking, invoice_number, net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare, notes="", trigger_event="INVOICE_ISSUED"):
+    webhook_url = get_invoice2go_webhook_url()
+    if not webhook_url or not webhook_url.startswith("http"):
+        return False, "No Invoice2go/Zapier webhook URL configured"
+
+    tier_key = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
+    vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
+    issue_date = datetime.now().strftime("%Y-%m-%d")
+
+    payload = {
+        "event": trigger_event,
+        "invoice_number": invoice_number,
+        "booking_reference": booking.get("confirmation_code"),
+        "issue_date": issue_date,
+        "company_name": "GA Chauffeur Services Limited",
+        "company_number": "11136878",
+        "currency": "GBP",
+        "client": {
+            "name": booking.get("customer_name"),
+            "email": booking.get("customer_email"),
+            "phone": booking.get("customer_phone"),
+            "is_corporate_account": is_corporate_account_email(booking.get("customer_email")) or booking.get("payment_status") == "CORPORATE_INVOICE"
+        },
+        "journey": {
+            "service_type": booking.get("service_type"),
+            "pickup_datetime": booking.get("pickup_datetime"),
+            "pickup_address": booking.get("pickup_address"),
+            "dropoff_address": booking.get("dropoff_address"),
+            "vehicle": vehicle_info["name"],
+            "passengers": booking.get("passenger_count", 1),
+            "flight_number": booking.get("flight_number") or ""
+        },
+        "line_items": [
+            {
+                "name": f"Chauffeur Journey ({vehicle_info['name']}) — {booking.get('pickup_address')} to {booking.get('dropoff_address')}",
+                "quantity": 1,
+                "unit_price": round(float(net_fare or 0), 2),
+                "tax_rate": 20.0
+            }
+        ] + ([{
+            "name": "Airport Parking & Meet/Greet",
+            "quantity": 1,
+            "unit_price": round(float(parking_fee), 2),
+            "tax_rate": 20.0
+        }] if float(parking_fee or 0) > 0 else []) + ([{
+            "name": "Airport Drop-off Fee",
+            "quantity": 1,
+            "unit_price": round(float(dropoff_fee), 2),
+            "tax_rate": 20.0
+        }] if float(dropoff_fee or 0) > 0 else []) + ([{
+            "name": "London Congestion Charge (No VAT)",
+            "quantity": 1,
+            "unit_price": round(float(congestion_charge), 2),
+            "tax_rate": 0.0
+        }] if float(congestion_charge or 0) > 0 else []),
+        "totals": {
+            "net_fare": round(float(net_fare or 0), 2),
+            "parking_fee": round(float(parking_fee or 0), 2),
+            "dropoff_fee": round(float(dropoff_fee or 0), 2),
+            "congestion_charge": round(float(congestion_charge or 0), 2),
+            "vat_amount": round(float(vat_amount or 0), 2),
+            "total_gbp": round(float(total_fare or 0), 2)
+        },
+        "payment_status": booking.get("payment_status", "CORPORATE_INVOICE"),
+        "notes": notes or booking.get("special_requests") or ""
+    }
+
+    try:
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            webhook_url,
+            data=data_bytes,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "GAChauffeurs-Invoice2go-Bridge/1.0"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=8, context=_get_ssl_context()) as resp:
+            return (200 <= resp.status < 300), f"Sent to Invoice2go webhook (HTTP {resp.status})"
+    except Exception as e:
+        return False, f"Webhook error: {e}"
+
+
+def build_tax_invoice_html(booking, invoice_number, net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare, notes=""):
+    tier_key = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
+    vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
+    vehicle_img_url = vehicle_info.get("image_url", "https://gachauffeurs.co.uk/assets/fleet/sclass-front.png")
+    issue_date = datetime.now().strftime("%d %B %Y")
+    p_stat = str(booking.get("payment_status") or "CORPORATE_INVOICE").upper()
+    status_badge = "PAID" if p_stat == "PAID" else ("CORPORATE INVOICE — DUE ON RECEIPT" if "CORPORATE" in p_stat or "INVOICE" in p_stat else p_stat.replace("_", " "))
+
+    extra_rows = ""
+    if float(parking_fee or 0) > 0:
+        extra_rows += f"""
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">Airport Parking &amp; Meet/Greet</td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(parking_fee):.2f} GBP</td>
+        </tr>
+        """
+    if float(dropoff_fee or 0) > 0:
+        extra_rows += f"""
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">Airport Drop-off Fee</td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(dropoff_fee):.2f} GBP</td>
+        </tr>
+        """
+    if float(congestion_charge or 0) > 0:
+        extra_rows += f"""
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">London Congestion Charge (No VAT)</td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(congestion_charge):.2f} GBP</td>
+        </tr>
+        """
+
+    notes_block = ""
+    if notes:
+        notes_block = f"""
+        <div style="background: rgba(201,184,148,0.08); border-left: 3px solid #c9b894; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #edf0ea;">
+          <strong style="color: #c9b894;">Invoice Notes / Additional Journey Details:</strong><br>{notes}
+        </div>
+        """
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Tax Invoice {invoice_number} - GA Chauffeur Services Limited</title>
+    </head>
+    <body style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: #121715; color: #edf0ea; margin: 0; padding: 20px;">
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 640px; margin: 0 auto; background-color: #171f1b; border: 1px solid #2e3b33; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+        <tr>
+          <td style="background-color: #121715; padding: 26px 36px; border-bottom: 2px solid #c9b894;">
+            <table width="100%">
+              <tr>
+                <td>
+                  <span style="font-family: Georgia, serif; font-size: 34px; letter-spacing: -4px; color: #c9b894; line-height: 1;">GA</span>
+                  <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #3e4e44; padding-left: 14px; margin-left: 10px; color: #d0d8d1; line-height: 1.4; display: inline-block; vertical-align: middle;">Chauffeur<br>Services</span>
+                </td>
+                <td style="text-align: right;">
+                  <div style="font-family: Georgia, serif; font-size: 22px; color: #ffffff; letter-spacing: .06em; text-transform: uppercase;">Tax Invoice</div>
+                  <div style="color: #c9b894; font-size: 13px; font-family: monospace; margin-top: 4px;">{invoice_number}</div>
+                  <div style="color: #94a3b8; font-size: 11px; margin-top: 2px;">Issued: {issue_date}</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px 36px;">
+            <table width="100%" style="margin-bottom: 20px;">
+              <tr>
+                <td style="vertical-align: top;">
+                  <div style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Billed To</div>
+                  <div style="color: #ffffff; font-size: 16px; font-weight: bold; margin-top: 4px;">{booking.get('customer_name')}</div>
+                  <div style="color: #aab5ae; font-size: 13px; margin-top: 2px;">{booking.get('customer_email')}</div>
+                  <div style="color: #aab5ae; font-size: 13px; margin-top: 2px;">{booking.get('customer_phone')}</div>
+                </td>
+                <td style="vertical-align: top; text-align: right;">
+                  <div style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Booking Ref</div>
+                  <div style="color: #ffffff; font-size: 15px; font-family: monospace; font-weight: bold; margin-top: 4px;">{booking.get('confirmation_code')}</div>
+                  <div style="display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 4px; background: rgba(201,184,148,0.15); border: 1px solid #c9b894; color: #c9b894; font-size: 10px; font-weight: 700; letter-spacing: .08em;">
+                    {status_badge}
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Vehicle Photo Card -->
+            <div style="background-color: #ffffff; border: 2px solid #c9b894; border-radius: 8px; padding: 14px 18px; margin: 16px 0; text-align: center;">
+              <img src="{vehicle_img_url}" alt="{vehicle_info['name']}" style="max-width: 240px; width: 100%; height: auto; display: block; margin: 0 auto 8px auto;">
+              <div style="font-family: Georgia, serif; font-size: 18px; color: #171c1c; font-weight: bold;">{vehicle_info['name']}</div>
+              <div style="font-size: 12px; color: #475569; margin-top: 2px;">{booking.get('service_type', 'Executive Chauffeur Service')} • Pickup: {booking.get('pickup_datetime')}</div>
+            </div>
+
+            <!-- Route Details -->
+            <div style="background-color: #121715; border-left: 3px solid #c9b894; padding: 14px 18px; margin: 16px 0; border-radius: 0 6px 6px 0; border-top: 1px solid #2e3b33; border-right: 1px solid #2e3b33; border-bottom: 1px solid #2e3b33;">
+              <div style="margin-bottom: 8px;">
+                <span style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em;">Collection Point</span>
+                <div style="color: #ffffff; font-size: 14px; font-weight: 600; margin-top: 2px;">{booking.get('pickup_address')}</div>
+              </div>
+              <div style="border-top: 1px dashed #2e3b33; padding-top: 8px;">
+                <span style="color: #38bdf8; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em;">Destination</span>
+                <div style="color: #ffffff; font-size: 14px; font-weight: 600; margin-top: 2px;">{booking.get('dropoff_address')}</div>
+              </div>
+            </div>
+
+            {notes_block}
+
+            <!-- Invoice Line Items Table -->
+            <table width="100%" cellspacing="0" cellpadding="0" style="background-color: #121715; border-radius: 6px; padding: 16px 18px; margin: 18px 0; border: 1px solid #2e3b33;">
+              <tr>
+                <th style="text-align: left; color: #c9b894; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; padding-bottom: 10px; border-bottom: 1px solid #2e3b33;">Description</th>
+                <th style="text-align: right; color: #c9b894; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; padding-bottom: 10px; border-bottom: 1px solid #2e3b33;">Amount</th>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">
+                  <strong>Executive Chauffeur Service ({vehicle_info['name']})</strong><br>
+                  <span style="color: #94a3b8; font-size: 12px;">{booking.get('service_type')} • {booking.get('pickup_datetime')}</span>
+                </td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(net_fare):.2f} GBP</td>
+              </tr>
+              {extra_rows}
+              <tr>
+                <td style="padding: 10px 0 6px 0; color: #aab5ae; font-size: 13px;">UK VAT (20%)</td>
+                <td style="padding: 10px 0 6px 0; text-align: right; color: #ffffff; font-size: 14px;">£{float(vat_amount):.2f} GBP</td>
+              </tr>
+              <tr>
+                <td style="padding-top: 12px; color: #c9b894; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;">Total Invoice Amount</td>
+                <td style="padding-top: 12px; text-align: right; color: #c9b894; font-size: 22px; font-weight: bold; font-family: Georgia, serif;">£{float(total_fare):.2f} GBP</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: #121715; padding: 20px 36px; text-align: center; border-top: 1px solid #2e3b33; color: #aab5ae; font-size: 12px; line-height: 1.7;">
+            <strong style="color: #edf0ea; font-size: 13px;">GA Chauffeur Services Limited</strong> (Company No. 11136878)<br>
+            Direct Line: <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a> • Email: <a href="mailto:{FROM_EMAIL}" style="color: #c9b894; text-decoration: none;">{FROM_EMAIL}</a><br>
+            Website: <a href="{COMPANY_WEBSITE}" style="color: #c9b894; text-decoration: none;">gachauffeurs.co.uk</a>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """
+
+
+def build_tax_invoice_text(booking, invoice_number, net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare, notes=""):
+    tier_key = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
+    vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
+    issue_date = datetime.now().strftime("%d %B %Y")
+    return (
+        f"GA CHAUFFEUR SERVICES LIMITED — TAX INVOICE\n"
+        f"Invoice Number: {invoice_number}\n"
+        f"Booking Reference: {booking.get('confirmation_code')}\n"
+        f"Issue Date: {issue_date}\n\n"
+        f"Billed To: {booking.get('customer_name')} ({booking.get('customer_email')})\n"
+        f"Vehicle: {vehicle_info['name']}\n"
+        f"Pickup Date & Time: {booking.get('pickup_datetime')}\n"
+        f"Collection Point: {booking.get('pickup_address')}\n"
+        f"Destination: {booking.get('dropoff_address')}\n"
+        + (f"Notes: {notes}\n" if notes else "")
+        + f"\nBase Journey Fare: £{float(net_fare):.2f} GBP\n"
+        + (f"Airport Parking & Meet/Greet: £{float(parking_fee):.2f} GBP\n" if float(parking_fee or 0) > 0 else "")
+        + (f"Airport Drop-off Fee: £{float(dropoff_fee):.2f} GBP\n" if float(dropoff_fee or 0) > 0 else "")
+        + (f"London Congestion Charge: £{float(congestion_charge):.2f} GBP\n" if float(congestion_charge or 0) > 0 else "")
+        + f"UK VAT (20%): £{float(vat_amount):.2f} GBP\n"
+        + f"TOTAL INVOICE AMOUNT: £{float(total_fare):.2f} GBP\n\n"
+        f"GA Chauffeur Services Limited (Company No. 11136878)\n"
+        f"Direct Line: {COMPANY_PHONE}\n"
+        f"Email: {FROM_EMAIL}\n"
+        f"Website: {COMPANY_WEBSITE}"
+    )
+
+
 class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
@@ -1629,6 +1895,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/fleet-config":
             self.send_json({"vehicles": VEHICLE_CONFIGS})
+            return
+
+        if path == "/api/settings/invoice2go":
+            self.send_json({
+                "ok": True,
+                "webhook_url": get_invoice2go_webhook_url(),
+                "corporate_emails": sorted(list(get_corporate_account_emails()))
+            })
             return
 
         if path == "/api/stripe-config":
@@ -1983,6 +2257,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/settings/email":
             self.handle_update_email_settings(payload)
+            return
+
+        if path == "/api/settings/invoice2go":
+            url_val = str(payload.get("webhook_url") or "").strip()
+            db.set_setting("invoice2go_webhook_url", url_val)
+            self.send_json({"success": True, "webhook_url": get_invoice2go_webhook_url()})
+            return
+
+        if path.endswith("/send-invoice"):
+            parts = path.split("/")
+            booking_id = parts[3]
+            self.handle_send_invoice(booking_id, payload)
             return
 
         if path.endswith("/allocate"):
@@ -2567,6 +2853,34 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.commit()
         conn.close()
 
+        # Trigger Invoice2go / Zapier webhook if configured
+        send_invoice2go_webhook(
+            booking={
+                "confirmation_code": code,
+                "customer_name": payload["customer_name"],
+                "customer_email": payload["customer_email"],
+                "customer_phone": payload["customer_phone"],
+                "service_type": service_type,
+                "pickup_datetime": payload["pickup_datetime"],
+                "pickup_address": full_pickup_addr,
+                "dropoff_address": full_dropoff_addr,
+                "vehicle_class": normalized_vehicle,
+                "passenger_count": passenger_count,
+                "flight_number": flight_num,
+                "payment_status": payment_status,
+                "special_requests": special_req_str
+            },
+            invoice_number=f"INV-{code}",
+            net_fare=net_fare,
+            parking_fee=parking_fee,
+            dropoff_fee=dropoff_fee,
+            congestion_charge=congestion_charge,
+            vat_amount=vat_amount,
+            total_fare=total_fare,
+            notes=special_req_str,
+            trigger_event="BOOKING_CREATED"
+        )
+
         result = {
             "id": booking_id,
             "confirmation_code": code,
@@ -2911,6 +3225,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 cnf_rec_id, booking_id, "EMAIL", booking["customer_email"],
                 receipt_subject, receipt_content, "DELIVERED" if rec_sent else "FAILED", now_str
             ))
+            send_invoice2go_webhook(
+                booking=booking,
+                invoice_number=f"INV-{booking['confirmation_code']}",
+                net_fare=booking.get("fare_amount", 165.0),
+                parking_fee=booking.get("parking_fee", 0.0),
+                dropoff_fee=booking.get("dropoff_fee", 0.0),
+                congestion_charge=booking.get("congestion_charge", 0.0),
+                vat_amount=booking.get("vat_amount", 0.0),
+                total_fare=booking.get("total_fare") or booking.get("fare_amount", 165.0),
+                notes=booking.get("special_requests") or "",
+                trigger_event="JOURNEY_COMPLETED"
+            )
 
         elif action == "CANCEL":
             new_booking_status = "CANCELLED"
@@ -3016,6 +3342,111 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         self.send_json(res)
+
+    def handle_send_invoice(self, booking_id, payload):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.send_json({"error": "Booking not found"}, 404)
+            return
+
+        booking = dict(row)
+        real_id = booking["id"]
+        code = booking.get("confirmation_code", real_id)
+        invoice_number = f"INV-{code}"
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        net_fare = round(float(payload.get("net_fare", booking.get("fare_amount", 165.0))), 2)
+        parking_fee = round(float(payload.get("parking_fee", booking.get("parking_fee", 0.0))), 2)
+        dropoff_fee = round(float(payload.get("dropoff_fee", booking.get("dropoff_fee", 0.0))), 2)
+        congestion_charge = round(float(payload.get("congestion_charge", booking.get("congestion_charge", 0.0))), 2)
+        vat_amount = round((net_fare + parking_fee + dropoff_fee) * 0.20, 2)
+        total_fare = round(net_fare + parking_fee + dropoff_fee + vat_amount + congestion_charge, 2)
+        notes = str(payload.get("notes") if "notes" in payload else (booking.get("special_requests") or "")).strip()
+        recipient_email = str(payload.get("recipient_email") or booking.get("customer_email") or "").strip()
+
+        cursor.execute("""
+            UPDATE bookings
+            SET fare_amount = ?, parking_fee = ?, dropoff_fee = ?, congestion_charge = ?,
+                vat_amount = ?, total_fare = ?, updated_at = ?
+            WHERE id = ?
+        """, (net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare, now_str, real_id))
+
+        inv_subject = f"Tax Invoice {invoice_number} — GA Chauffeur Services Limited"
+        inv_html = build_tax_invoice_html(
+            booking=booking,
+            invoice_number=invoice_number,
+            net_fare=net_fare,
+            parking_fee=parking_fee,
+            dropoff_fee=dropoff_fee,
+            congestion_charge=congestion_charge,
+            vat_amount=vat_amount,
+            total_fare=total_fare,
+            notes=notes
+        )
+        inv_text = build_tax_invoice_text(
+            booking=booking,
+            invoice_number=invoice_number,
+            net_fare=net_fare,
+            parking_fee=parking_fee,
+            dropoff_fee=dropoff_fee,
+            congestion_charge=congestion_charge,
+            vat_amount=vat_amount,
+            total_fare=total_fare,
+            notes=notes
+        )
+
+        sent_ok, delivery_msg = send_smtp_email(recipient_email, inv_subject, inv_html, inv_text)
+        owner_inbox = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
+        if owner_inbox.lower() != recipient_email.lower():
+            send_smtp_email(owner_inbox, f"[Copy] {inv_subject} ({booking.get('customer_name')})", inv_html, inv_text, reply_to=recipient_email)
+
+        webhook_ok, webhook_msg = send_invoice2go_webhook(
+            booking=booking,
+            invoice_number=invoice_number,
+            net_fare=net_fare,
+            parking_fee=parking_fee,
+            dropoff_fee=dropoff_fee,
+            congestion_charge=congestion_charge,
+            vat_amount=vat_amount,
+            total_fare=total_fare,
+            notes=notes,
+            trigger_event="INVOICE_ISSUED"
+        )
+
+        cnf_id = f"CNF-{random.randint(1000, 9999)}"
+        cursor.execute("""
+            INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            cnf_id, real_id, "EMAIL", recipient_email,
+            inv_subject, inv_text, "DELIVERED" if sent_ok else "FAILED", now_str
+        ))
+
+        cursor.execute("""
+            INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            real_id, booking.get("chauffeur_id"), "INVOICE_SENT", "Dispatch Control",
+            f"Tax Invoice {invoice_number} (£{total_fare:.2f}) emailed to {recipient_email}. {webhook_msg}", now_str
+        ))
+
+        conn.commit()
+        conn.close()
+
+        self.send_json({
+            "success": True,
+            "invoice_number": invoice_number,
+            "recipient": recipient_email,
+            "total_fare": total_fare,
+            "email_sent": sent_ok,
+            "webhook_synced": webhook_ok,
+            "webhook_note": webhook_msg,
+            "delivery_note": delivery_msg
+        })
 
     def handle_manual_card_auth(self, booking_id, payload):
         conn = db.get_connection()

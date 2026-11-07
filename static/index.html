@@ -380,14 +380,30 @@
       </div>
     </section>
 
-    <!-- TAB 4: SENT CONFIRMATIONS & OUTBOX -->
+    <!-- TAB 4: SENT CONFIRMATIONS, INVOICING & INVOICE2GO -->
     <section class="tab-content" id="pane-outbox">
       <div class="content-container">
+        <div class="outbox-card" style="margin-bottom: 22px;">
+          <div class="outbox-header">
+            <div>
+              <h2>Invoice2go / Zapier Webhook Integration</h2>
+              <p>Connect your Invoice2go account via Zapier (<em>Invoice2go &rarr; Account &amp; Settings &rarr; Connect to Zapier &rarr; Catch Hook</em>) to automatically sync clients, line items, and invoices whenever a booking is created, completed, or invoiced.</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px;">
+            <input type="url" id="invoice2go-webhook-input" placeholder="https://hooks.zapier.com/hooks/catch/..." style="flex: 1; min-width: 260px; background: #121715; border: 1px solid var(--border); color: #fff; padding: 10px 14px; border-radius: 6px; font-size: 13px;">
+            <button type="button" class="btn btn-gold" onclick="saveInvoice2goWebhook()">Save Invoice2go Webhook</button>
+          </div>
+          <div style="margin-top: 10px; font-size: 12px; color: var(--text-muted);">
+            <strong>Approved Corporate Invoice Accounts (No Card Required):</strong> <span style="color: var(--gold-accent);">makiko.thomas@suntory.com</span>, <span style="color: var(--gold-accent);">garaqishvili@gmail.com</span>
+          </div>
+        </div>
+
         <div class="outbox-card">
           <div class="outbox-header">
             <div>
-              <h2>Sent Customer Confirmations</h2>
-              <p>Automated emails sent from <strong>enquiries@gachauffeurs.co.uk</strong>.</p>
+              <h2>Sent Customer Confirmations &amp; Tax Invoices</h2>
+              <p>Automated confirmations and tax invoices sent from <strong>enquiries@gachauffeurs.co.uk</strong>.</p>
             </div>
           </div>
 
@@ -495,9 +511,29 @@
     </div>
   </div>
 
+  <!-- MODAL: GENERATE & SEND TAX INVOICE -->
+  <div class="modal-backdrop" id="modal-invoice" style="display: none;">
+    <div class="modal-box voucher-modal-box" style="max-width: 580px;">
+      <div class="modal-head">
+        <h3>Tax Invoice &amp; Invoice2go Sync</h3>
+        <button class="modal-x" onclick="closeModal('modal-invoice')">&times;</button>
+      </div>
+      <div class="modal-body" id="invoice-modal-body">
+        <!-- Injected -->
+      </div>
+      <div class="modal-foot" style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+        <button class="btn btn-secondary" onclick="window.print()">🖨️ Print / Save PDF</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary" onclick="closeModal('modal-invoice')">Cancel</button>
+          <button class="btn btn-gold" id="btn-send-invoice-confirm" onclick="submitSendInvoice()">📧 Email Tax Invoice &amp; Sync Invoice2go ↗</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=20261107a3"></script>
+  <script src="app.js?v=20261107a4"></script>
 </body>
 </html>

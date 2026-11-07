@@ -264,6 +264,10 @@ function renderJobsList() {
               <span style="background: rgba(74, 222, 128, 0.15); border: 1px solid rgba(74, 222, 128, 0.4); color: #4ade80; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
                 💳 PRE-AUTH (${escapeHtml(b.card_brand || 'Card')} •••• ${escapeHtml(b.card_last4 || '')})
               </span>
+            ` : b.payment_status === 'CORPORATE_INVOICE' ? `
+              <span style="background: rgba(201, 184, 148, 0.18); border: 1px solid var(--gold-accent); color: var(--gold-accent); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px;">
+                🏢 CORPORATE INVOICE
+              </span>
             ` : b.payment_status === 'PAID' ? `
               <span style="background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.4); color: #34d399; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px;">
                 ✓ PAID
@@ -273,6 +277,7 @@ function renderJobsList() {
 
           <div class="action-btn-group">
             <button class="btn btn-secondary" onclick="viewVoucher('${b.id}')">Voucher</button>
+            <button class="btn btn-secondary" onclick="openInvoiceModal('${b.id}')" style="border-color: var(--gold-accent); color: var(--gold-accent); font-weight: 600;" title="Create &amp; Email Tax Invoice">📄 Invoice</button>
             ${b.payment_status === 'PRE_AUTHORIZED' ? `<button class="btn btn-secondary" onclick="captureBookingPayment('${b.id}', ${b.total_fare})" style="border-color: #4ade80; color: #4ade80; font-weight: 600;" title="Capture pre-authorised hold">💳 Capture £${parseFloat(b.total_fare).toFixed(2)}</button>` : ''}
             ${actionBtnHtml}
             <button class="btn btn-secondary" onclick="deleteBooking('${b.id}', '${b.confirmation_code}')" style="border-color: rgba(239,68,68,0.4); color: #f87171;" title="Delete booking">🗑️ Delete</button>
@@ -960,6 +965,175 @@ async function viewVoucher(bookingId) {
     document.getElementById('modal-voucher').style.display = 'flex';
   } catch (err) {}
 }
+
+// Tax Invoice & Invoice2go Sync Modal
+let activeInvoiceBookingId = null;
+
+async function openInvoiceModal(bookingId) {
+  try {
+    const res = await fetch(`/api/bookings/${bookingId}`);
+    const data = await res.json();
+    if (!data.booking) return;
+
+    const b = data.booking;
+    activeInvoiceBookingId = b.id;
+    const body = document.getElementById('invoice-modal-body');
+    if (!body) return;
+
+    const net = parseFloat(b.fare_amount || 165.0).toFixed(2);
+    const park = parseFloat(b.parking_fee || 0.0).toFixed(2);
+    const drop = parseFloat(b.dropoff_fee || 0.0).toFixed(2);
+    const cong = parseFloat(b.congestion_charge || 0.0).toFixed(2);
+    const vat = ((parseFloat(net) + parseFloat(park) + parseFloat(drop)) * 0.20).toFixed(2);
+    const tot = (parseFloat(net) + parseFloat(park) + parseFloat(drop) + parseFloat(vat) + parseFloat(cong)).toFixed(2);
+
+    body.innerHTML = `
+      <div style="background: #09090c; border: 1px solid var(--gold-border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--gold-border); padding-bottom: 10px;">
+          <div>
+            <div style="font-family: var(--font-serif); font-size: 16px; color: #fff; font-weight: 700;">TAX INVOICE: INV-${escapeHtml(b.confirmation_code)}</div>
+            <div style="font-size: 12px; color: var(--gold-accent);">GA Chauffeur Services Limited (Company No. 11136878)</div>
+          </div>
+          <div id="inv-modal-total-top" style="text-align: right; font-size: 20px; font-weight: 700; color: var(--gold-accent); font-family: var(--font-mono);">
+            £${tot} GBP
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Billed To</label>
+            <div style="font-size: 14px; font-weight: 700; color: #fff;">${escapeHtml(b.customer_name)}</div>
+          </div>
+          <div>
+            <label style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Recipient Email</label>
+            <input type="email" id="inv-email" value="${escapeHtml(b.customer_email)}" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; margin-top: 2px;">
+          </div>
+        </div>
+
+        <div style="background: #141418; padding: 10px 12px; border-radius: 6px; font-size: 12px;">
+          <div style="color: var(--gold-accent); font-weight: 700;">JOURNEY (${escapeHtml(b.pickup_datetime)}):</div>
+          <div style="color: #fff; margin-top: 2px;">${escapeHtml(b.pickup_address)} &rarr; ${escapeHtml(b.dropoff_address)}</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted);">Base Journey Fare (£)</label>
+            <input type="number" step="0.01" id="inv-net" value="${net}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted);">Airport Parking / Meet (£)</label>
+            <input type="number" step="0.01" id="inv-park" value="${park}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted);">Airport Drop-off Fee (£)</label>
+            <input type="number" step="0.01" id="inv-drop" value="${drop}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--text-muted);">Congestion Charge (£, No VAT)</label>
+            <input type="number" step="0.01" id="inv-cong" value="${cong}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 11px; color: var(--text-muted);">Invoice Notes / Extra Mileage or Waiting Time</label>
+          <input type="text" id="inv-notes" value="${escapeHtml(b.special_requests || '')}" placeholder="e.g. Corporate Account Invoice — Due on Receipt" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 12px; margin-top: 4px;">
+        </div>
+
+        <div style="background: #141418; padding: 10px 12px; border-radius: 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: var(--text-muted);">UK VAT (20%): <strong id="inv-vat-disp" style="color: #fff;">£${vat}</strong></span>
+          <span style="color: var(--gold-accent); font-weight: 700; font-size: 15px;">Total Invoice: <span id="inv-total-disp">£${tot} GBP</span></span>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modal-invoice').style.display = 'flex';
+  } catch (err) {}
+}
+
+function recalcInvoiceModal() {
+  const net = parseFloat(document.getElementById('inv-net')?.value || 0);
+  const park = parseFloat(document.getElementById('inv-park')?.value || 0);
+  const drop = parseFloat(document.getElementById('inv-drop')?.value || 0);
+  const cong = parseFloat(document.getElementById('inv-cong')?.value || 0);
+  const vat = (net + park + drop) * 0.20;
+  const tot = net + park + drop + vat + cong;
+  const vEl = document.getElementById('inv-vat-disp');
+  const tEl = document.getElementById('inv-total-disp');
+  const topEl = document.getElementById('inv-modal-total-top');
+  if (vEl) vEl.textContent = `£${vat.toFixed(2)}`;
+  if (tEl) tEl.textContent = `£${tot.toFixed(2)} GBP`;
+  if (topEl) topEl.textContent = `£${tot.toFixed(2)} GBP`;
+}
+
+async function submitSendInvoice() {
+  if (!activeInvoiceBookingId) return;
+  const btn = document.getElementById('btn-send-invoice-confirm');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Sending Invoice...';
+  }
+  try {
+    const payload = {
+      recipient_email: document.getElementById('inv-email')?.value || '',
+      net_fare: parseFloat(document.getElementById('inv-net')?.value || 0),
+      parking_fee: parseFloat(document.getElementById('inv-park')?.value || 0),
+      dropoff_fee: parseFloat(document.getElementById('inv-drop')?.value || 0),
+      congestion_charge: parseFloat(document.getElementById('inv-cong')?.value || 0),
+      notes: document.getElementById('inv-notes')?.value || ''
+    };
+    const res = await fetch(`/api/bookings/${activeInvoiceBookingId}/send-invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeModal('modal-invoice');
+      showToast(`Invoice ${data.invoice_number} emailed to ${data.recipient}!`);
+      loadData();
+    } else {
+      alert(data.error || 'Could not send invoice.');
+    }
+  } catch (err) {
+    alert('Failed to send invoice.');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '📧 Email Tax Invoice & Sync Invoice2go ↗';
+    }
+  }
+}
+
+async function loadInvoice2goSettings() {
+  try {
+    const res = await fetch('/api/settings/invoice2go');
+    const data = await res.json();
+    const inp = document.getElementById('invoice2go-webhook-input');
+    if (inp && data && data.webhook_url) {
+      inp.value = data.webhook_url;
+    }
+  } catch (_) {}
+}
+
+async function saveInvoice2goWebhook() {
+  const inp = document.getElementById('invoice2go-webhook-input');
+  const url = inp ? inp.value.trim() : '';
+  try {
+    const res = await fetch('/api/settings/invoice2go', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhook_url: url })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Invoice2go / Zapier Webhook URL saved!');
+    }
+  } catch (_) {
+    showToast('Could not save webhook URL');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadInvoice2goSettings);
 
 function showToast(msg) {
   const stack = document.getElementById('toast-stack');
