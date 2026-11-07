@@ -578,7 +578,7 @@ function initForm() {
   async function updatePricePreview() {
     const v = vSelect ? vSelect.value : 'mercedes_s_class';
     const sType = serviceSelect ? serviceSelect.value : 'Airport arrival';
-    const hours = hoursSelect ? hoursSelect.value : 2;
+    const hours = hoursSelect ? hoursSelect.value : 4;
     const p = pInput ? pInput.value : '';
     const d = dInput ? dInput.value : '';
 
@@ -635,6 +635,7 @@ function initForm() {
         medium_cases: parseInt(medCases ? medCases.value : 0),
         hand_luggage: parseInt(handLug ? handLug.value : 0),
         special_requests: document.getElementById('f-notes').value || '',
+        test_no_charge: document.getElementById('f-test-no-charge') ? document.getElementById('f-test-no-charge').checked : false,
         source: 'DISPATCH_PORTAL'
       };
 
@@ -666,7 +667,7 @@ function initForm() {
           submitBtn.textContent = 'Confirm Booking & Send Email ↗';
         }
       } catch (err) {
-        alert('Network error submitting job');
+        alert((err && err.message) || 'Network error submitting job');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Confirm Booking & Send Email ↗';
       }
