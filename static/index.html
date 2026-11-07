@@ -16,7 +16,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261107a3">
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())).catch(() => {});
+    }
+    if ('caches' in window) {
+      caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+    }
+  </script>
 </head>
 <body>
 
@@ -490,7 +498,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDNHZ7EWxRbvZVpuzAMJzfnKL4n4EPr9Xo&libraries=places&loading=async&v=weekly" async defer></script>
-  <script src="app.js?v=20261107a2"></script>
+  <script src="app.js?v=20261107a3"></script>
 </body>
 </html>

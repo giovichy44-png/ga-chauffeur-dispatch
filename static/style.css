@@ -1166,18 +1166,19 @@ button, input, textarea, select {
    10. AUTOCOMPLETE DROPDOWN & POSTCODE LOOKUP
    ========================================================================== */
 .autocomplete-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
   background: var(--bg-card);
   border: 1px solid var(--gold-border);
   border-radius: 4px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
   z-index: 1500;
-  max-height: 280px;
+  max-height: 240px;
   overflow-y: auto;
   margin-top: 4px;
+  margin-bottom: 6px;
 }
 
 .autocomplete-item {

@@ -518,24 +518,25 @@ function initForm() {
       const handleSelect = async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        let fullText = item.subtitle
-          ? (item.subtitle.toLowerCase().includes((item.title || '').toLowerCase()) ? item.subtitle : `${item.title}, ${item.subtitle}`)
-          : (item.title || '');
+        let fullText = item.full_address || (
+          item.subtitle
+            ? (item.subtitle.toLowerCase().includes((item.title || '').toLowerCase()) ? item.subtitle : `${item.title}, ${item.subtitle}`)
+            : (item.title || '')
+        );
 
-        if (item.placePrediction) {
+        // Apply immediately so the dropdown closes and field populates right away
+        window.applySuggestion(field, fullText);
+
+        // If this came from Google Places v1 (has place_id), resolve full postcode address in background
+        if (item.place_id) {
           try {
-            const place = item.placePrediction.toPlace();
-            await place.fetchFields({ fields: ['displayName', 'formattedAddress'] });
-            const addr = place.formattedAddress || '';
-            const dName = place.displayName || item.title || '';
-            if (addr) {
-              fullText = dName && !addr.toLowerCase().includes(dName.toLowerCase())
-                ? `${dName}, ${addr}`
-                : addr;
+            const pRes = await fetch(`/api/place-details?place_id=${encodeURIComponent(item.place_id)}`);
+            const pData = await pRes.json();
+            if (pData && pData.ok && pData.full_address) {
+              window.applySuggestion(field, pData.full_address);
             }
           } catch (_) {}
         }
-        window.applySuggestion(field, fullText);
       };
 
       row.addEventListener('mousedown', handleSelect);

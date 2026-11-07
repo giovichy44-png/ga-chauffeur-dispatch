@@ -280,6 +280,27 @@ def check_auth(headers):
 
 POSTCODE_CACHE = {}
 
+DEFAULT_CORPORATE_EMAILS = {
+    "makiko.thomas@suntory.com",
+    "garaqishvili@gmail.com",
+}
+
+def get_corporate_account_emails():
+    emails = set(DEFAULT_CORPORATE_EMAILS)
+    extra = os.environ.get("CORPORATE_ACCOUNT_EMAILS", "")
+    for item in extra.split(","):
+        cleaned = item.strip().lower()
+        if cleaned and "@" in cleaned:
+            emails.add(cleaned)
+    return emails
+
+def is_corporate_account_email(email):
+    if not email:
+        return False
+    return str(email).strip().lower() in get_corporate_account_emails()
+
+GOOGLE_PLACES_BROWSER_KEY = os.environ.get("GOOGLE_PLACES_BROWSER_KEY", "AIzaSyDNHZ7EWxRbvZVpuzAMJzfnKL4n4EPr9Xo").strip()
+
 PUBLIC_PATHS = {
     "/api/flight-webhook",
     "/api/route-quote",
@@ -288,6 +309,8 @@ PUBLIC_PATHS = {
     "/api/enquiry",
     "/embed-booking-widget.js",
     "/api/stripe-config",
+    "/api/corporate-check",
+    "/api/place-details",
     "/api/quote",
     "/api/suggestions",
     "/api/lookup-postcode",
@@ -304,6 +327,8 @@ def is_public_request(method, path):
     clean_path = path.split("?")[0].rstrip("/") or "/"
     if clean_path in (
         "/api/stripe-config",
+        "/api/corporate-check",
+        "/api/place-details",
         "/embed-booking-widget.js",
         "/api/quote",
         "/api/suggestions",
@@ -1021,7 +1046,17 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     )
 
     payment_line = ""
-    if card_last4:
+    if payment_status == "CORPORATE_INVOICE" or "CORPORATE" in str(card_brand or "").upper():
+        payment_line = """
+        <tr>
+          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Account Status</td>
+          <td style="text-align: right; color: #4ade80; font-size: 13px; font-weight: 600; padding-top: 10px;">
+            ✓ Corporate Account Confirmed<br>
+            <span style="color: #aab5ae; font-size: 12px; font-weight: normal;">Billed by Corporate Invoice after journey completion</span>
+          </td>
+        </tr>
+        """
+    elif card_last4:
         hold_badge = "Card Pre-Authorised (Test — No Charge)" if "TEST" in str(card_auth_code or "").upper() or "TEST" in str(card_brand or "").upper() else f"Card Pre-Authorised (Hold Ref: {card_auth_code or 'VERIFIED'})"
         payment_line = f"""
         <tr>
@@ -1279,8 +1314,12 @@ def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, c
     wa_phone = clean_phone.lstrip("+")
     source_label = "Website (gachauffeurs.co.uk)" if "WEBSITE" in str(source or "").upper() else "Dispatch Console (dispatch.gachauffeurs.co.uk)"
     auth_badge = (
-        f"PRE-AUTHORISED: {card_brand or 'Card'} •••• {card_last4} (Ref: {card_auth_code or 'VERIFIED'})"
-        if card_last4 else payment_status.replace("_", " ")
+        "CORPORATE ACCOUNT — BILLED BY INVOICE"
+        if payment_status == "CORPORATE_INVOICE" or "CORPORATE" in str(card_brand or "").upper()
+        else (
+            f"PRE-AUTHORISED: {card_brand or 'Card'} •••• {card_last4} (Ref: {card_auth_code or 'VERIFIED'})"
+            if card_last4 else payment_status.replace("_", " ")
+        )
     )
     return f"""
     <!DOCTYPE html>
@@ -1411,6 +1450,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
 
+    def end_headers(self):
+        path_only = (self.path or "").split("?")[0].lower()
+        if path_only.endswith((".html", ".js", ".css", "/")) or path_only in ("", "/"):
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        super().end_headers()
+
     def log_message(self, format, *args):
         sys.stderr.write(f"[{datetime.now().strftime('%H:%M:%S')}] {args[0]} {args[1]}\n")
 
@@ -1463,10 +1510,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(len(content)))
             self.send_header("Access-Control-Allow-Origin", "*")
-            if ext in (".css", ".js", ".png", ".webp", ".jpg", ".svg", ".ico"):
+            if ext in (".png", ".webp", ".jpg", ".svg", ".ico"):
                 self.send_header("Cache-Control", "public, max-age=86400")
             else:
-                self.send_header("Cache-Control", "no-cache, must-revalidate")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
             self.end_headers()
             self.wfile.write(content)
         except Exception as e:
@@ -1592,6 +1639,46 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        if path == "/api/corporate-check":
+            email_val = query.get("email", [""])[0].strip().lower()
+            self.send_json({
+                "ok": True,
+                "corporate": is_corporate_account_email(email_val),
+                "email": email_val
+            })
+            return
+
+        if path == "/api/place-details":
+            place_id = query.get("place_id", [""])[0].strip()
+            if not place_id or not re.fullmatch(r"[A-Za-z0-9_\-]+", place_id):
+                self.send_json({"error": "Invalid place_id"}, 400)
+                return
+            try:
+                p_url = f"https://places.googleapis.com/v1/places/{place_id}"
+                p_req = urllib.request.Request(p_url, headers={
+                    "Referer": "https://gachauffeurs.co.uk/",
+                    "Origin": "https://gachauffeurs.co.uk",
+                    "X-Goog-Api-Key": GOOGLE_PLACES_BROWSER_KEY,
+                    "X-Goog-FieldMask": "displayName,formattedAddress,location"
+                })
+                with urllib.request.urlopen(p_req, timeout=5, context=_get_ssl_context()) as p_resp:
+                    p_data = json.loads(p_resp.read(65536))
+                disp = (p_data.get("displayName") or {}).get("text") or ""
+                addr = p_data.get("formattedAddress") or ""
+                loc = p_data.get("location") or {}
+                full_text = f"{disp}, {addr}" if (disp and addr and disp.lower() not in addr.lower()) else (addr or disp)
+                self.send_json({
+                    "ok": True,
+                    "display_name": disp,
+                    "formatted_address": addr,
+                    "full_address": full_text,
+                    "lat": loc.get("latitude"),
+                    "lng": loc.get("longitude")
+                })
+            except Exception as err:
+                self.send_json({"error": str(err)}, 502)
+            return
+
         # Retain the existing Sites-hosted Ideal Postcodes connection after migration.
         if path in ("/api/forms-config", "/api/postcode"):
             if path == "/api/forms-config":
@@ -1699,28 +1786,77 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             results.sort(key=lambda x: x[0], reverse=True)
             matched = [item for _, item in results]
 
-            gkey = os.environ.get("GOOGLE_MAPS_SERVER_KEY", "").strip()
-            if len(q_raw) >= 2 and gkey and len(matched) < 10:
+            # 1. If the user typed a UK postcode, fetch exact building/house addresses from Ideal Postcodes
+            pc_clean = re.sub(r"\s+", "", q_raw).upper()
+            if re.fullmatch(r"[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}", pc_clean):
                 try:
-                    g_url = "https://maps.googleapis.com/maps/api/place/autocomplete/json?" + urllib.parse.urlencode({
+                    cache_key = pc_clean + "/0"
+                    cached_pc = POSTCODE_CACHE.get(cache_key)
+                    if cached_pc and cached_pc[0] > time.time():
+                        pc_result = cached_pc[1]
+                    else:
+                        pc_url = "https://ga-chauffeur-services.giovichy44.chatgpt.site/api/postcode?" + urllib.parse.urlencode({"postcode": pc_clean, "page": "0"})
+                        pc_req = urllib.request.Request(pc_url, headers={
+                            "User-Agent": "GAChauffeurs-PostcodeProxy/1.0 (+https://gachauffeurs.co.uk)",
+                            "Accept": "application/json",
+                        })
+                        with urllib.request.urlopen(pc_req, timeout=5, context=_get_ssl_context()) as pc_resp:
+                            pc_result = json.loads(pc_resp.read(200000))
+                        if isinstance(pc_result, dict) and isinstance(pc_result.get("addresses"), list):
+                            POSTCODE_CACHE[cache_key] = (time.time() + 900, pc_result)
+                    for addr in (pc_result.get("addresses") or [])[:10]:
+                        parts = [p.strip() for p in addr.split(",") if p.strip()]
+                        title_part = parts[0] if parts else addr
+                        sub_part = ", ".join(parts[1:]) if len(parts) > 1 else addr
+                        matched.append({
+                            "title": title_part,
+                            "subtitle": sub_part,
+                            "full_address": addr,
+                            "category": "address"
+                        })
+                except Exception:
+                    pass
+
+            # 2. Query Google Places API (New) v1 for live UK street addresses, hotels, postcodes & landmarks
+            if len(q_raw) >= 2 and len(matched) < 12:
+                try:
+                    p_body = json.dumps({
                         "input": q_raw,
-                        "components": "country:gb",
-                        "key": gkey
-                    })
-                    req = urllib.request.Request(g_url, headers={"User-Agent": "GAChauffeurs-Dispatch/1.0"})
-                    with urllib.request.urlopen(req, timeout=4, context=_get_ssl_context()) as resp:
-                        g_data = json.loads(resp.read(65536))
-                    for pred in g_data.get("predictions", [])[:8]:
-                        fmt = pred.get("structured_formatting") or {}
-                        main_txt = fmt.get("main_text") or pred.get("description", "")
-                        sec_txt = fmt.get("secondary_text") or ""
-                        full_desc = pred.get("description") or f"{main_txt}, {sec_txt}".strip(", ")
-                        if not any(m["title"].lower() == main_txt.lower() for m in matched):
+                        "includedRegionCodes": ["gb"]
+                    }).encode("utf-8")
+                    p_req = urllib.request.Request(
+                        "https://places.googleapis.com/v1/places:autocomplete",
+                        data=p_body,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Referer": "https://gachauffeurs.co.uk/",
+                            "Origin": "https://gachauffeurs.co.uk",
+                            "X-Goog-Api-Key": GOOGLE_PLACES_BROWSER_KEY,
+                        },
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(p_req, timeout=4, context=_get_ssl_context()) as p_resp:
+                        p_data = json.loads(p_resp.read(65536))
+                    for sug in (p_data.get("suggestions") or [])[:8]:
+                        pred = sug.get("placePrediction") or {}
+                        if not pred:
+                            continue
+                        place_id = pred.get("placeId") or ""
+                        fmt = pred.get("structuredFormat") or {}
+                        main_txt = (fmt.get("mainText") or {}).get("text") or (pred.get("text") or {}).get("text") or ""
+                        sec_txt = (fmt.get("secondaryText") or {}).get("text") or ""
+                        full_desc = (pred.get("text") or {}).get("text") or f"{main_txt}, {sec_txt}".strip(", ")
+                        types = set(pred.get("types") or [])
+                        cat = "airport" if ("airport" in types or "airport" in full_desc.lower() or "terminal" in full_desc.lower()) else (
+                            "hotel" if ("lodging" in types or "hotel" in types or "hotel" in full_desc.lower()) else "address"
+                        )
+                        if main_txt and not any(m["title"].lower().replace("'", "") == main_txt.lower().replace("'", "") for m in matched):
                             matched.append({
                                 "title": main_txt,
-                                "subtitle": sec_txt,
+                                "subtitle": sec_txt or full_desc,
                                 "full_address": full_desc,
-                                "category": "airport" if "airport" in full_desc.lower() or "terminal" in full_desc.lower() else ("hotel" if "hotel" in full_desc.lower() else "address")
+                                "place_id": place_id,
+                                "category": cat
                             })
                 except Exception:
                     pass
@@ -1943,11 +2079,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
     def handle_serve_sw(self):
         sw_code = """
-        const CACHE_NAME = 'ga-chauffeurs-v2';
-        self.addEventListener('install', (e) => self.skipWaiting());
-        self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
+        const CACHE_NAME = 'ga-chauffeurs-v4';
+        self.addEventListener('install', (e) => {
+            self.skipWaiting();
+            e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))));
+        });
+        self.addEventListener('activate', (e) => {
+            e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
+        });
         self.addEventListener('fetch', (e) => {
-            e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+            e.respondWith(fetch(e.request, { cache: 'no-store' }).catch(() => caches.match(e.request)));
         });
         """
         body = sw_code.encode("utf-8")
@@ -2163,9 +2304,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         existing_intent=payload.get('payment_intent_id')
         test_no_charge = bool(payload.get("test_no_charge") or str(payload.get("payment_mode", "")).upper() == "TEST_PREAUTH")
+        is_corporate_booking = is_corporate_account_email(payload.get("customer_email"))
         binding_fields=['customer_name','customer_email','customer_phone','pickup_address','dropoff_address','pickup_datetime','vehicle_class','service_type','hours','passenger_count','large_cases','medium_cases','hand_luggage']
         binding=hashlib.sha256(json.dumps({k:payload.get(k) for k in binding_fields},sort_keys=True).encode()).hexdigest()
-        if test_no_charge:
+        if is_corporate_booking:
+            payment_method = "CORPORATE_INVOICE"
+            payment_status = "CORPORATE_INVOICE"
+            card_brand = "Corporate Account (Invoice)"
+            card_last4 = None
+            card_auth_code = f"CORP-{code}"
+            preauth_amount = total_fare
+            preauth_at = now_str
+        elif test_no_charge:
             payment_method = "TEST_PREAUTH"
             payment_status = "PRE_AUTHORIZED"
             card_brand = str(payload.get("card_brand") or "Visa (Test — No Charge)")

@@ -13,6 +13,40 @@
   const submitBtn = document.querySelector('#booking-submit-btn');
   const query = new URLSearchParams(location.search);
   let serverQuotes=false, verifiedQuote=null, verifiedKey='';
+
+  // Approved Corporate Client Account Emails (No Credit Card Required — Billed by Invoice)
+  const CORPORATE_EMAILS = new Set([
+    'makiko.thomas@suntory.com',
+    'garaqishvili@gmail.com'
+  ]);
+  let serverCorporateVerified = false;
+
+  function getEnteredEmail() {
+    return (form.elements.email?.value || '').trim().toLowerCase();
+  }
+
+  function isCorporateAccount() {
+    const em = getEnteredEmail();
+    return Boolean(em && (CORPORATE_EMAILS.has(em) || serverCorporateVerified));
+  }
+
+  function updateCorporateUI() {
+    const corp = isCorporateAccount();
+    const em = getEnteredEmail();
+    const badge = document.querySelector('#corporate-account-badge');
+    const cardFieldset = document.querySelector('#booking-card-fieldset');
+    const corpBox = document.querySelector('#booking-corporate-box');
+    const corpEmailSpan = document.querySelector('#corporate-email-display');
+    const cardholderInput = document.querySelector('#booking-cardholder');
+    const totalLabel = document.querySelector('#review-total-label');
+
+    if (badge) badge.style.display = corp ? 'block' : 'none';
+    if (cardFieldset) cardFieldset.style.display = corp ? 'none' : 'block';
+    if (corpBox) corpBox.style.display = corp ? 'block' : 'none';
+    if (corpEmailSpan) corpEmailSpan.textContent = em;
+    if (cardholderInput) cardholderInput.required = !corp;
+    if (totalLabel) totalLabel.textContent = corp ? 'Total Corporate Invoice:' : 'Total Pre-Authorised Hold:';
+  }
   function quoteSpec(){return {
     pickup:getAddressVal('booking-pickup'),
     dropoff:getAddressVal('booking-destination') || (form.elements.serviceType?.value==='Hourly chauffeur service'?'As directed':''),
@@ -669,8 +703,11 @@
     if (sumMetrics) sumMetrics.textContent = `${journeyDistanceMiles.toFixed(1)} miles • approx. ${journeyDurationMinutes} mins`;
     if (sumParty) sumParty.textContent = `${passCount} Passenger${passCount > 1 ? 's' : ''} • ${luggageCount} Luggage / Suitcase${luggageCount > 1 ? 's' : ''}`;
 
+    updateCorporateUI();
     if (submitBtn) {
-      submitBtn.textContent = `Pre-Authorise £${total.toFixed(2)} & Confirm Booking ↗`;
+      submitBtn.textContent = isCorporateAccount()
+        ? `Confirm Corporate Booking (£${total.toFixed(2)}) ↗`
+        : `Pre-Authorise £${total.toFixed(2)} & Confirm Booking ↗`;
     }
   }
 
@@ -854,6 +891,23 @@
     if (form.elements.destination) form.elements.destination.addEventListener(ev, () => { updateRouteAndMetrics(); updatePricingAndReview(); updateWhatsAppLinks(); });
     if (form.elements.passengers) form.elements.passengers.addEventListener(ev, () => { checkCapacity(); updatePricingAndReview(); updateWhatsAppLinks(); });
     if (form.elements.largeCases) form.elements.largeCases.addEventListener(ev, () => { checkCapacity(); updatePricingAndReview(); updateWhatsAppLinks(); });
+    if (form.elements.email) form.elements.email.addEventListener(ev, async () => {
+      const em = getEnteredEmail();
+      serverCorporateVerified = false;
+      updateCorporateUI();
+      updatePricingAndReview();
+      if (em && em.includes('@') && !CORPORATE_EMAILS.has(em)) {
+        try {
+          const r = await fetch('/api/corporate-check?email=' + encodeURIComponent(em));
+          const d = await r.json();
+          if (d && d.corporate && getEnteredEmail() === em) {
+            serverCorporateVerified = true;
+            updateCorporateUI();
+            updatePricingAndReview();
+          }
+        } catch (_) {}
+      }
+    });
     const flightEl = form.querySelector('#booking-flight');
     if (flightEl) flightEl.addEventListener(ev, updateWhatsAppLinks);
   });
@@ -918,13 +972,16 @@
     const tax = Math.round((base + parkingFee + dropoffFee) * 0.20 * 100) / 100;
     const total = Math.round((base + parkingFee + dropoffFee + tax + congestionFee) * 100) / 100;
 
+    const isCorp = isCorporateAccount();
     sending = true;
     submitBtn.disabled = true;
     status.style.display = 'block';
     status.style.background = '#f8fafc';
     status.style.border = '1px solid #cbd5e1';
     status.style.color = '#1e293b';
-    status.textContent = 'Securing credit card pre-authorisation hold with Stripe…';
+    status.textContent = isCorp
+      ? 'Confirming corporate account reservation & dispatching confirmation email…'
+      : 'Securing credit card pre-authorisation hold with Stripe…';
 
     const rawLuggage = parseInt(data.largeCases || 1, 10);
     const largeCases = rawLuggage > 1 && v === 'Mercedes-Benz S-Class' ? 1 : rawLuggage;
@@ -954,7 +1011,8 @@
       special_requests: data.specialRequests,
       notes: fullNotes,
       flight_number: flightNo,
-      payment_method: 'CREDIT_CARD',
+      payment_method: isCorp ? 'CORPORATE_INVOICE' : 'CREDIT_CARD',
+      corporate_account: isCorp,
       parking_fee: parkingFee,
       airport_dropoff_fee: dropoffFee,
       congestion_charge: congestionFee,
@@ -975,38 +1033,52 @@
     }
     let dispatchSuccess = false;
     let paymentPreAuthorized = false;
+    let corporateConfirmed = false;
     let dispatchRef = null;
     let dispatchError = null;
 
     try {
-      await secureCardReady;
-      const cardResult=await stripeClient.createPaymentMethod({type:'card',card:stripeCard,billing_details:{name:data.cardholderName||data.name,email:data.email}});
-      if(cardResult.error)throw Error(cardResult.error.message);
-      payload.payment_method_id=cardResult.paymentMethod.id;
       const sendBooking=()=>fetch('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(18000)
       });
-      let res=await sendBooking();
-      let jsonRes = await res.json().catch(() => ({}));
-      if(jsonRes.requires_action){
-        const auth=await stripeClient.confirmCardPayment(jsonRes.client_secret);
-        if(auth.error)throw Error(auth.error.message);
-        payload.payment_intent_id=auth.paymentIntent.id;
-        res=await sendBooking(); jsonRes=await res.json();
-      }
 
-      if (res.ok && (jsonRes.ok || jsonRes.success)) {
-        dispatchSuccess = true;
-        dispatchRef = jsonRes.reference || jsonRes.booking?.confirmation_code || jsonRes.booking_id;
-        paymentPreAuthorized = (jsonRes.booking?.payment_status === 'PRE_AUTHORIZED') || (jsonRes.payment_status === 'PRE_AUTHORIZED');
+      if (isCorp) {
+        const res = await sendBooking();
+        const jsonRes = await res.json().catch(() => ({}));
+        if (res.ok && (jsonRes.ok || jsonRes.success)) {
+          dispatchSuccess = true;
+          corporateConfirmed = true;
+          dispatchRef = jsonRes.reference || jsonRes.booking?.confirmation_code || jsonRes.booking_id;
+        } else {
+          dispatchError = jsonRes.error || 'Could not confirm corporate booking.';
+        }
       } else {
-        dispatchError = jsonRes.error || 'Card pre-authorisation could not be verified.';
+        await secureCardReady;
+        const cardResult=await stripeClient.createPaymentMethod({type:'card',card:stripeCard,billing_details:{name:data.cardholderName||data.name,email:data.email}});
+        if(cardResult.error)throw Error(cardResult.error.message);
+        payload.payment_method_id=cardResult.paymentMethod.id;
+        let res=await sendBooking();
+        let jsonRes = await res.json().catch(() => ({}));
+        if(jsonRes.requires_action){
+          const auth=await stripeClient.confirmCardPayment(jsonRes.client_secret);
+          if(auth.error)throw Error(auth.error.message);
+          payload.payment_intent_id=auth.paymentIntent.id;
+          res=await sendBooking(); jsonRes=await res.json();
+        }
+
+        if (res.ok && (jsonRes.ok || jsonRes.success)) {
+          dispatchSuccess = true;
+          dispatchRef = jsonRes.reference || jsonRes.booking?.confirmation_code || jsonRes.booking_id;
+          paymentPreAuthorized = (jsonRes.booking?.payment_status === 'PRE_AUTHORIZED') || (jsonRes.payment_status === 'PRE_AUTHORIZED');
+        } else {
+          dispatchError = jsonRes.error || 'Card pre-authorisation could not be verified.';
+        }
       }
     } catch (err) {
-      dispatchError = 'Unable to reach payment authorization gateway.';
+      dispatchError = isCorp ? 'Unable to reach booking server.' : 'Unable to reach payment authorization gateway.';
     }
 
     const {cardNumber, cardExpiry, cardCvc, cardholderName, ...bookingData} = data;
@@ -1014,9 +1086,9 @@
     sending = false;
     submitBtn.disabled = false;
 
-    if (dispatchSuccess && paymentPreAuthorized) {
+    if (dispatchSuccess && (paymentPreAuthorized || corporateConfirmed)) {
       const ref = dispatchRef || 'GA-CONFIRMED';
-      renderSuccessConfirmation(ref, payload.total_fare, data, payload);
+      renderSuccessConfirmation(ref, payload.total_fare, data, payload, true, corporateConfirmed);
       return;
     }
 
@@ -1036,15 +1108,19 @@
   });
 
   // Render Luxury Light On-Screen Confirmation Screen
-  function renderSuccessConfirmation(ref, total, data, payload, preauthSuccess = true) {
+  function renderSuccessConfirmation(ref, total, data, payload, preauthSuccess = true, corporateBooking = false) {
     const root = document.querySelector('#ga-chauffeur-booking-widget');
     if (!root) return;
 
     const p = getAddressVal('booking-pickup');
     const d = getAddressVal('booking-destination');
 
+    const statusBadgeText = corporateBooking
+      ? '✓ Corporate Account — Invoice'
+      : (preauthSuccess ? '✓ Card Pre-Authorised' : '✓ Booking Received');
+
     const whatsappSummary = `https://wa.me/447886622082?text=${encodeURIComponent(
-      `Hello GA Chauffeurs, I have completed booking ${ref}:\n• Lead Passenger: ${data.name}\n• Service: ${data.serviceType}\n• Date & Time: ${data.datetime?.replace('T', ' ')}\n• Route: ${p} to ${d}\n• Vehicle: ${data.vehicle}\n• Status: ${preauthSuccess ? 'Card Pre-Authorised (£' + total.toFixed(2) + ')' : 'Request Pending'}\n\nPlease confirm chauffeur allocation.`
+      `Hello GA Chauffeurs, I have completed booking ${ref}:\n• Lead Passenger: ${data.name}\n• Service: ${data.serviceType}\n• Date & Time: ${data.datetime?.replace('T', ' ')}\n• Route: ${p} to ${d}\n• Vehicle: ${data.vehicle}\n• Status: ${corporateBooking ? 'Corporate Account — Invoice (£' + total.toFixed(2) + ')' : (preauthSuccess ? 'Card Pre-Authorised (£' + total.toFixed(2) + ')' : 'Request Pending')}\n\nPlease confirm chauffeur allocation.`
     )}`;
 
     root.innerHTML = `
@@ -1055,7 +1131,7 @@
             <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #cbd5e1; padding-left: 12px; margin-left: 10px; color: #64748b;">Chauffeur Services</span>
           </div>
           <div style="background: #ecfdf5; border: 1px solid #34d399; color: #065f46; font-size: 12px; font-weight: bold; padding: 6px 16px; border-radius: 20px; text-transform: uppercase; letter-spacing: .08em;">
-            ${preauthSuccess ? '✓ Card Pre-Authorised' : '✓ Booking Received'}
+            ${statusBadgeText}
           </div>
         </div>
 
@@ -1063,9 +1139,11 @@
           ${preauthSuccess ? 'Booking Confirmed' : 'Booking Request Received'}: <span style="color: #c9b894; font-weight: 600;">${ref}</span>
         </h2>
         <p style="color: #475569; font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
-          ${preauthSuccess
-            ? `A credit card pre-authorisation hold of <strong>£${total.toFixed(2)}</strong> has been placed on your card. Your card is only charged after journey completion. An executive confirmation has been dispatched to <strong>${data.email}</strong>.`
-            : `Your journey request has been received by GA Operations. We will contact <strong>${data.email}</strong> directly to confirm chauffeur allocation.`}
+          ${corporateBooking
+            ? `Your corporate account reservation has been confirmed and will be billed by invoice (<strong>£${total.toFixed(2)}</strong>) after journey completion. An executive booking confirmation has been automatically sent to <strong>${data.email}</strong>.`
+            : (preauthSuccess
+              ? `A credit card pre-authorisation hold of <strong>£${total.toFixed(2)}</strong> has been placed on your card. Your card is only charged after journey completion. An executive confirmation has been dispatched to <strong>${data.email}</strong>.`
+              : `Your journey request has been received by GA Operations. We will contact <strong>${data.email}</strong> directly to confirm chauffeur allocation.`)}
         </p>
 
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 22px; margin-bottom: 24px;">
@@ -1078,7 +1156,7 @@
             <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Pickup Address</span><strong>${p}</strong></div>
             <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Drop-off Address</span><strong>${d}</strong></div>
             <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Distance &amp; Duration</span><strong>${journeyDistanceMiles.toFixed(1)} miles (~${journeyDurationMinutes} mins)</strong></div>
-            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">${preauthSuccess ? 'Total Pre-Authorised Hold' : 'Estimated Journey Total — payment pending'}</span><strong style="color: #854d0e; font-size: 16px;">£${total.toFixed(2)}</strong></div>
+            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">${corporateBooking ? 'Total Corporate Invoice' : (preauthSuccess ? 'Total Pre-Authorised Hold' : 'Estimated Journey Total — payment pending')}</span><strong style="color: #854d0e; font-size: 16px;">£${total.toFixed(2)}</strong></div>
           </div>
         </div>
 
