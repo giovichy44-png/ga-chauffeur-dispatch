@@ -1810,7 +1810,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         query = parse_qs(parsed.query)
 
         host = self.headers.get("Host", "").lower().split(":")[0]
-        is_dispatch = host.startswith("dispatch.") or "dispatch" in host
+        is_dispatch = (
+            host.startswith("dispatch.")
+            or "dispatch" in host
+            or host in ("localhost", "127.0.0.1")
+            or host.startswith("192.168.")
+        )
 
         # If on website host and not an API route, serve website static files directly
         if not is_dispatch and not path.startswith("/api/"):
