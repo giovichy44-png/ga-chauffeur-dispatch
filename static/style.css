@@ -5,8 +5,6 @@
    Typography: DM Sans, Georgia Serif, Manrope
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap');
-
 :root {
   /* Exact GA Chauffeurs Official Palette from gachauffeurs.co.uk */
   --ink: #171c1c;
@@ -979,52 +977,82 @@ button, input, textarea, select {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(4px);
   z-index: 2000;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 20px;
+  padding: 16px 12px 80px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-box {
   background: var(--bg-card);
   border: 1px solid var(--gold-border);
-  border-radius: 6px;
+  border-radius: 8px;
   width: 100%;
   max-width: 520px;
-  padding: 24px 28px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 22px 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.65);
+  margin: auto;
 }
 
 .modal-head {
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  z-index: 20;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 14px;
-  margin-bottom: 16px;
+  padding: 16px 0 12px;
+  margin-bottom: 14px;
 }
 
 .modal-head h3 {
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 500;
   color: var(--text-white);
 }
 
 .modal-x {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 24px;
+  background: rgba(201, 184, 148, 0.16);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 6px;
   cursor: pointer;
-  line-height: 1;
+  line-height: 1.2;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .modal-x:hover {
-  color: var(--text-white);
+  background: var(--gold);
+  color: #121715;
+}
+
+.modal-foot {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-card);
+  z-index: 20;
+  border-top: 1px solid var(--border);
+  padding: 12px 0 4px;
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .job-summary-pill {

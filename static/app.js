@@ -245,12 +245,49 @@ function setJobsViewMode(mode) {
   if (cardsWrap) cardsWrap.style.display = mode === 'CARDS' ? 'flex' : 'none';
 }
 
+function hydrateFromLocalCache() {
+  try {
+    const raw = localStorage.getItem('ga_dispatch_instant_cache_v1');
+    if (!raw) return;
+    const cached = JSON.parse(raw);
+    if (cached && Array.isArray(cached.bookings)) {
+      App.bookings = cached.bookings;
+      App.chauffeurs = cached.chauffeurs || [];
+      App.confirmations = cached.confirmations || [];
+      updateTopCarCards();
+      populateDriverSelectDropdown();
+      renderJobsList();
+      renderOutboxTable();
+      renderDriverView();
+    }
+  } catch (_) {}
+}
+
+function saveToLocalCache() {
+  try {
+    localStorage.setItem('ga_dispatch_instant_cache_v1', JSON.stringify({
+      bookings: App.bookings,
+      chauffeurs: App.chauffeurs,
+      confirmations: App.confirmations
+    }));
+  } catch (_) {}
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initForm();
   initSearch();
   setJobsViewMode(App.viewMode);
+  // Render cached snapshot in 0ms so the screen is NEVER blank on startup
+  hydrateFromLocalCache();
   loadData();
+
+  // Close any open modal on Escape key
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-backdrop').forEach(m => { m.style.display = 'none'; });
+    }
+  });
 
   // Auto-refresh every 4 seconds
   setInterval(loadData, 4000);
@@ -287,23 +324,30 @@ function switchTab(tabId) {
   }
 }
 
-// Fetch all data from backend
+// Fetch all data from backend in a single fast request (/api/bootstrap)
 async function loadData() {
   try {
-    const [bRes, cRes, confRes] = await Promise.all([
-      fetch('/api/bookings?status=ALL'),
-      fetch('/api/chauffeurs'),
-      fetch('/api/confirmations')
-    ]);
+    const res = await fetch('/api/bootstrap');
+    if (res.ok) {
+      const data = await res.json();
+      App.bookings = data.bookings || [];
+      App.chauffeurs = data.chauffeurs || [];
+      App.confirmations = data.confirmations || [];
+    } else {
+      const [bRes, cRes, confRes] = await Promise.all([
+        fetch('/api/bookings?status=ALL'),
+        fetch('/api/chauffeurs'),
+        fetch('/api/confirmations')
+      ]);
+      const bData = await bRes.json();
+      const cData = await cRes.json();
+      const confData = await confRes.json();
+      App.bookings = bData.bookings || [];
+      App.chauffeurs = cData.chauffeurs || [];
+      App.confirmations = confData.confirmations || [];
+    }
 
-    const bData = await bRes.json();
-    const cData = await cRes.json();
-    const confData = await confRes.json();
-
-    App.bookings = bData.bookings || [];
-    App.chauffeurs = cData.chauffeurs || [];
-    App.confirmations = confData.confirmations || [];
-
+    saveToLocalCache();
     checkLiveNotificationsAndUrgency(App.bookings);
     updateTopCarCards();
     populateDriverSelectDropdown();

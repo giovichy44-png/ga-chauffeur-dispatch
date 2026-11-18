@@ -12,11 +12,11 @@
   <meta name="theme-color" content="#0a0a0a">
   <link rel="manifest" href="/manifest.json">
 
-  <!-- Google Fonts matching gachauffeurs.co.uk -->
+  <!-- Google Fonts matching gachauffeurs.co.uk (non-render-blocking for instant iPhone load) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261118a2">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="style.css?v=20261118a3">
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())).catch(() => {});
@@ -498,11 +498,11 @@
   </nav>
 
   <!-- MODAL: ALLOCATE CAR (SIMPLE 3-CAR CHOOSER) -->
-  <div class="modal-backdrop" id="modal-allocate" style="display: none;">
+  <div class="modal-backdrop" id="modal-allocate" style="display: none;" onclick="if(event.target===this)closeModal('modal-allocate')">
     <div class="modal-box">
       <div class="modal-head">
         <h3>Allocate Car for Booking</h3>
-        <button class="modal-x" onclick="closeModal('modal-allocate')">&times;</button>
+        <button type="button" class="modal-x" onclick="closeModal('modal-allocate')">← Back</button>
       </div>
       <div class="modal-body">
         <div id="modal-job-summary" class="job-summary-pill"></div>
@@ -541,28 +541,28 @@
   </div>
 
   <!-- MODAL: VIEW PASSENGER VOUCHER -->
-  <div class="modal-backdrop" id="modal-voucher" style="display: none;">
+  <div class="modal-backdrop" id="modal-voucher" style="display: none;" onclick="if(event.target===this)closeModal('modal-voucher')">
     <div class="modal-box voucher-modal-box">
       <div class="modal-head">
         <h3>Booking Confirmation Voucher</h3>
-        <button class="modal-x" onclick="closeModal('modal-voucher')">&times;</button>
+        <button type="button" class="modal-x" onclick="closeModal('modal-voucher')">← Back</button>
       </div>
       <div class="modal-body" id="voucher-details-body">
         <!-- Injected -->
       </div>
       <div class="modal-foot">
         <button class="btn btn-secondary" onclick="window.print()">Print / Save PDF</button>
-        <button class="btn btn-gold" onclick="closeModal('modal-voucher')">Close</button>
+        <button class="btn btn-gold" onclick="closeModal('modal-voucher')">← Back to Dispatch</button>
       </div>
     </div>
   </div>
 
   <!-- MODAL: GENERATE & SEND TAX INVOICE -->
-  <div class="modal-backdrop" id="modal-invoice" style="display: none;">
+  <div class="modal-backdrop" id="modal-invoice" style="display: none;" onclick="if(event.target===this)closeModal('modal-invoice')">
     <div class="modal-box voucher-modal-box" style="max-width: 580px;">
       <div class="modal-head">
         <h3>Tax Invoice &amp; Invoice2go Sync</h3>
-        <button class="modal-x" onclick="closeModal('modal-invoice')">&times;</button>
+        <button type="button" class="modal-x" onclick="closeModal('modal-invoice')">← Back</button>
       </div>
       <div class="modal-body" id="invoice-modal-body">
         <!-- Injected -->
@@ -578,54 +578,46 @@
   </div>
 
   <!-- MODAL: AUDIO ALERTS TEST & IPHONE APP GUIDE -->
-  <div class="modal-backdrop" id="modal-sound-iphone" style="display: none;">
+  <div class="modal-backdrop" id="modal-sound-iphone" style="display: none;" onclick="if(event.target===this)closeModal('modal-sound-iphone')">
     <div class="modal-box" style="max-width: 580px;">
       <div class="modal-head">
-        <h3>🔔 Audio Alerts &amp; iPhone App Setup</h3>
-        <button class="modal-x" onclick="closeModal('modal-sound-iphone')">&times;</button>
+        <h3>🔔 Audio Alerts &amp; iPhone App</h3>
+        <button type="button" class="modal-x" onclick="closeModal('modal-sound-iphone')">← Back</button>
       </div>
-      <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
         <div style="background: #141b18; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;">
-          <h4 style="color: var(--gold); margin-bottom: 8px; font-size: 14px;">1. Automatic Audio Notifications</h4>
-          <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 10px;">
-            Your dispatch screen automatically sounds distinct chimes when:
+          <h4 style="color: var(--gold); margin-bottom: 8px; font-size: 14px;">1. Test Audio Notifications</h4>
+          <p style="font-size: 12.5px; color: #cbd5e1; line-height: 1.5; margin-bottom: 10px;">
+            Tap any button below to preview the dispatch alert sounds:
           </p>
-          <ul style="font-size: 12.5px; color: #cbd5e1; margin-left: 18px; line-height: 1.6; margin-bottom: 12px;">
-            <li><strong>New Booking Arrives:</strong> Ascending reception bell chime when a customer books on <code>gachauffeurs.co.uk</code> or dispatch.</li>
-            <li><strong>Unallocated 2 Hours Before Pickup:</strong> Amber double-tone warning chime if a booking has no vehicle/driver 2 hours before pickup.</li>
-            <li><strong>Unallocated 1 Hour Before Pickup:</strong> Urgent triple-pulse alarm until a vehicle &amp; driver are allocated.</li>
-          </ul>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-gold" style="font-size: 12px; padding: 7px 11px;" onclick="playNewBookingSound(); showToast('🔔 Tested New Booking Chime')">▶️ Test New Booking Chime</button>
-            <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 7px 11px; border-color: #f59e0b; color: #fbbf24;" onclick="playTwoHourWarningSound(); showToast('⚠️ Tested 2-Hour Unallocated Warning')">▶️ Test 2-Hour Warning</button>
-            <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 7px 11px; border-color: #ef4444; color: #f87171;" onclick="playOneHourUrgentSound(); showToast('🚨 Tested 1-Hour Urgent Alarm')">▶️ Test 1-Hour Alarm</button>
+            <button type="button" class="btn btn-gold" style="font-size: 12px; padding: 8px 12px; flex: 1 1 auto;" onclick="playNewBookingSound(); showToast('🔔 Tested New Booking Chime')">▶️ New Booking Chime</button>
+            <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 8px 12px; border-color: #f59e0b; color: #fbbf24; flex: 1 1 auto;" onclick="playTwoHourWarningSound(); showToast('⚠️ Tested 2-Hour Unallocated Warning')">▶️ 2-Hour Warning</button>
+            <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 8px 12px; border-color: #ef4444; color: #f87171; flex: 1 1 auto;" onclick="playOneHourUrgentSound(); showToast('🚨 Tested 1-Hour Urgent Alarm')">▶️ 1-Hour Urgent Alarm</button>
           </div>
         </div>
 
         <div style="background: #141b18; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;">
-          <h4 style="color: var(--gold); margin-bottom: 8px; font-size: 14px;">2. Install on Your iPhone (Works Everywhere on 4G / 5G &amp; Wi-Fi)</h4>
-          <ol style="font-size: 13px; color: #cbd5e1; margin-left: 18px; line-height: 1.6;">
-            <li>Open <strong>Safari</strong> on your iPhone and go to:<br>
-              <strong style="color: var(--gold); font-size: 14px;">https://dispatch.gachauffeurs.co.uk</strong>
-            </li>
-            <li>Log in once, then tap the <strong>Share</strong> button at the bottom of Safari (square with arrow pointing up).</li>
-            <li>Tap <strong>"Add to Home Screen"</strong> &rarr; <strong>Add</strong>.</li>
-            <li>It installs the <strong>GA Chauffeurs</strong> app icon on your iPhone Home Screen! Use the bottom tabs on your iPhone to switch between <strong>Jobs (Dispatcher)</strong>, <strong>New</strong>, and <strong>Driver (1-Tap En Route / At Pickup / Passenger On Board / Complete)</strong>.</li>
+          <h4 style="color: var(--gold); margin-bottom: 8px; font-size: 14px;">2. Install on Your iPhone Home Screen</h4>
+          <ol style="font-size: 12.5px; color: #cbd5e1; margin-left: 18px; line-height: 1.6;">
+            <li>Open <strong>https://dispatch.gachauffeurs.co.uk</strong> in <strong>Safari</strong> on iPhone.</li>
+            <li>Tap <strong>Share</strong> at the bottom of Safari &rarr; <strong>"Add to Home Screen"</strong>.</li>
+            <li>Use the bottom tabs (<strong>Jobs</strong>, <strong>New</strong>, <strong>Driver</strong>) to dispatch or update live driver status.</li>
           </ol>
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn btn-gold" onclick="closeModal('modal-sound-iphone')">Done</button>
+        <button type="button" class="btn btn-gold btn-block" onclick="closeModal('modal-sound-iphone')">← Back to Dispatch</button>
       </div>
     </div>
   </div>
 
   <!-- MODAL: MANAGE FLEET VEHICLES & CHAUFFEURS -->
-  <div class="modal-backdrop" id="modal-fleet-manage" style="display: none;">
+  <div class="modal-backdrop" id="modal-fleet-manage" style="display: none;" onclick="if(event.target===this)closeModal('modal-fleet-manage')">
     <div class="modal-box" style="max-width: 640px;">
       <div class="modal-head">
-        <h3>🚘 Manage Fleet Vehicles &amp; Chauffeurs</h3>
-        <button class="modal-x" onclick="closeModal('modal-fleet-manage')">&times;</button>
+        <h3>🚘 Fleet Vehicles &amp; Drivers</h3>
+        <button type="button" class="modal-x" onclick="closeModal('modal-fleet-manage')">← Back</button>
       </div>
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
         <form id="fleet-manage-form" onsubmit="saveFleetChauffeur(event)" style="background: #141b18; border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
@@ -637,8 +629,8 @@
             <input type="text" id="fm-model" placeholder="Vehicle Model (e.g. Mercedes-Benz S-Class) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
             <input type="text" id="fm-plate" placeholder="Reg Plate (e.g. HN76GYG) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
           </div>
-          <div style="display: flex; gap: 10px; align-items: center;">
-            <select id="fm-class" style="flex: 1; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <select id="fm-class" style="flex: 1; min-width: 180px; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
               <option value="mercedes_s_class">Mercedes-Benz S-Class (Executive Saloon • 4 Pax)</option>
               <option value="mercedes_v_class">Mercedes-Benz V-Class (Luxury MPV • 6 Pax)</option>
               <option value="range_rover_autobiography">Range Rover Autobiography (SUV • 4 Pax)</option>
@@ -653,7 +645,7 @@
         </div>
       </div>
       <div class="modal-foot">
-        <button class="btn btn-gold" onclick="closeModal('modal-fleet-manage')">Close</button>
+        <button type="button" class="btn btn-gold btn-block" onclick="closeModal('modal-fleet-manage')">← Back to Dispatch</button>
       </div>
     </div>
   </div>
@@ -661,6 +653,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=20261118a1"></script>
+  <script src="app.js?v=20261118a3"></script>
 </body>
 </html>

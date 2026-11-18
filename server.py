@@ -1894,6 +1894,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_get_bookings(query)
             return
 
+        if path == "/api/bootstrap":
+            self.handle_bootstrap()
+            return
+
         if path.startswith("/api/bookings/"):
             booking_id = path.split("/")[3]
             self.handle_get_booking(booking_id)
@@ -2443,6 +2447,38 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             with sse_lock:
                 if self in sse_clients:
                     sse_clients.remove(self)
+
+    def handle_bootstrap(self):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT b.*,
+                   c.name as chauffeur_name, c.phone as chauffeur_phone,
+                   c.vehicle_model, c.license_plate, c.rating as chauffeur_rating,
+                   c.lat as chauffeur_lat, c.lng as chauffeur_lng
+            FROM bookings b
+            LEFT JOIN chauffeurs c ON b.chauffeur_id = c.id
+            ORDER BY b.created_at DESC
+        """)
+        bookings = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM chauffeurs ORDER BY id ASC")
+        chauffeurs = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT c.*, b.confirmation_code, b.customer_name
+            FROM confirmations c
+            LEFT JOIN bookings b ON c.booking_id = b.id
+            ORDER BY c.sent_at DESC
+            LIMIT 40
+        """)
+        confirmations = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        self.send_json({
+            "bookings": bookings,
+            "chauffeurs": chauffeurs,
+            "confirmations": confirmations
+        })
 
     def handle_get_bookings(self, query):
         status_filter = query.get("status", ["ALL"])[0].upper()
@@ -4023,8 +4059,8 @@ def run_server(port=PORT):
             "https://gachauffeurs.co.uk/api/forms-config",
             "https://dispatch.gachauffeurs.co.uk/api/forms-config"
         ]
+        time.sleep(20)
         while True:
-            time.sleep(240)
             for u in urls:
                 try:
                     req = urllib.request.Request(
@@ -4035,6 +4071,7 @@ def run_server(port=PORT):
                         resp.read(64)
                 except Exception:
                     pass
+            time.sleep(180)
 
     keepalive_thread = threading.Thread(target=keep_render_awake, daemon=True)
     keepalive_thread.start()
