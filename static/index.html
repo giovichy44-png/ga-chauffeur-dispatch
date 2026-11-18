@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261107a3">
+  <link rel="stylesheet" href="style.css?v=20261118a1">
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())).catch(() => {});
@@ -41,12 +41,17 @@
 
       <!-- Quick Actions & Contact -->
       <div class="header-actions">
-        <a href="tel:+447886622082" class="quick-phone-link">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          <span>+44 7886 622082</span>
-        </a>
-        <a href="/widget-demo.html" target="_blank" class="btn btn-secondary">
-          Website Booking Widget ↗
+        <button type="button" class="btn btn-secondary" id="btn-sound-toggle" onclick="toggleAudioAlerts()" style="border-color: #10b981; color: #34d399; font-size: 12px; padding: 7px 11px;" title="Toggle New Booking &amp; Unallocated Audio Alerts">
+          🔊 Alerts ON
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="openModal('modal-sound-iphone')" style="font-size: 12px; padding: 7px 11px;" title="Test Notification Chimes &amp; Install on iPhone">
+          🔔 Test Sound &amp; iPhone App
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="openFleetManageModal()" style="font-size: 12px; padding: 7px 11px;">
+          🚘 Fleet &amp; Drivers
+        </button>
+        <a href="/widget-demo.html" target="_blank" class="btn btn-secondary" style="font-size: 12px; padding: 7px 11px;">
+          Booking Widget ↗
         </a>
         <button class="btn btn-gold" id="btn-quick-new-job">
           + New Booking ↗
@@ -57,6 +62,21 @@
       </div>
     </div>
   </header>
+
+  <!-- URGENT UNALLOCATED JOBS BANNER (< 2 HOURS OR < 1 HOUR BEFORE PICKUP) -->
+  <div id="urgent-unallocated-banner" class="urgent-unallocated-banner" style="display: none;">
+    <div class="urgent-unallocated-left">
+      <span style="font-size: 22px;">🚨</span>
+      <div>
+        <strong id="urgent-banner-title">UNALLOCATED BOOKINGS DUE WITHIN 2 HOURS</strong>
+        <div id="urgent-banner-details" class="urgent-unallocated-sub"></div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" class="btn btn-gold" style="padding: 6px 12px; font-size: 12px;" onclick="filterJobsUrgent()">Show Unallocated Now</button>
+      <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; background: rgba(0,0,0,0.25); color: #fff;" onclick="snoozeUrgentAudio()">Snooze Sound 5m</button>
+    </div>
+  </div>
 
   <!-- 3 Car Status Overview (Glance Overview) -->
   <section class="top-status-bar">
@@ -142,17 +162,43 @@
           <div class="filter-pills">
             <button class="pill-btn active" data-filter="ACTIVE">On Road / Upcoming</button>
             <button class="pill-btn" data-filter="ALL">All Jobs</button>
-            <button class="pill-btn" data-filter="PENDING">Pending Allocation</button>
+            <button class="pill-btn" data-filter="PENDING">Unallocated (<span id="count-unallocated">0</span>)</button>
+            <button class="pill-btn" data-filter="URGENT" style="border-color: rgba(245,158,11,0.45); color: #fbbf24;">⚠️ Due &lt; 2h (<span id="count-urgent">0</span>)</button>
             <button class="pill-btn" data-filter="COMPLETED">Completed</button>
           </div>
-          <div class="search-wrap" style="display: flex; gap: 8px; align-items: center;">
-            <input type="text" id="jobs-search-input" placeholder="Search reference, customer or airport...">
+          <div class="search-wrap" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <div class="cds-view-toggle" role="group" aria-label="View Mode">
+              <button type="button" class="cds-view-btn active" id="btn-view-grid" onclick="setJobsViewMode('GRID')">📊 Dispatch Columns</button>
+              <button type="button" class="cds-view-btn" id="btn-view-cards" onclick="setJobsViewMode('CARDS')">🗂️ Cards</button>
+            </div>
+            <input type="text" id="jobs-search-input" placeholder="Search reference, customer, flight, airport...">
             <button type="button" class="btn btn-secondary" onclick="clearAllBookings()" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; border-color: rgba(239,68,68,0.4); color: #f87171;">🗑️ Clear All</button>
           </div>
         </div>
 
-        <!-- Jobs List Cards Container -->
-        <div class="jobs-list" id="jobs-list-container">
+        <!-- CDS Simple Columns Dispatch Grid (Default on Desktop) -->
+        <div id="cds-table-container" class="cds-table-wrap">
+          <table class="cds-dispatch-table">
+            <thead>
+              <tr>
+                <th style="width: 145px;">Date &amp; Time</th>
+                <th style="width: 185px;">Customer &amp; Contact</th>
+                <th>Pickup &amp; Destination / Flight</th>
+                <th style="width: 155px;">Vehicle Req. &amp; Pax</th>
+                <th style="width: 245px;">Allocate Vehicle &amp; Driver</th>
+                <th style="width: 185px;">Live Status</th>
+                <th style="width: 120px;">Fare / Payment</th>
+                <th style="width: 155px; text-align: right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="cds-table-body">
+              <!-- Populated by app.js -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Jobs List Cards Container (Mobile / Card View) -->
+        <div class="jobs-list" id="jobs-list-container" style="display: none;">
           <!-- Dynamically populated clean cards -->
         </div>
 
@@ -531,9 +577,90 @@
     </div>
   </div>
 
+  <!-- MODAL: AUDIO ALERTS TEST & IPHONE APP GUIDE -->
+  <div class="modal-backdrop" id="modal-sound-iphone" style="display: none;">
+    <div class="modal-box" style="max-width: 580px;">
+      <div class="modal-head">
+        <h3>🔔 Audio Alerts &amp; iPhone App Setup</h3>
+        <button class="modal-x" onclick="closeModal('modal-sound-iphone')">&times;</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+        <div style="background: #141b18; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;">
+          <h4 style="color: var(--gold); margin-bottom: 8px; font-size: 14px;">1. Automatic Audio Notifications</h4>
+          <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin-bottom: 10px;">
+            Your dispatch screen automatically sounds distinct chimes when:
+          </p>
+          <ul style="font-size: 12.5px; color: #cbd5e1; margin-left: 18px; line-height: 1.6; margin-bottom: 12px;">
+            <li><strong>New Booking Arrives:</strong> Ascending reception bell chime when a customer books on <code>gachauffeurs.co.uk</code> or dispatch.</li>
+            <li><strong>Unallocated 2 Hours Before Pickup:</strong> Amber double-tone warning chime if a booking has no vehicle/driver 2 hours before pickup.</li>
+            <li><strong>Unallocated 1 Hour Before Pickup:</strong> Urgent triple-pulse alarm until a vehicle &amp; driver are allocated.</li>
+          </ul>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-gold" style="font-size: 12px; padding: 7px 11px;" onclick="playNewBookingSound(); showToast('🔔 Tested New Booking Chime')">▶️ Test New Booking Chime</button>
+            <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 7px 11px; border-color: #f59e0b; color: #fbbf24;" onclick="playTwoHourWarningSound(); showToast('⚠️ Tested 2-Hour Unallocated Warning')">▶️ Test 2-Hour Warning</button>
+            <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 7px 11px; border-color: #ef4444; color: #f87171;" onclick="playOneHourUrgentSound(); showToast('🚨 Tested 1-Hour Urgent Alarm')">▶️ Test 1-Hour Alarm</button>
+          </div>
+        </div>
+
+        <div style="background: #141b18; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;">
+          <h4 style="color: var(--gold); margin-bottom: 8px; font-size: 14px;">2. Install on Your iPhone (Works Everywhere on 4G / 5G &amp; Wi-Fi)</h4>
+          <ol style="font-size: 13px; color: #cbd5e1; margin-left: 18px; line-height: 1.6;">
+            <li>Open <strong>Safari</strong> on your iPhone and go to:<br>
+              <strong style="color: var(--gold); font-size: 14px;">https://dispatch.gachauffeurs.co.uk</strong>
+            </li>
+            <li>Log in once, then tap the <strong>Share</strong> button at the bottom of Safari (square with arrow pointing up).</li>
+            <li>Tap <strong>"Add to Home Screen"</strong> &rarr; <strong>Add</strong>.</li>
+            <li>It installs the <strong>GA Chauffeurs</strong> app icon on your iPhone Home Screen! Use the bottom tabs on your iPhone to switch between <strong>Jobs (Dispatcher)</strong>, <strong>New</strong>, and <strong>Driver (1-Tap En Route / At Pickup / Passenger On Board / Complete)</strong>.</li>
+          </ol>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-gold" onclick="closeModal('modal-sound-iphone')">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MANAGE FLEET VEHICLES & CHAUFFEURS -->
+  <div class="modal-backdrop" id="modal-fleet-manage" style="display: none;">
+    <div class="modal-box" style="max-width: 640px;">
+      <div class="modal-head">
+        <h3>🚘 Manage Fleet Vehicles &amp; Chauffeurs</h3>
+        <button class="modal-x" onclick="closeModal('modal-fleet-manage')">&times;</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+        <form id="fleet-manage-form" onsubmit="saveFleetChauffeur(event)" style="background: #141b18; border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--gold); text-transform: uppercase;" id="fleet-form-title">+ Add or Edit Chauffeur &amp; Vehicle</div>
+          <input type="hidden" id="fm-id" value="">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <input type="text" id="fm-name" placeholder="Chauffeur Full Name *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+            <input type="tel" id="fm-phone" placeholder="Mobile Phone (e.g. +44 7886 622082) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+            <input type="text" id="fm-model" placeholder="Vehicle Model (e.g. Mercedes-Benz S-Class) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+            <input type="text" id="fm-plate" placeholder="Reg Plate (e.g. HN76GYG) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <select id="fm-class" style="flex: 1; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+              <option value="mercedes_s_class">Mercedes-Benz S-Class (Executive Saloon • 4 Pax)</option>
+              <option value="mercedes_v_class">Mercedes-Benz V-Class (Luxury MPV • 6 Pax)</option>
+              <option value="range_rover_autobiography">Range Rover Autobiography (SUV • 4 Pax)</option>
+            </select>
+            <button type="submit" class="btn btn-gold" style="padding: 8px 14px; font-size: 12px;">Save Vehicle &amp; Driver</button>
+            <button type="button" class="btn btn-secondary" style="padding: 8px 10px; font-size: 12px;" onclick="resetFleetForm()">Clear</button>
+          </div>
+        </form>
+
+        <div id="fleet-manage-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-gold" onclick="closeModal('modal-fleet-manage')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=20261107a4"></script>
+  <script src="app.js?v=20261118a1"></script>
 </body>
 </html>

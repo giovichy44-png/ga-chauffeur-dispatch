@@ -9,14 +9,247 @@ const App = {
   chauffeurs: [],
   confirmations: [],
   activeFilter: 'ACTIVE',
+  viewMode: window.innerWidth <= 820 ? 'CARDS' : 'GRID',
   allocatingJobId: null,
-  activeDriverCarId: 'GA-CHF-01'
+  activeDriverCarId: 'GA-CHF-01',
+  audioEnabled: true,
+  audioCtx: null,
+  initialLoadDone: false,
+  knownBookingIds: new Set(),
+  knownStatusMap: new Map(),
+  alerted2hIds: new Set(),
+  alerted1hIds: new Set(),
+  lastUrgentRepeatMs: 0,
+  snoozeUrgentUntilMs: 0
 };
+
+// ============================================================================
+// WEB AUDIO API NOTIFICATION SYNTHESIZER (New Booking + 2h Warning + 1h Alarm)
+// ============================================================================
+function getAudioCtx() {
+  if (!App.audioCtx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) App.audioCtx = new Ctx();
+  }
+  if (App.audioCtx && App.audioCtx.state === 'suspended') {
+    App.audioCtx.resume().catch(() => {});
+  }
+  return App.audioCtx;
+}
+
+window.addEventListener('click', () => getAudioCtx(), { once: true });
+
+function playSynthTone(freq, offsetSec, durationSec, type = 'sine', peakGain = 0.22) {
+  if (!App.audioEnabled) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const start = ctx.currentTime + offsetSec;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, start);
+  gain.gain.setValueAtTime(0.001, start);
+  gain.gain.exponentialRampToValueAtTime(peakGain, start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + durationSec);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(start);
+  osc.stop(start + durationSec + 0.02);
+}
+
+function playNewBookingSound() {
+  if (!App.audioEnabled) return;
+  playSynthTone(523.25, 0.00, 0.28, 'triangle', 0.25); // C5
+  playSynthTone(659.25, 0.14, 0.28, 'triangle', 0.25); // E5
+  playSynthTone(783.99, 0.28, 0.45, 'triangle', 0.28); // G5
+  playSynthTone(1046.50, 0.44, 0.65, 'sine', 0.24);    // C6
+}
+
+function playTwoHourWarningSound() {
+  if (!App.audioEnabled) return;
+  playSynthTone(440.00, 0.00, 0.22, 'sine', 0.24);
+  playSynthTone(587.33, 0.20, 0.35, 'triangle', 0.26);
+  playSynthTone(440.00, 0.50, 0.22, 'sine', 0.24);
+  playSynthTone(587.33, 0.70, 0.40, 'triangle', 0.26);
+}
+
+function playOneHourUrgentSound() {
+  if (!App.audioEnabled) return;
+  playSynthTone(880.00, 0.00, 0.16, 'sawtooth', 0.18);
+  playSynthTone(659.25, 0.18, 0.16, 'sawtooth', 0.18);
+  playSynthTone(880.00, 0.36, 0.16, 'sawtooth', 0.20);
+  playSynthTone(659.25, 0.54, 0.16, 'sawtooth', 0.20);
+  playSynthTone(987.77, 0.74, 0.38, 'triangle', 0.28);
+}
+
+function playStatusBlipSound() {
+  if (!App.audioEnabled) return;
+  playSynthTone(587.33, 0.00, 0.14, 'sine', 0.15);
+  playSynthTone(880.00, 0.12, 0.24, 'sine', 0.16);
+}
+
+function toggleAudioAlerts() {
+  App.audioEnabled = !App.audioEnabled;
+  const btn = document.getElementById('btn-sound-toggle');
+  if (btn) {
+    if (App.audioEnabled) {
+      btn.textContent = '🔊 Alerts ON';
+      btn.style.borderColor = '#10b981';
+      btn.style.color = '#34d399';
+      playStatusBlipSound();
+      showToast('🔊 Audio Alerts Enabled (New Booking + 2h/1h Unallocated Warnings)');
+    } else {
+      btn.textContent = '🔇 Alerts Muted';
+      btn.style.borderColor = '#475569';
+      btn.style.color = '#94a3b8';
+      showToast('🔇 Audio Alerts Muted');
+    }
+  }
+}
+
+function snoozeUrgentAudio() {
+  App.snoozeUrgentUntilMs = Date.now() + 5 * 60 * 1000;
+  showToast('🔕 Urgent unallocated alarm snoozed for 5 minutes.');
+}
+
+function filterJobsUrgent() {
+  switchTab('jobs');
+  App.activeFilter = 'PENDING';
+  document.querySelectorAll('.pill-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-filter') === 'PENDING');
+  });
+  renderJobsList();
+}
+
+function parsePickupDate(dtStr) {
+  if (!dtStr) return null;
+  const clean = String(dtStr).trim().replace(' ', 'T');
+  const d = new Date(clean);
+  if (!isNaN(d.getTime())) return d;
+  const fallback = new Date(dtStr);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+function getMinutesUntilPickup(dtStr) {
+  const d = parsePickupDate(dtStr);
+  if (!d) return null;
+  return Math.round((d.getTime() - Date.now()) / 60000);
+}
+
+function isBookingUnallocated(b) {
+  if (!b || b.status === 'COMPLETED' || b.status === 'CANCELLED') return false;
+  return !b.chauffeur_id || b.status === 'PENDING';
+}
+
+function getBookingUrgency(b) {
+  if (!isBookingUnallocated(b)) return null;
+  const mins = getMinutesUntilPickup(b.pickup_datetime);
+  if (mins === null) return null;
+  if (mins <= 60 && mins >= -180) return 'CRITICAL_1H';
+  if (mins > 60 && mins <= 120) return 'WARNING_2H';
+  return null;
+}
+
+function checkLiveNotificationsAndUrgency(newBookings) {
+  const nowMs = Date.now();
+
+  if (App.initialLoadDone) {
+    for (const b of newBookings) {
+      if (!App.knownBookingIds.has(b.id)) {
+        playNewBookingSound();
+        showToast(`🔔 NEW BOOKING ${b.confirmation_code}: ${b.customer_name} (${b.pickup_datetime})`);
+      } else {
+        const prevStatus = App.knownStatusMap.get(b.id);
+        if (prevStatus && prevStatus !== b.status) {
+          playStatusBlipSound();
+          showToast(`🚘 Live Status ${b.confirmation_code}: ${b.customer_name} → ${b.status.replace('_', ' ')}`);
+        }
+      }
+    }
+  }
+
+  App.knownBookingIds = new Set(newBookings.map(b => b.id));
+  App.knownStatusMap = new Map(newBookings.map(b => [b.id, b.status]));
+  App.initialLoadDone = true;
+
+  const urgent1h = [];
+  const warning2h = [];
+
+  for (const b of newBookings) {
+    const urg = getBookingUrgency(b);
+    const mins = getMinutesUntilPickup(b.pickup_datetime);
+    if (urg === 'CRITICAL_1H') {
+      urgent1h.push({ b, mins });
+      if (!App.alerted1hIds.has(b.id)) {
+        App.alerted1hIds.add(b.id);
+        if (nowMs > App.snoozeUrgentUntilMs) {
+          playOneHourUrgentSound();
+          showToast(`🚨 CRITICAL (<1h): ${b.confirmation_code} (${b.customer_name}) is UNALLOCATED!`);
+        }
+      }
+    } else if (urg === 'WARNING_2H') {
+      warning2h.push({ b, mins });
+      if (!App.alerted2hIds.has(b.id)) {
+        App.alerted2hIds.add(b.id);
+        if (nowMs > App.snoozeUrgentUntilMs) {
+          playTwoHourWarningSound();
+          showToast(`⚠️ 2-Hour Warning: ${b.confirmation_code} (${b.customer_name}) needs vehicle & driver.`);
+        }
+      }
+    } else {
+      App.alerted1hIds.delete(b.id);
+      App.alerted2hIds.delete(b.id);
+    }
+  }
+
+  if (urgent1h.length > 0 && nowMs > App.snoozeUrgentUntilMs && nowMs - App.lastUrgentRepeatMs > 60000) {
+    App.lastUrgentRepeatMs = nowMs;
+    playOneHourUrgentSound();
+  }
+
+  const banner = document.getElementById('urgent-unallocated-banner');
+  const titleEl = document.getElementById('urgent-banner-title');
+  const detailsEl = document.getElementById('urgent-banner-details');
+  if (banner && titleEl && detailsEl) {
+    const allUrgent = [...urgent1h, ...warning2h];
+    if (allUrgent.length > 0) {
+      banner.style.display = 'flex';
+      titleEl.textContent = `${allUrgent.length} UNALLOCATED BOOKING${allUrgent.length > 1 ? 'S' : ''} DUE WITHIN 2 HOURS`;
+      detailsEl.textContent = allUrgent
+        .map(x => `${x.b.confirmation_code} (${x.b.customer_name} • ${x.mins >= 0 ? 'in ' + x.mins + 'm' : Math.abs(x.mins) + 'm overdue'})`)
+        .join('   •   ');
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  const unallocCountEl = document.getElementById('count-unallocated');
+  const urgentCountEl = document.getElementById('count-urgent');
+  if (unallocCountEl) {
+    unallocCountEl.textContent = newBookings.filter(b => isBookingUnallocated(b)).length;
+  }
+  if (urgentCountEl) {
+    urgentCountEl.textContent = urgent1h.length + warning2h.length;
+  }
+}
+
+function setJobsViewMode(mode) {
+  App.viewMode = mode;
+  const gridBtn = document.getElementById('btn-view-grid');
+  const cardsBtn = document.getElementById('btn-view-cards');
+  const gridWrap = document.getElementById('cds-table-container');
+  const cardsWrap = document.getElementById('jobs-list-container');
+  if (gridBtn) gridBtn.classList.toggle('active', mode === 'GRID');
+  if (cardsBtn) cardsBtn.classList.toggle('active', mode === 'CARDS');
+  if (gridWrap) gridWrap.style.display = mode === 'GRID' ? 'block' : 'none';
+  if (cardsWrap) cardsWrap.style.display = mode === 'CARDS' ? 'flex' : 'none';
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initForm();
   initSearch();
+  setJobsViewMode(App.viewMode);
   loadData();
 
   // Auto-refresh every 4 seconds
@@ -71,12 +304,26 @@ async function loadData() {
     App.chauffeurs = cData.chauffeurs || [];
     App.confirmations = confData.confirmations || [];
 
+    checkLiveNotificationsAndUrgency(App.bookings);
     updateTopCarCards();
+    populateDriverSelectDropdown();
     renderJobsList();
     renderOutboxTable();
     renderDriverView();
   } catch (err) {
     console.warn('Sync note:', err);
+  }
+}
+
+function populateDriverSelectDropdown() {
+  const sel = document.getElementById('driver-car-select');
+  if (!sel || App.chauffeurs.length === 0) return;
+  const cur = sel.value || App.activeDriverCarId;
+  sel.innerHTML = App.chauffeurs.map(ch =>
+    `<option value="${escapeHtml(ch.id)}" ${ch.id === cur ? 'selected' : ''}>${escapeHtml(ch.name)} • ${escapeHtml(ch.vehicle_model)} [${escapeHtml(ch.license_plate)}]</option>`
+  ).join('');
+  if (!App.chauffeurs.some(c => c.id === App.activeDriverCarId)) {
+    App.activeDriverCarId = App.chauffeurs[0].id;
   }
 }
 
@@ -132,7 +379,7 @@ function initSearch() {
   }
 }
 
-// Render Jobs List
+// Render Jobs List (Both CDS Simple Columns Table & Mobile Cards)
 function renderJobsList() {
   const container = document.getElementById('jobs-list-container');
   if (!container) return;
@@ -144,17 +391,21 @@ function renderJobsList() {
     if (App.activeFilter === 'ACTIVE') {
       if (b.status === 'COMPLETED' || b.status === 'CANCELLED') return false;
     } else if (App.activeFilter === 'PENDING') {
-      if (b.chauffeur_id) return false;
+      if (!isBookingUnallocated(b)) return false;
+    } else if (App.activeFilter === 'URGENT') {
+      if (!getBookingUrgency(b)) return false;
     } else if (App.activeFilter === 'COMPLETED') {
       if (b.status !== 'COMPLETED') return false;
     }
 
     // Text Search
     if (!query) return true;
-    return b.customer_name.toLowerCase().includes(query) ||
-           b.confirmation_code.toLowerCase().includes(query) ||
-           b.pickup_address.toLowerCase().includes(query) ||
-           b.dropoff_address.toLowerCase().includes(query);
+    return (b.customer_name || '').toLowerCase().includes(query) ||
+           (b.confirmation_code || '').toLowerCase().includes(query) ||
+           (b.pickup_address || '').toLowerCase().includes(query) ||
+           (b.dropoff_address || '').toLowerCase().includes(query) ||
+           (b.flight_number || '').toLowerCase().includes(query) ||
+           (b.chauffeur_name || '').toLowerCase().includes(query);
   });
 
   // Update badge count
@@ -163,6 +414,9 @@ function renderJobsList() {
   const mBadgeEl = document.getElementById('m-jobs-count');
   if (badgeEl) badgeEl.textContent = activeCount;
   if (mBadgeEl) mBadgeEl.textContent = activeCount;
+
+  // Always update the CDS Simple Columns Table
+  renderCdsDispatchTable(filtered);
 
   if (filtered.length === 0) {
     container.innerHTML = `
@@ -288,6 +542,331 @@ function renderJobsList() {
   }).join('');
 }
 
+function formatVehTierLabel(tier) {
+  const t = String(tier || '').toLowerCase();
+  if (t.includes('v_class') || t.includes('v-class')) return 'Mercedes V-Class (MPV)';
+  if (t.includes('range') || t.includes('rover')) return 'Range Rover Autobiography';
+  return 'Mercedes S-Class (Saloon)';
+}
+
+function formatCdsPickupTime(dtStr) {
+  const d = parsePickupDate(dtStr);
+  if (!d) return { time: dtStr || '--:--', date: '' };
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const date = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return { time, date };
+}
+
+function renderCdsDispatchTable(filtered) {
+  const tbody = document.getElementById('cds-table-body');
+  if (!tbody) return;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align: center; padding: 36px; color: var(--text-muted);">
+          No bookings found under this filter. Click <strong>"+ New Booking ↗"</strong> to add a job.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(b => {
+    const { time, date } = formatCdsPickupTime(b.pickup_datetime);
+    const urg = getBookingUrgency(b);
+    const mins = getMinutesUntilPickup(b.pickup_datetime);
+
+    let rowClass = '';
+    if (b.status === 'ON_BOARD') rowClass = 'cds-row-pob';
+    else if (b.status === 'EN_ROUTE' || b.status === 'NEXT_STOP') rowClass = 'cds-row-enroute';
+    else if (b.status === 'ARRIVED') rowClass = 'cds-row-arrived';
+    else if (urg === 'CRITICAL_1H') rowClass = 'cds-row-urgent-1h';
+    else if (urg === 'WARNING_2H') rowClass = 'cds-row-urgent-2h';
+    else if (b.status === 'COMPLETED') rowClass = 'cds-row-completed';
+
+    let countdownHtml = '';
+    if (urg === 'CRITICAL_1H') {
+      const lbl = mins >= 0 ? `🚨 In ${mins}m (Unallocated!)` : `🚨 ${Math.abs(mins)}m overdue!`;
+      countdownHtml = `<div><span class="cds-countdown-badge cds-countdown-1h">${lbl}</span></div>`;
+    } else if (urg === 'WARNING_2H') {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      countdownHtml = `<div><span class="cds-countdown-badge cds-countdown-2h">⚠️ In ${h}h ${m}m (Unallocated)</span></div>`;
+    }
+
+    const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
+
+    const allocOptions = [
+      `<option value="UNALLOCATE" ${!b.chauffeur_id ? 'selected' : ''}>⚠️ -- Unallocated (Assign Vehicle & Driver) --</option>`,
+      ...App.chauffeurs.map(ch =>
+        `<option value="${escapeHtml(ch.id)}" ${b.chauffeur_id === ch.id ? 'selected' : ''}>🚘 ${escapeHtml(ch.license_plate)} • ${escapeHtml(ch.name)} (${escapeHtml(ch.vehicle_model)})</option>`
+      )
+    ].join('');
+
+    const statusChoices = [
+      { status: 'PENDING', action: 'UNALLOCATE', label: '🔴 Unallocated / Pending' },
+      { status: 'ASSIGNED', action: 'CONFIRMED', label: '🔵 Allocated / Confirmed' },
+      { status: 'EN_ROUTE', action: 'EN_ROUTE_PICKUP', label: '🚗 En Route to Pickup' },
+      { status: 'ARRIVED', action: 'ARRIVED', label: '📍 Arrived at Pickup' },
+      { status: 'ON_BOARD', action: 'ON_BOARD', label: '🟢 Passenger On Board' },
+      { status: 'NEXT_STOP', action: 'NEXT_STOP', label: '➡️ Proceeding to Next Stop' },
+      { status: 'COMPLETED', action: 'COMPLETED', label: '🏁 Completed' },
+      { status: 'CANCELLED', action: 'CANCEL', label: '✖️ Cancelled' }
+    ];
+
+    const normalizedStatus = (b.status === 'CONFIRMED' || b.status === 'ACCEPTED') ? 'ASSIGNED' : b.status;
+    const statusOptionsHtml = statusChoices.map(sc =>
+      `<option value="${sc.action}" ${normalizedStatus === sc.status ? 'selected' : ''}>${sc.label}</option>`
+    ).join('');
+
+    let liveSubLabel = '';
+    if (b.status === 'ON_BOARD') {
+      liveSubLabel = `<div style="font-size:11px;color:#34d399;font-weight:700;margin-top:4px;">● LIVE: Passenger On Board</div>`;
+    } else if (b.status === 'ARRIVED') {
+      liveSubLabel = `<div style="font-size:11px;color:#d8b4fe;font-weight:700;margin-top:4px;">● LIVE: Waiting at Pickup</div>`;
+    } else if (b.status === 'EN_ROUTE' || b.status === 'NEXT_STOP') {
+      liveSubLabel = `<div style="font-size:11px;color:#67e8f9;font-weight:700;margin-top:4px;">● LIVE: Chauffeur En Route</div>`;
+    } else if (isBookingUnallocated(b)) {
+      liveSubLabel = `<div style="font-size:11px;color:#fca5a5;margin-top:4px;">Needs vehicle &amp; driver</div>`;
+    }
+
+    const fareVal = parseFloat(b.total_fare || b.fare_amount || 0).toFixed(2);
+    let payBadgeHtml = '';
+    if (b.payment_status === 'PRE_AUTHORIZED') {
+      payBadgeHtml = `<div style="margin-top:4px;"><span style="background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.4);color:#4ade80;font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;">💳 PRE-AUTH ••${escapeHtml(b.card_last4 || '')}</span></div>`;
+    } else if (b.payment_status === 'CORPORATE_INVOICE') {
+      payBadgeHtml = `<div style="margin-top:4px;"><span style="background:rgba(201,184,148,0.18);border:1px solid var(--gold-accent);color:var(--gold-accent);font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;">🏢 ACCOUNT</span></div>`;
+    } else if (b.payment_status === 'PAID') {
+      payBadgeHtml = `<div style="margin-top:4px;"><span style="background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.4);color:#34d399;font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;">✓ PAID</span></div>`;
+    }
+
+    return `
+      <tr class="${rowClass}">
+        <!-- 1. Date & Time -->
+        <td>
+          <div class="cds-dt-time">${escapeHtml(time)}</div>
+          <div class="cds-dt-date">${escapeHtml(date)}</div>
+          <span class="cds-ref-pill">${escapeHtml(b.confirmation_code)}</span>
+          ${countdownHtml}
+        </td>
+
+        <!-- 2. Customer & Contact -->
+        <td>
+          <div style="font-weight:700;color:#fff;font-size:13.5px;">${escapeHtml(b.customer_name)}</div>
+          <div style="margin-top:3px;font-size:12px;">
+            <a href="tel:${cleanPhone}" style="color:var(--gold);text-decoration:none;">📞 ${escapeHtml(b.customer_phone)}</a>
+          </div>
+          <div style="margin-top:3px;font-size:11px;display:flex;gap:8px;">
+            <a href="https://wa.me/${cleanPhone.replace('+', '')}" target="_blank" style="color:#4ade80;text-decoration:none;">WhatsApp ↗</a>
+          </div>
+        </td>
+
+        <!-- 3. Route, Flight & Notes -->
+        <td>
+          <div style="margin-bottom:4px;line-height:1.35;">
+            <span style="color:#4ade80;font-weight:700;font-size:11px;">PU:</span>
+            <span style="color:#fff;">${escapeHtml(b.pickup_address)}</span>
+          </div>
+          <div style="line-height:1.35;">
+            <span style="color:#38bdf8;font-weight:700;font-size:11px;">DO:</span>
+            <span style="color:#cbd5e1;">${escapeHtml(b.dropoff_address)}</span>
+          </div>
+          ${b.flight_number ? `<div style="margin-top:5px;"><span style="background:rgba(56,189,248,0.14);border:1px solid rgba(56,189,248,0.35);color:#38bdf8;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;">✈️ ${escapeHtml(b.flight_number)}</span></div>` : ''}
+          ${b.special_requests ? `<div style="margin-top:5px;font-size:11.5px;color:#fde68a;background:rgba(255,255,255,0.04);border-left:2px solid var(--gold);padding:3px 7px;">📝 ${escapeHtml(b.special_requests)}</div>` : ''}
+        </td>
+
+        <!-- 4. Vehicle Req & Pax -->
+        <td>
+          <div style="font-weight:700;color:var(--gold);font-size:12px;margin-bottom:4px;">${escapeHtml(formatVehTierLabel(b.vehicle_class))}</div>
+          <div style="font-size:12px;color:var(--text-muted);">👥 <strong>${b.passenger_count || 1}</strong> Pax · 🧳 <strong>${b.luggage_count || 0}</strong> Bags</div>
+        </td>
+
+        <!-- 5. Allocate Vehicle & Driver -->
+        <td>
+          <select class="cds-inline-select ${b.chauffeur_id ? 'allocated' : 'unallocated'}" onchange="inlineAllocateVehicle('${b.id}', this.value)">
+            ${allocOptions}
+          </select>
+          ${b.chauffeur_name ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Driver: <strong style="color:#fff;">${escapeHtml(b.chauffeur_name)}</strong> [${escapeHtml(b.license_plate || '')}]</div>` : ''}
+        </td>
+
+        <!-- 6. Live Status -->
+        <td>
+          <select class="cds-status-select st-${b.status}" onchange="inlineChangeStatus('${b.id}', this.value)">
+            ${statusOptionsHtml}
+          </select>
+          ${liveSubLabel}
+        </td>
+
+        <!-- 7. Fare & Payment -->
+        <td>
+          <div style="font-weight:700;font-size:14px;color:#fff;">£${fareVal}</div>
+          ${payBadgeHtml}
+          ${b.payment_status === 'PRE_AUTHORIZED' ? `<button type="button" class="btn btn-secondary" onclick="captureBookingPayment('${b.id}', ${b.total_fare || b.fare_amount})" style="margin-top:5px;padding:3px 7px;font-size:10.5px;border-color:#4ade80;color:#4ade80;">Capture £${fareVal}</button>` : ''}
+        </td>
+
+        <!-- 8. Actions -->
+        <td style="text-align:right;">
+          <div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary" style="padding:5px 8px;font-size:11px;" onclick="copyDriverJobSheet('${b.id}')" title="Copy Driver Run Sheet for WhatsApp/SMS">📋</button>
+            <button type="button" class="btn btn-secondary" style="padding:5px 8px;font-size:11px;" onclick="viewVoucher('${b.id}')" title="View Voucher">Voucher</button>
+            <button type="button" class="btn btn-secondary" style="padding:5px 8px;font-size:11px;border-color:var(--gold);color:var(--gold);" onclick="openInvoiceModal('${b.id}')" title="Email Tax Invoice">📄 Inv</button>
+            <button type="button" class="btn btn-secondary" style="padding:5px 8px;font-size:11px;border-color:rgba(239,68,68,0.4);color:#f87171;" onclick="deleteBooking('${b.id}', '${b.confirmation_code}')" title="Delete Booking">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function inlineAllocateVehicle(bookingId, chauffeurId) {
+  try {
+    const res = await fetch(`/api/bookings/${bookingId}/allocate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chauffeur_id: chauffeurId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      playStatusBlipSound();
+      if (chauffeurId === 'UNALLOCATE') {
+        showToast('Job marked as Unallocated.');
+      } else {
+        showToast(`🚘 Allocated ${data.chauffeur ? data.chauffeur.name + ' [' + data.chauffeur.license_plate + ']' : ''} & notified customer!`);
+      }
+      loadData();
+    } else {
+      alert(data.error || 'Could not allocate vehicle');
+      loadData();
+    }
+  } catch (err) {
+    showToast('Failed to update allocation');
+  }
+}
+
+async function inlineChangeStatus(bookingId, action) {
+  if (action === 'UNALLOCATE') {
+    await inlineAllocateVehicle(bookingId, 'UNALLOCATE');
+    return;
+  }
+  await triggerAction(bookingId, action);
+}
+
+function copyDriverJobSheet(bookingId) {
+  const b = App.bookings.find(x => x.id === bookingId);
+  if (!b) return;
+  const lines = [
+    `🚘 *GA CHAUFFEUR SERVICES — JOB SHEET (${b.confirmation_code})*`,
+    `📅 *Pickup Time:* ${b.pickup_datetime}`,
+    `👤 *Passenger:* ${b.customer_name} (${b.customer_phone})`,
+    `👥 *Pax / Bags:* ${b.passenger_count || 1} Pax, ${b.luggage_count || 0} Bags`,
+    `🟢 *Pickup:* ${b.pickup_address}`,
+    `🏁 *Destination:* ${b.dropoff_address}`,
+    b.flight_number ? `✈️ *Flight:* ${b.flight_number}` : null,
+    b.special_requests ? `📝 *Notes:* ${b.special_requests}` : null,
+    b.chauffeur_name ? `🚗 *Assigned:* ${b.chauffeur_name} — ${b.vehicle_model} [${b.license_plate}]` : null
+  ].filter(Boolean).join('\n');
+  navigator.clipboard?.writeText(lines);
+  showToast('📋 Driver Run Sheet copied for WhatsApp / SMS!');
+}
+
+function openModal(modalId) {
+  const el = document.getElementById(modalId);
+  if (el) el.style.display = 'flex';
+}
+
+function openFleetManageModal() {
+  resetFleetForm();
+  renderFleetManageList();
+  openModal('modal-fleet-manage');
+}
+
+function resetFleetForm() {
+  const f = document.getElementById('fleet-manage-form');
+  if (f) f.reset();
+  const idEl = document.getElementById('fm-id');
+  if (idEl) idEl.value = '';
+  const titleEl = document.getElementById('fleet-form-title');
+  if (titleEl) titleEl.textContent = '+ Add New Chauffeur & Vehicle';
+}
+
+function editFleetChauffeur(chId) {
+  const ch = App.chauffeurs.find(c => c.id === chId);
+  if (!ch) return;
+  document.getElementById('fm-id').value = ch.id;
+  document.getElementById('fm-name').value = ch.name || '';
+  document.getElementById('fm-phone').value = ch.phone || '';
+  document.getElementById('fm-model').value = ch.vehicle_model || '';
+  document.getElementById('fm-plate').value = ch.license_plate || '';
+  document.getElementById('fm-class').value = ch.vehicle_class || 'mercedes_s_class';
+  const titleEl = document.getElementById('fleet-form-title');
+  if (titleEl) titleEl.textContent = `✏️ Editing ${ch.name} [${ch.license_plate}]`;
+}
+
+function renderFleetManageList() {
+  const container = document.getElementById('fleet-manage-list');
+  if (!container) return;
+  container.innerHTML = App.chauffeurs.map(ch => `
+    <div style="background:#141b18;border:1px solid var(--border);border-radius:6px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div>
+        <div style="font-weight:700;color:#fff;font-size:13.5px;">👤 ${escapeHtml(ch.name)} <span style="color:var(--gold);font-family:monospace;">[${escapeHtml(ch.license_plate)}]</span></div>
+        <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(ch.vehicle_model)} • 📞 ${escapeHtml(ch.phone)}</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button type="button" class="btn btn-secondary" style="padding:5px 10px;font-size:11.5px;" onclick="editFleetChauffeur('${escapeHtml(ch.id)}')">✏️ Edit</button>
+        <button type="button" class="btn btn-secondary" style="padding:5px 10px;font-size:11.5px;border-color:rgba(239,68,68,0.4);color:#f87171;" onclick="deleteFleetChauffeur('${escapeHtml(ch.id)}')">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveFleetChauffeur(e) {
+  e.preventDefault();
+  const payload = {
+    id: document.getElementById('fm-id').value,
+    name: document.getElementById('fm-name').value,
+    phone: document.getElementById('fm-phone').value,
+    vehicle_model: document.getElementById('fm-model').value,
+    license_plate: document.getElementById('fm-plate').value,
+    vehicle_class: document.getElementById('fm-class').value
+  };
+  try {
+    const res = await fetch('/api/chauffeurs/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('🚘 Fleet vehicle & chauffeur saved!');
+      resetFleetForm();
+      await loadData();
+      renderFleetManageList();
+    } else {
+      alert(data.error || 'Could not save vehicle & driver');
+    }
+  } catch (err) {
+    alert('Failed to save vehicle & driver');
+  }
+}
+
+async function deleteFleetChauffeur(chId) {
+  if (!confirm('Remove this vehicle & chauffeur from your fleet roster?')) return;
+  try {
+    const res = await fetch('/api/chauffeurs/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: chId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Vehicle & chauffeur removed.');
+      await loadData();
+      renderFleetManageList();
+    }
+  } catch (err) {}
+}
+
 // Live Action execution
 async function triggerAction(bookingId, action) {
   try {
@@ -411,56 +990,81 @@ function renderDriverView() {
   const ch = App.chauffeurs.find(c => c.id === App.activeDriverCarId) || App.chauffeurs[0];
   if (!ch) return;
 
-  const activeBooking = App.bookings.find(b => b.chauffeur_id === ch.id && b.status !== 'COMPLETED' && b.status !== 'CANCELLED');
+  const assignedJobs = App.bookings.filter(b => b.chauffeur_id === ch.id && b.status !== 'COMPLETED' && b.status !== 'CANCELLED');
 
-  if (!activeBooking) {
+  if (assignedJobs.length === 0) {
     container.innerHTML = `
       <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
         <div style="font-size: 36px; margin-bottom: 10px;">🟢</div>
-        <h3 style="color: #fff; margin-bottom: 6px;">${escapeHtml(ch.vehicle_model)}</h3>
-        <p style="font-size: 13px;">Currently Available &amp; Ready for VIP Jobs</p>
+        <h3 style="color: #fff; margin-bottom: 6px;">${escapeHtml(ch.name)} • ${escapeHtml(ch.vehicle_model)} [${escapeHtml(ch.license_plate)}]</h3>
+        <p style="font-size: 13px;">Currently Available &amp; Ready for Assigned Runs</p>
       </div>
     `;
     return;
   }
 
-  const b = activeBooking;
   const driverStages = [
-    { action: 'CONFIRMED', label: '1. ✓ Confirmed' },
-    { action: 'EN_ROUTE_PICKUP', label: '2. 🚗 En Route to Pickup' },
-    { action: 'ARRIVED', label: '3. 📍 At Pickup (Nameboard Active)' },
-    { action: 'ON_BOARD', label: '4. 👥 Passenger On Board' },
-    { action: 'NEXT_STOP', label: '5. ➡️ Proceeding to Next Stop' },
-    { action: 'COMPLETED', label: '6. 🏁 Job Finished & Complete' }
+    { action: 'CONFIRMED', match: ['PENDING', 'ASSIGNED', 'CONFIRMED', 'ACCEPTED'], label: '1. ✓ Confirmed' },
+    { action: 'EN_ROUTE_PICKUP', match: ['EN_ROUTE'], label: '2. 🚗 En Route to Pickup' },
+    { action: 'ARRIVED', match: ['ARRIVED'], label: '3. 📍 At Pickup (Nameboard Active)' },
+    { action: 'ON_BOARD', match: ['ON_BOARD'], label: '4. 🟢 Passenger On Board' },
+    { action: 'NEXT_STOP', match: ['NEXT_STOP'], label: '5. ➡️ Proceeding to Next Stop' },
+    { action: 'COMPLETED', match: ['COMPLETED'], label: '6. 🏁 Job Finished & Complete' }
   ];
-  const nextBtn = driverStages.map(st => `
-    <button class="btn btn-gold btn-block" style="margin-bottom: 8px;" onclick="triggerAction('${b.id}', '${st.action}')">${st.label}</button>
-  `).join('');
 
-  container.innerHTML = `
-    <div style="background: #111116; border: 1px solid var(--gold-border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px;">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span class="job-ref-code">${b.confirmation_code}</span>
-        <span class="status-badge ${b.status.toLowerCase()}">${b.status.replace('_', ' ')}</span>
-      </div>
+  container.innerHTML = assignedJobs.map(b => {
+    const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
+    const mapsPu = `https://maps.apple.com/?q=${encodeURIComponent(b.pickup_address || '')}`;
+    const mapsDo = `https://maps.apple.com/?q=${encodeURIComponent(b.dropoff_address || '')}`;
 
-      <div>
-        <div style="font-size: 20px; font-weight: 700; color: #fff;">${escapeHtml(b.customer_name)}</div>
-        <div style="font-size: 13px; color: var(--gold-accent); margin-top: 2px;">📞 ${escapeHtml(b.customer_phone)}</div>
-      </div>
+    const stageBtns = driverStages.map(st => {
+      const isCurrent = st.match.includes(b.status);
+      const bgStyle = isCurrent
+        ? 'background: #10b981; color: #052e16; border-color: #10b981; font-weight: 800;'
+        : '';
+      return `<button class="btn btn-gold btn-block" style="margin-bottom: 8px; ${bgStyle}" onclick="triggerAction('${b.id}', '${st.action}')">${st.label}${isCurrent ? ' (CURRENT)' : ''}</button>`;
+    }).join('');
 
-      <div style="background: #09090c; border-radius: 8px; padding: 12px; font-size: 13px;">
-        <div style="color: var(--gold-accent); font-weight: 700; font-size: 11px;">PICKUP:</div>
-        <div style="color: #fff; margin-bottom: 8px;">${escapeHtml(b.pickup_address)}</div>
-        <div style="color: #38bdf8; font-weight: 700; font-size: 11px;">DESTINATION:</div>
-        <div style="color: #fff;">${escapeHtml(b.dropoff_address)}</div>
-      </div>
+    return `
+      <div style="background: #111116; border: 1px solid ${b.status === 'ON_BOARD' ? '#10b981' : 'var(--gold-border)'}; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span class="job-ref-code">${escapeHtml(b.confirmation_code)}</span>
+            <div style="font-size: 13px; color: var(--gold); font-weight: 700; margin-top: 2px;">📅 ${escapeHtml(b.pickup_datetime)}</div>
+          </div>
+          <span class="status-badge ${b.status.toLowerCase()}">${escapeHtml(b.status.replace('_', ' '))}</span>
+        </div>
 
-      <div style="margin-top: 10px;">
-        ${nextBtn}
+        <div>
+          <div style="font-size: 20px; font-weight: 700; color: #fff;">${escapeHtml(b.customer_name)}</div>
+          <div style="font-size: 13px; color: var(--gold-accent); margin-top: 4px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <a href="tel:${cleanPhone}" style="color: var(--gold); text-decoration: none; font-weight: 700;">📞 Call ${escapeHtml(b.customer_phone)}</a>
+            <a href="https://wa.me/${cleanPhone.replace('+', '')}" target="_blank" style="color: #4ade80; text-decoration: none; font-weight: 700;">💬 WhatsApp</a>
+            <span style="color: var(--text-muted);">👥 ${b.passenger_count || 1} Pax · 🧳 ${b.luggage_count || 0} Bags</span>
+          </div>
+        </div>
+
+        <div style="background: #09090c; border-radius: 8px; padding: 12px; font-size: 13px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--gold-accent); font-weight: 700; font-size: 11px;">PICKUP:</span>
+            <a href="${mapsPu}" target="_blank" style="color: #38bdf8; font-size: 11.5px; text-decoration: none; font-weight: 700;">Navigate in Maps ↗</a>
+          </div>
+          <div style="color: #fff; margin: 3px 0 10px;">${escapeHtml(b.pickup_address)}</div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #38bdf8; font-weight: 700; font-size: 11px;">DESTINATION:</span>
+            <a href="${mapsDo}" target="_blank" style="color: #38bdf8; font-size: 11.5px; text-decoration: none; font-weight: 700;">Navigate in Maps ↗</a>
+          </div>
+          <div style="color: #fff; margin-top: 3px;">${escapeHtml(b.dropoff_address)}</div>
+          ${b.flight_number ? `<div style="margin-top: 8px; color: #38bdf8; font-weight: 700;">✈️ Flight: ${escapeHtml(b.flight_number)}</div>` : ''}
+          ${b.special_requests ? `<div style="margin-top: 8px; color: #fde68a;">📝 Notes: ${escapeHtml(b.special_requests)}</div>` : ''}
+        </div>
+
+        <div style="margin-top: 6px;">
+          ${stageBtns}
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }).join('');
 }
 
 // Intake Form Logic, Smart Autocomplete, & Live VAT Pricing Engine

@@ -2336,6 +2336,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_update_chauffeur_status(payload)
             return
 
+        if path == "/api/chauffeurs/save":
+            self.handle_save_chauffeur(payload)
+            return
+
+        if path == "/api/chauffeurs/delete":
+            self.handle_delete_chauffeur(payload)
+            return
+
         if path == "/api/simulate/tick":
             self.handle_simulation_tick()
             return
@@ -2943,6 +2951,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         booking = dict(booking)
+
+        if chauffeur_id == "UNALLOCATE":
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if booking.get("chauffeur_id"):
+                cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ?", (booking["chauffeur_id"],))
+            cursor.execute("UPDATE bookings SET chauffeur_id = NULL, status = 'PENDING', updated_at = ? WHERE id = ?", (now_str, booking_id))
+            conn.commit()
+            conn.close()
+            self.send_json({"success": True, "booking_id": booking_id, "chauffeur": None, "status": "PENDING"})
+            return
 
         if not chauffeur_id or chauffeur_id == "auto":
             # Exact vehicle class match first
@@ -3675,6 +3693,57 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         broadcast_event("chauffeur_status_updated", {"chauffeur_id": chauffeur_id, "status": new_status})
         self.send_json({"success": True, "chauffeur_id": chauffeur_id, "status": new_status})
+
+    def handle_save_chauffeur(self, payload):
+        ch_id = str(payload.get("id") or "").strip()
+        name = str(payload.get("name") or "").strip()
+        phone = str(payload.get("phone") or COMPANY_PHONE).strip()
+        vehicle_model = str(payload.get("vehicle_model") or "Mercedes-Benz S-Class").strip()
+        vehicle_class = str(payload.get("vehicle_class") or "mercedes_s_class").strip()
+        license_plate = str(payload.get("license_plate") or "").strip().upper()
+        pax_cap = int(payload.get("passenger_capacity") or (6 if "v_class" in vehicle_class else 4))
+        lug_cap = int(payload.get("luggage_capacity") or (6 if "v_class" in vehicle_class else 3))
+
+        if not name or not license_plate:
+            self.send_json({"error": "Chauffeur name and registration plate are required."}, 400)
+            return
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        if ch_id:
+            cursor.execute("""
+                UPDATE chauffeurs
+                SET name = ?, phone = ?, vehicle_model = ?, vehicle_class = ?,
+                    license_plate = ?, passenger_capacity = ?, luggage_capacity = ?
+                WHERE id = ?
+            """, (name, phone, vehicle_model, vehicle_class, license_plate, pax_cap, lug_cap, ch_id))
+        else:
+            ch_id = f"GA-CHF-{random.randint(10, 99)}"
+            initials = "".join([w[0].upper() for w in name.split()[:2]]) or "GA"
+            cursor.execute("""
+                INSERT INTO chauffeurs (
+                    id, name, phone, avatar, rating, trips_count, vehicle_model,
+                    vehicle_class, license_plate, passenger_capacity, luggage_capacity,
+                    status, lat, lng, current_zone, active_booking_id
+                ) VALUES (?, ?, ?, ?, 5.0, 100, ?, ?, ?, ?, ?, 'AVAILABLE', 51.5074, -0.1278, 'Central London', NULL)
+            """, (ch_id, name, phone, initials, vehicle_model, vehicle_class, license_plate, pax_cap, lug_cap))
+
+        conn.commit()
+        conn.close()
+        self.send_json({"success": True, "id": ch_id})
+
+    def handle_delete_chauffeur(self, payload):
+        ch_id = str(payload.get("id") or "").strip()
+        if not ch_id:
+            self.send_json({"error": "Missing chauffeur id"}, 400)
+            return
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE bookings SET chauffeur_id = NULL WHERE chauffeur_id = ?", (ch_id,))
+        cursor.execute("DELETE FROM chauffeurs WHERE id = ?", (ch_id,))
+        conn.commit()
+        conn.close()
+        self.send_json({"success": True, "deleted_id": ch_id})
 
     def handle_get_confirmations(self):
         conn = db.get_connection()
