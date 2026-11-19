@@ -1799,8 +1799,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
         self.end_headers()
 
-    def serve_arrival_video(self):
-        target = os.path.join(WEBSITE_DIR, "assets", "chauffeur-arrival.mp4")
+    def serve_arrival_video(self, path):
+        target = os.path.join(WEBSITE_DIR, path.lstrip("/"))
         with open(target, "rb") as video:
             size = os.fstat(video.fileno()).st_size
             start, end = 0, size - 1
@@ -1844,8 +1844,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 pass
 
     def serve_website_file(self, path):
-        if path == "/assets/chauffeur-arrival.mp4":
-            self.serve_arrival_video()
+        if path in ("/assets/chauffeur-arrival.mp4", "/assets/chauffeur-arrival-ga.mp4"):
+            self.serve_arrival_video(path)
             return
         rel_path = path.lstrip("/")
         if not rel_path or rel_path == "":

@@ -1,4 +1,3 @@
-
 .hero .arrival-video {
   position: absolute;
   inset: 0;
@@ -8,29 +7,28 @@
   object-position: center;
 }
 
-.arrival-controls {
+.arrival-sound {
   position: absolute;
   z-index: 3;
-  right: 6%;
-  bottom: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.arrival-controls[hidden] {
-  display: none;
-}
-
-.arrival-controls button {
-  min-height: 44px;
-  padding: 6px 12px;
+  top: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
   border: 1px solid #c9b894;
-  border-radius: 3px;
+  border-radius: 50%;
   background: #171c1c;
   color: #fff;
-  font-size: 13px;
   cursor: pointer;
+}
+
+body:has(.arrival-video) .car-showcase {
+  min-height: 0;
+  background: #1c2428;
+  padding: 45px 7%;
+}
+
+body:has(.arrival-video) .car-showcase::before {
+  content: none;
 }
 
 @media (max-width: 800px) {
@@ -39,11 +37,5 @@
     display: block;
     aspect-ratio: 16 / 9;
     height: auto;
-  }
-
-  .arrival-controls {
-    position: static;
-    order: 1;
-    padding: 10px 7% 0;
   }
 }
