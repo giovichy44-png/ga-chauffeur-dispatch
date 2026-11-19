@@ -184,8 +184,8 @@
               <div>
                 <select id="ga-large-cases" style="width: 100%; box-sizing: border-box; background: #171f1b; border: 1px solid #2e3b33; border-radius: 4px; padding: 8px; color: #fff; font-size: 12px;">
                   <option value="0">0 Large</option>
-                  <option value="1">1 Large</option>
-                  <option value="2" selected>2 Large</option>
+                  <option value="1" selected>1 Large</option>
+                  <option value="2">2 Large</option>
                   <option value="3">3 Large</option>
                   <option value="4">4 Large</option>
                   <option value="5">5 Large</option>
@@ -194,8 +194,8 @@
               </div>
               <div>
                 <select id="ga-medium-cases" style="width: 100%; box-sizing: border-box; background: #171f1b; border: 1px solid #2e3b33; border-radius: 4px; padding: 8px; color: #fff; font-size: 12px;">
-                  <option value="0">0 Med</option>
-                  <option value="1" selected>1 Med</option>
+                  <option value="0" selected>0 Med</option>
+                  <option value="1">1 Med</option>
                   <option value="2">2 Med</option>
                   <option value="3">3 Med</option>
                 </select>
@@ -203,8 +203,8 @@
               <div>
                 <select id="ga-hand-luggage" style="width: 100%; box-sizing: border-box; background: #171f1b; border: 1px solid #2e3b33; border-radius: 4px; padding: 8px; color: #fff; font-size: 12px;">
                   <option value="0">0 Hand</option>
-                  <option value="1">1 Hand</option>
-                  <option value="2" selected>2 Hand</option>
+                  <option value="1" selected>1 Hand</option>
+                  <option value="2">2 Hand</option>
                 </select>
               </div>
             </div>

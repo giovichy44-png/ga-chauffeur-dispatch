@@ -1,6 +1,6 @@
 (function(root){
  const vehicles={
-  'Mercedes-Benz S-Class':{passengers:4,large:1,medium:1,checked:2,hand:1,label:'S-Class',description:'4 passengers, 1 large suitcase, 1 medium suitcase and 1 hand bag'},
+  'Mercedes-Benz S-Class':{passengers:3,large:1,medium:0,checked:1,hand:1,label:'S-Class',description:'up to 3 passengers, 1 large suitcase and 1 hand luggage'},
   'Mercedes-Benz V-Class':{passengers:7,large:6,medium:6,checked:6,hand:6,label:'V-Class',description:'7 passengers, 6 large or medium suitcases in total and 6 carry-ons'},
   'Range Rover Autobiography Long Wheelbase':{passengers:4,large:2,medium:2,checked:2,hand:2,label:'Range Rover',description:'4 passengers, 2 large or medium suitcases in total and 2 carry-ons'}
  };

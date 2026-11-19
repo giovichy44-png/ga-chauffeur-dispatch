@@ -112,11 +112,27 @@ def init_db():
         ("preauth_amount", "REAL DEFAULT 0.0"),
         ("preauth_at", "TEXT"),
         ("stripe_payment_intent_id", "TEXT"),
-        ("stripe_customer_id", "TEXT")
+        ("stripe_customer_id", "TEXT"),
+        ("pending_amendment", "TEXT")
     ]
     for col_name, col_def in cols_to_add:
         if col_name not in existing_cols:
             cursor.execute(f"ALTER TABLE bookings ADD COLUMN {col_name} {col_def}")
+
+    # Enforce Mercedes-Benz S-Class luggage capacity (max 1 large case, 0 medium, 1 hand luggage) on existing S-Class bookings (e.g. GA-2WV8V / Cooney)
+    cursor.execute("""
+        UPDATE bookings
+        SET large_cases = CASE WHEN large_cases > 1 THEN 1 ELSE large_cases END,
+            medium_cases = 0,
+            hand_luggage = CASE WHEN hand_luggage > 1 THEN 1 ELSE hand_luggage END,
+            luggage_count = CASE WHEN large_cases > 0 THEN 1 ELSE 1 END
+        WHERE LOWER(vehicle_class) LIKE '%s_class%' OR LOWER(vehicle_class) LIKE '%s-class%'
+    """)
+    cursor.execute("""
+        UPDATE chauffeurs
+        SET luggage_capacity = 1
+        WHERE LOWER(vehicle_class) LIKE '%s_class%' OR LOWER(vehicle_model) LIKE '%s-class%'
+    """)
 
     # Confirmations Table
     cursor.execute("""

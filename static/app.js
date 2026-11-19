@@ -438,10 +438,26 @@ function renderJobsList() {
   const container = document.getElementById('jobs-list-container');
   if (!container) return;
 
-  const query = (document.getElementById('jobs-search-input')?.value || '').toLowerCase();
+  const query = (document.getElementById('jobs-search-input')?.value || '').trim().toLowerCase();
+  const queryClean = query.replace(/[\s\-]/g, '');
 
   const filtered = App.bookings.filter(b => {
-    // Status Filter
+    // When typing in the search bar, search across ALL bookings including History automatically!
+    if (query) {
+      const refClean = (b.confirmation_code || '').toLowerCase().replace(/[\s\-]/g, '');
+      const idClean = (b.id || '').toLowerCase().replace(/[\s\-]/g, '');
+      return refClean.includes(queryClean) ||
+             idClean.includes(queryClean) ||
+             (b.customer_name || '').toLowerCase().includes(query) ||
+             (b.customer_phone || '').toLowerCase().includes(query) ||
+             (b.customer_email || '').toLowerCase().includes(query) ||
+             (b.pickup_address || '').toLowerCase().includes(query) ||
+             (b.dropoff_address || '').toLowerCase().includes(query) ||
+             (b.flight_number || '').toLowerCase().includes(query) ||
+             (b.chauffeur_name || '').toLowerCase().includes(query);
+    }
+
+    // Status Filter (when search bar is empty)
     if (App.activeFilter === 'ACTIVE') {
       if (b.status === 'COMPLETED' || b.status === 'CANCELLED') return false;
     } else if (App.activeFilter === 'PENDING') {
@@ -452,14 +468,7 @@ function renderJobsList() {
       if (b.status !== 'COMPLETED' && b.status !== 'CANCELLED') return false;
     }
 
-    // Text Search
-    if (!query) return true;
-    return (b.customer_name || '').toLowerCase().includes(query) ||
-           (b.confirmation_code || '').toLowerCase().includes(query) ||
-           (b.pickup_address || '').toLowerCase().includes(query) ||
-           (b.dropoff_address || '').toLowerCase().includes(query) ||
-           (b.flight_number || '').toLowerCase().includes(query) ||
-           (b.chauffeur_name || '').toLowerCase().includes(query);
+    return true;
   });
 
   // Update badge count
@@ -701,12 +710,22 @@ function renderCdsDispatchTable(filtered) {
     const shortDo = (b.dropoff_address || '').split(',')[0];
     const flightTag = b.flight_number ? ` <span style="background:rgba(56,189,248,0.16);color:#38bdf8;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;">✈️${escapeHtml(b.flight_number)}</span>` : '';
 
+    let pendingAmendObj = null;
+    if (b.pending_amendment) {
+      try {
+        pendingAmendObj = typeof b.pending_amendment === 'string' ? JSON.parse(b.pending_amendment) : b.pending_amendment;
+      } catch (_) {}
+    }
+    const amendBadge = pendingAmendObj
+      ? ` <span style="background:#f59e0b;color:#121715;padding:1px 5px;border-radius:3px;font-size:9.5px;font-weight:800;">⚠️ AMEND REQ</span>`
+      : '';
+
     const mainRowHtml = `
       <tr class="${rowClass}" onclick="toggleExpandBookingRow('${b.id}', event)" title="Click row to expand full booking details">
         <!-- 1. Expand & Ref -->
         <td>
           <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
-          <span style="font-family:monospace;color:var(--gold);font-weight:700;font-size:11.5px;">${escapeHtml(b.confirmation_code)}</span>
+          <span style="font-family:monospace;color:var(--gold);font-weight:700;font-size:11.5px;">${escapeHtml(b.confirmation_code)}</span>${amendBadge}
         </td>
 
         <!-- 2. Date & Time -->
@@ -754,6 +773,7 @@ function renderCdsDispatchTable(filtered) {
         <!-- 9. Right-Hand Actions (Allocate / Send Email / Edit / Inv / Del) -->
         <td style="text-align:right;" onclick="event.stopPropagation()">
           <div style="display:inline-flex;gap:4px;align-items:center;justify-content:flex-end;">
+            ${pendingAmendObj ? `<button type="button" class="excel-act-btn" style="background:#f59e0b;color:#121715;border-color:#f59e0b;font-weight:800;" onclick="resolveCustomerAmendment('${b.id}', 'APPROVE')" title="Approve Customer Amendment &amp; Send Confirmation">✓ Approve Edit</button>` : ''}
             <button type="button" class="excel-act-btn gold" onclick="openAllocateModal('${b.id}')" title="Allocate Driver &amp; Vehicle">🚘 Alloc</button>
             <button type="button" class="excel-act-btn" onclick="sendBookingConfirmationEmail('${b.id}')" title="Send Booking Confirmation Email to Customer">✉️ Email</button>
             <button type="button" class="excel-act-btn" onclick="openEditBookingModal('${b.id}')" title="Edit Booking Details">✏️ Edit</button>
@@ -772,10 +792,30 @@ function renderCdsDispatchTable(filtered) {
     const congFee = parseFloat(b.congestion_charge || 0).toFixed(2);
     const vatFee = parseFloat(b.vat_amount || 0).toFixed(2);
 
+    const amendBannerHtml = pendingAmendObj ? `
+      <div style="grid-column: 1 / -1; background: rgba(245, 158, 11, 0.14); border: 1px solid #f59e0b; border-radius: 6px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div>
+          <strong style="color: #fbbf24;">🚨 Customer Requested Amendment (&lt;2 Hours Before Pickup):</strong>
+          <div style="font-size: 12px; color: #fff; margin-top: 4px;">
+            <strong>New Pickup Time:</strong> ${escapeHtml(pendingAmendObj.pickup_datetime)} &nbsp;|&nbsp;
+            <strong>New Pickup:</strong> ${escapeHtml(pendingAmendObj.pickup_address)} &nbsp;&rarr;&nbsp;
+            <strong>New Destination:</strong> ${escapeHtml(pendingAmendObj.dropoff_address)}
+            ${pendingAmendObj.flight_number ? ` &nbsp;|&nbsp; <strong>Flight:</strong> ${escapeHtml(pendingAmendObj.flight_number)}` : ''}
+            ${pendingAmendObj.special_requests ? ` &nbsp;|&nbsp; <strong>Notes:</strong> ${escapeHtml(pendingAmendObj.special_requests)}` : ''}
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-gold" style="padding: 6px 12px; font-size: 12px;" onclick="resolveCustomerAmendment('${b.id}', 'APPROVE')">✓ Approve &amp; Email Confirmation</button>
+          <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; border-color: #ef4444; color: #f87171;" onclick="resolveCustomerAmendment('${b.id}', 'REJECT')">✕ Decline</button>
+        </div>
+      </div>
+    ` : '';
+
     const expandRowHtml = `
       <tr class="excel-expand-row">
         <td colspan="9">
           <div class="excel-expand-drawer">
+            ${amendBannerHtml}
             <!-- Box 1: Full Route, Flight & Notes -->
             <div class="excel-drawer-box">
               <div class="excel-drawer-title">📍 Full Itinerary &amp; Special Instructions</div>
@@ -850,6 +890,33 @@ async function sendBookingConfirmationEmail(bookingId) {
     }
   } catch (err) {
     alert('Failed to send confirmation email');
+  }
+}
+
+async function resolveCustomerAmendment(bookingId, decision) {
+  const b = App.bookings.find(x => x.id === bookingId);
+  if (!b) return;
+  if (decision === 'REJECT' && !confirm(`Decline the amendment request for ${b.confirmation_code}?`)) return;
+  try {
+    const res = await fetch(`/api/bookings/${bookingId}/resolve-amendment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision })
+    });
+    const data = await res.json();
+    if (data.success) {
+      playStatusBlipSound();
+      if (decision === 'APPROVE') {
+        showToast(`✅ Amendment approved & updated confirmation emailed to ${data.recipient || b.customer_email}!`);
+      } else {
+        showToast(`✕ Amendment declined for ${b.confirmation_code}.`);
+      }
+      loadData();
+    } else {
+      alert(data.error || 'Could not resolve amendment');
+    }
+  } catch (err) {
+    alert('Failed to resolve amendment');
   }
 }
 
@@ -1615,21 +1682,33 @@ function initForm() {
   }
 
   if (hoursSelect) hoursSelect.addEventListener('change', updatePricePreview);
-  if (vSelect) vSelect.addEventListener('change', () => { checkCapacity(); updatePricePreview(); });
+  if (vSelect) vSelect.addEventListener('change', () => {
+    if (vSelect.value === 'mercedes_s_class') {
+      if (lgCases && parseInt(lgCases.value) > 1) lgCases.value = '1';
+      if (medCases && parseInt(medCases.value) > 0) medCases.value = '0';
+      if (handLug && parseInt(handLug.value) > 1) handLug.value = '1';
+      if (passSelect && parseInt(passSelect.value) > 3) passSelect.value = '3';
+    }
+    checkCapacity();
+    updatePricePreview();
+  });
   if (passSelect) passSelect.addEventListener('change', checkCapacity);
   if (lgCases) lgCases.addEventListener('change', checkCapacity);
+  if (medCases) medCases.addEventListener('change', checkCapacity);
+  if (handLug) handLug.addEventListener('change', checkCapacity);
 
-  // Check vehicle passenger & luggage capacity
+  // Check vehicle passenger & luggage capacity (S-Class: max 3 pax, 1 large case, 0 medium, 1 hand luggage)
   function checkCapacity() {
     const pax = parseInt(passSelect ? passSelect.value : 1);
     const large = parseInt(lgCases ? lgCases.value : 0);
+    const med = parseInt(medCases ? medCases.value : 0);
+    const hand = parseInt(handLug ? handLug.value : 0);
     const v = vSelect ? vSelect.value : 'mercedes_s_class';
 
-    if (pax > 4 || large > 2) {
-      if (v === 'mercedes_s_class') {
-        vSelect.value = 'mercedes_v_class';
-        showToast('Switched to Mercedes-Benz V-Class for 5+ passengers / extra luggage');
-      }
+    if (v === 'mercedes_s_class' && (pax > 3 || large > 1 || med > 0 || hand > 1)) {
+      vSelect.value = 'mercedes_v_class';
+      updatePricePreview();
+      showToast('S-Class takes max 1 large case & 1 hand luggage — switched to Mercedes V-Class');
     }
   }
 

@@ -130,7 +130,7 @@
               <button type="button" class="cds-view-btn active" id="btn-view-grid" onclick="setJobsViewMode('GRID')">📊 Thin Lines (Excel)</button>
               <button type="button" class="cds-view-btn" id="btn-view-cards" onclick="setJobsViewMode('CARDS')">🗂️ Cards</button>
             </div>
-            <input type="text" id="jobs-search-input" placeholder="Search ref, customer, flight, location...">
+            <input type="text" id="jobs-search-input" placeholder="Search any booking ref (e.g. GA2WV8V), name, phone, or history..." style="min-width: 280px;">
             <button type="button" class="btn btn-secondary" onclick="clearAllBookings()" style="white-space: nowrap; font-size: 11.5px; padding: 6px 10px; border-color: rgba(239,68,68,0.4); color: #f87171;">🗑️ Clear All</button>
           </div>
         </div>
@@ -272,9 +272,9 @@
               <div class="field">
                 <label>Select Vehicle *</label>
                 <select id="f-vehicle" required>
-                  <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • 4 Pax)</option>
-                  <option value="mercedes_v_class">Mercedes-Benz V-Class (MPV • 6 Pax)</option>
-                  <option value="range_rover_autobiography">Range Rover Autobiography (SUV • 4 Pax)</option>
+                  <option value="mercedes_s_class">Mercedes-Benz S-Class (Saloon • Max 1 Large &amp; 1 Hand Bag)</option>
+                  <option value="mercedes_v_class">Mercedes-Benz V-Class (MPV • 6 Pax • Up to 6 Large Cases)</option>
+                  <option value="range_rover_autobiography">Range Rover Autobiography (SUV • 4 Pax • Up to 2 Large Cases)</option>
                 </select>
               </div>
             </div>
@@ -294,14 +294,14 @@
               </div>
 
               <div class="field">
-                <label>Luggage Breakdown</label>
+                <label>Luggage Breakdown (S-Class: Max 1 Large &amp; 1 Hand)</label>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
                   <div>
                     <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">Large Cases</span>
                     <select id="f-large-cases" style="padding: 8px;">
                       <option value="0">0</option>
-                      <option value="1">1</option>
-                      <option value="2" selected>2</option>
+                      <option value="1" selected>1</option>
+                      <option value="2">2</option>
                       <option value="3">3</option>
                       <option value="4">4</option>
                       <option value="5">5</option>
@@ -311,8 +311,8 @@
                   <div>
                     <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">Medium</span>
                     <select id="f-medium-cases" style="padding: 8px;">
-                      <option value="0">0</option>
-                      <option value="1" selected>1</option>
+                      <option value="0" selected>0</option>
+                      <option value="1">1</option>
                       <option value="2">2</option>
                       <option value="3">3</option>
                       <option value="4">4</option>
@@ -322,8 +322,8 @@
                     <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">Hand Bags</span>
                     <select id="f-hand-luggage" style="padding: 8px;">
                       <option value="0">0</option>
-                      <option value="1">1</option>
-                      <option value="2" selected>2</option>
+                      <option value="1" selected>1</option>
+                      <option value="2">2</option>
                       <option value="3">3</option>
                     </select>
                   </div>
@@ -725,6 +725,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=20261119a1"></script>
+  <script src="app.js?v=20261119a2"></script>
 </body>
 </html>

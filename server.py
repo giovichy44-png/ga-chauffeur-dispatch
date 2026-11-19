@@ -314,6 +314,9 @@ PUBLIC_PATHS = {
     "/api/quote",
     "/api/suggestions",
     "/api/lookup-postcode",
+    "/manage-booking",
+    "/api/public/booking",
+    "/api/public/booking-amend",
     "/favicon.ico",
     "/manifest.json",
     "/sw.js",
@@ -333,6 +336,9 @@ def is_public_request(method, path):
         "/api/quote",
         "/api/suggestions",
         "/api/lookup-postcode",
+        "/manage-booking",
+        "/api/public/booking",
+        "/api/public/booking-amend",
         "/favicon.ico",
         "/manifest.json",
         "/sw.js",
@@ -342,7 +348,7 @@ def is_public_request(method, path):
         return True
     if clean_path in PUBLIC_PATHS or path in PUBLIC_PATHS or path.startswith("/static/embed"):
         return True
-    if method == "POST" and clean_path in ("/api/bookings", "/api/login"):
+    if method == "POST" and clean_path in ("/api/bookings", "/api/login", "/api/public/booking-amend"):
         return True
     if path.startswith("/api/track/"):
         return True
@@ -555,10 +561,10 @@ VEHICLE_CONFIGS = {
         "name": "Mercedes-Benz S-Class",
         "description": "Executive Saloon • Pure Elegance",
         "image_url": "https://gachauffeurs.co.uk/assets/fleet/sclass-front.png",
-        "passengers": 4,
-        "large_cases": 2,
-        "medium_cases": 2,
-        "hand_luggage": 2,
+        "passengers": 3,
+        "large_cases": 1,
+        "medium_cases": 0,
+        "hand_luggage": 1,
         "hourly_rate": 85.0,
         "min_hours": 4,
         "heathrow_rate": 165.0,        # Heathrow & London City Airport to Central London
@@ -1021,6 +1027,25 @@ def format_pickup_and_dropoff_times(pickup_dt, duration_min=0, hours_booked=0, d
         dropoff_display = dur_label
     return pickup_display, dropoff_display
 
+def format_luggage_summary(large_cases=0, medium_cases=0, hand_luggage=0, vehicle_tier=""):
+    lg = int(large_cases or 0)
+    md = int(medium_cases or 0)
+    hd = int(hand_luggage or 0)
+    vt = str(vehicle_tier or "").lower()
+    if "s_class" in vt or "s-class" in vt:
+        lg = min(lg, 1)
+        md = 0
+        hd = min(hd, 1)
+    parts = []
+    if lg > 0:
+        parts.append(f"{lg} Large")
+    if md > 0:
+        parts.append(f"{md} Medium")
+    if hd > 0:
+        parts.append(f"{hd} Hand")
+    return ", ".join(parts) if parts else "1 Large, 1 Hand" if ("s_class" in vt or "s-class" in vt) else "No Luggage"
+
+
 def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None, parking_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, dropoff_fee=0.0, duration_min=0, hours_booked=0, distance_mi=0.0, special_requests="", customer_phone="", customer_email="", payment_status="PRE_AUTHORIZED"):
     tier_key = normalize_vehicle_tier(vehicle_tier)
     vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
@@ -1134,7 +1159,8 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
         </div>
         """
 
-    luggage_summary = f"{large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand"
+    luggage_summary = format_luggage_summary(large_cases, medium_cases, hand_luggage, tier_key)
+    edit_booking_url = f"https://dispatch.gachauffeurs.co.uk/manage-booking?code={urllib.parse.quote(str(booking_ref or ''))}&email={urllib.parse.quote(str(customer_email or ''))}"
     vehicle_img_url = vehicle_info.get("image_url", "https://gachauffeurs.co.uk/assets/fleet/sclass-front.png")
     passenger_contact_rows = ""
     if customer_phone or customer_email:
@@ -1253,6 +1279,16 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
                 </td>
               </tr>
             </table>
+
+            <!-- Customer Self-Service Edit / Amend Booking Button -->
+            <div style="text-align: center; margin: 22px 0 8px 0; padding: 16px; background-color: #121715; border: 1px solid #2e3b33; border-radius: 6px;">
+              <a href="{edit_booking_url}" style="display: inline-block; background-color: #c9b894; color: #121715; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; padding: 12px 24px; border-radius: 4px; text-decoration: none;">
+                ✏️ Edit or Amend Booking ↗
+              </a>
+              <p style="color: #717d76; font-size: 11px; margin: 10px 0 0 0; line-height: 1.45;">
+                Amendments can be made directly online up to 2 hours before pickup. Within 2 hours of pickup, amendment requests are sent to Dispatch for confirmation first, or call <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a>.
+              </p>
+            </div>
           </td>
         </tr>
 
@@ -1274,6 +1310,7 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
     pickup_display, dropoff_display = format_pickup_and_dropoff_times(
         pickup_dt, duration_min=duration_min, hours_booked=hours_booked, distance_mi=distance_mi, service_type=service_type
     )
+    lug_sum = format_luggage_summary(large_cases, medium_cases, hand_luggage, vehicle_name)
     return (
         f"Dear {customer_name},\n\n"
         f"Thank you for booking with GA Chauffeur Services Limited.\n"
@@ -1281,7 +1318,7 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
         f"Booking Reference: {booking_ref}\n"
         f"Service Type: {service_type}\n"
         f"Vehicle Booked: {vehicle_name}\n"
-        f"Passengers & Luggage: {passengers} Pax • {large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand\n"
+        f"Passengers & Luggage: {passengers} Pax • {lug_sum}\n"
         f"Pickup Date & Time: {pickup_display}\n"
         f"Collection Point: {pickup_addr}\n"
         f"Destination: {dropoff_addr}\n"
@@ -1295,6 +1332,7 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
         + f"VAT (20%): £{float(vat_amt):.2f} GBP\n"
         + f"Total: £{float(total_fare):.2f} GBP\n"
         + f"(Final journey fee will be calculated at the end of the journey.)\n\n"
+        + f"Edit or Amend Your Booking Online: https://dispatch.gachauffeurs.co.uk/manage-booking?code={booking_ref}\n\n"
         f"GA Chauffeur Services Limited\n"
         f"Direct Line: {COMPANY_PHONE}\n"
         f"Email: {FROM_EMAIL}\n"
@@ -1389,7 +1427,7 @@ def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, c
               </tr>
               <tr>
                 <td style="color: #aab5ae; font-size: 13px; padding: 4px 0;">Passengers &amp; Luggage:</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px;">{passengers} Pax • {large_cases} Large, {medium_cases} Medium, {hand_luggage} Hand</td>
+                <td style="text-align: right; color: #ffffff; font-size: 13px;">{passengers} Pax • {format_luggage_summary(large_cases, medium_cases, hand_luggage, tier_key)}</td>
               </tr>
               <tr>
                 <td style="color: #aab5ae; font-size: 13px; padding: 4px 0;">Flight Number:</td>
@@ -1815,6 +1853,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             or host in ("localhost", "127.0.0.1")
             or host.startswith("192.168.")
         )
+
+        # Public Customer Self-Service Edit Booking Page (available on both website and dispatch domain)
+        if path.rstrip("/") == "/manage-booking":
+            self.handle_serve_manage_booking_page()
+            return
+
+        if path == "/api/public/booking":
+            self.handle_public_get_booking(query)
+            return
 
         # If on website host and not an API route, serve website static files directly
         if not is_dispatch and not path.startswith("/api/"):
@@ -2253,6 +2300,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Invalid username or password"}, 401)
                 return
 
+        if path == "/api/public/booking-amend":
+            self.handle_public_booking_amend(payload)
+            return
+
         # Check authentication for private POST endpoints
         if not is_public_request("POST", path):
             if not check_auth(self.headers):
@@ -2342,6 +2393,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             parts = path.split("/")
             booking_id = parts[3]
             self.handle_send_booking_confirmation(booking_id, payload)
+            return
+
+        if path.endswith("/resolve-amendment"):
+            parts = path.split("/")
+            booking_id = parts[3]
+            self.handle_resolve_amendment(booking_id, payload)
             return
 
         if path == "/api/bookings/clear-all":
@@ -2751,11 +2808,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         pickup_unit = payload.get("pickup_unit", "")
         dropoff_unit = payload.get("dropoff_unit", "")
-        large_cases = int(payload.get("large_cases", 0) or 0)
+        large_cases = int(payload.get("large_cases", 1) if "large_cases" in payload else 1)
         medium_cases = int(payload.get("medium_cases", 0) or 0)
-        hand_luggage = int(payload.get("hand_luggage", 0) or 0)
+        hand_luggage = int(payload.get("hand_luggage", 1) if "hand_luggage" in payload else 1)
+        if norm_veh == "mercedes_s_class":
+            large_cases = min(large_cases, 1)
+            medium_cases = 0
+            hand_luggage = min(hand_luggage, 1)
         passenger_count = int(payload.get("passenger_count", payload.get("passengers", 1)) or 1)
-        luggage_count = int(payload.get("luggage_count", large_cases + medium_cases) or 1)
+        luggage_count = int(payload.get("luggage_count", large_cases + medium_cases) if "luggage_count" in payload else (large_cases + medium_cases))
+        if norm_veh == "mercedes_s_class":
+            luggage_count = min(max(luggage_count, large_cases), 1)
 
         cursor.execute("""
         INSERT INTO bookings (
@@ -3196,6 +3259,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         vehicle_class = normalize_vehicle_tier(payload.get("vehicle_class", booking.get("vehicle_class", "mercedes_s_class")))
         passenger_count = int(payload.get("passenger_count", booking.get("passenger_count", 1)) or 1)
         luggage_count = int(payload.get("luggage_count", booking.get("luggage_count", 1)) or 0)
+        large_cases = int(payload.get("large_cases", booking.get("large_cases", luggage_count)) or 0)
+        medium_cases = int(payload.get("medium_cases", booking.get("medium_cases", 0)) or 0)
+        hand_luggage = int(payload.get("hand_luggage", booking.get("hand_luggage", 1)) or 0)
+        if vehicle_class == "mercedes_s_class":
+            large_cases = min(max(large_cases, min(luggage_count, 1)), 1)
+            medium_cases = 0
+            hand_luggage = min(hand_luggage, 1)
+            luggage_count = min(luggage_count, 1)
         special_requests = str(payload.get("special_requests") if "special_requests" in payload else (booking.get("special_requests") or "")).strip()
 
         net_fare = float(payload.get("fare_amount", booking.get("fare_amount", 165.0)) or 0.0)
@@ -3217,6 +3288,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 vehicle_class = ?,
                 passenger_count = ?,
                 luggage_count = ?,
+                large_cases = ?,
+                medium_cases = ?,
+                hand_luggage = ?,
                 special_requests = ?,
                 fare_amount = ?,
                 parking_fee = ?,
@@ -3229,7 +3303,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         """, (
             customer_name, customer_phone, customer_email, pickup_datetime,
             pickup_address, dropoff_address, flight_number, vehicle_class,
-            passenger_count, luggage_count, special_requests, net_fare,
+            passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
+            special_requests, net_fare,
             parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare,
             now_str, real_id
         ))
@@ -3338,6 +3413,567 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": f"Failed to send email to {recipient}: {note}"}, 502)
             return
         self.send_json({"success": True, "recipient": recipient, "confirmation_code": code})
+
+    def _minutes_until_pickup(self, pickup_dt_str):
+        raw = str(pickup_dt_str or "").strip().replace("T", " ")
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M"):
+            try:
+                dt = datetime.strptime(raw, fmt)
+                return int(round((dt - datetime.now()).total_seconds() / 60.0))
+            except ValueError:
+                continue
+        return None
+
+    def handle_public_get_booking(self, query):
+        code_raw = str(query.get("code", [""])[0] or "").strip().upper().replace(" ", "")
+        email_raw = str(query.get("email", [""])[0] or "").strip().lower()
+        if not code_raw:
+            self.send_json({"error": "Please enter your Booking Reference (e.g. GA-2WV8V)."}, 400)
+            return
+
+        code_nodash = code_raw.replace("-", "")
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM bookings
+            WHERE UPPER(REPLACE(confirmation_code, '-', '')) = ?
+               OR UPPER(confirmation_code) = ?
+               OR UPPER(id) = ?
+        """, (code_nodash, code_raw, code_raw))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            self.send_json({"error": "Booking reference not found. Please check your reference or call +44 7886 622082."}, 404)
+            return
+
+        booking = dict(row)
+        stored_email = str(booking.get("customer_email") or "").strip().lower()
+        if email_raw and stored_email and email_raw != stored_email:
+            self.send_json({"error": "The email address entered does not match this booking reference."}, 403)
+            return
+
+        mins = self._minutes_until_pickup(booking.get("pickup_datetime"))
+        within_2h = (mins is not None and mins <= 120)
+        pending_amend = None
+        if booking.get("pending_amendment"):
+            try:
+                pending_amend = json.loads(booking["pending_amendment"])
+            except Exception:
+                pending_amend = None
+
+        self.send_json({
+            "ok": True,
+            "booking": {
+                "confirmation_code": booking.get("confirmation_code"),
+                "customer_name": booking.get("customer_name"),
+                "customer_phone": booking.get("customer_phone"),
+                "customer_email": booking.get("customer_email"),
+                "pickup_datetime": booking.get("pickup_datetime"),
+                "pickup_address": booking.get("pickup_address"),
+                "dropoff_address": booking.get("dropoff_address"),
+                "flight_number": booking.get("flight_number") or "",
+                "vehicle_class": booking.get("vehicle_class"),
+                "passenger_count": booking.get("passenger_count", 1),
+                "large_cases": booking.get("large_cases", 1),
+                "medium_cases": booking.get("medium_cases", 0),
+                "hand_luggage": booking.get("hand_luggage", 1),
+                "special_requests": booking.get("special_requests") or "",
+                "status": booking.get("status"),
+                "total_fare": booking.get("total_fare") or booking.get("fare_amount"),
+                "minutes_until_pickup": mins,
+                "within_two_hours": within_2h,
+                "pending_amendment": pending_amend
+            }
+        })
+
+    def handle_public_booking_amend(self, payload):
+        code_raw = str(payload.get("code") or "").strip().upper().replace(" ", "")
+        email_raw = str(payload.get("email") or "").strip().lower()
+        if not code_raw:
+            self.send_json({"error": "Missing booking reference."}, 400)
+            return
+
+        code_nodash = code_raw.replace("-", "")
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM bookings
+            WHERE UPPER(REPLACE(confirmation_code, '-', '')) = ?
+               OR UPPER(confirmation_code) = ?
+               OR UPPER(id) = ?
+        """, (code_nodash, code_raw, code_raw))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.send_json({"error": "Booking reference not found."}, 404)
+            return
+
+        booking = dict(row)
+        stored_email = str(booking.get("customer_email") or "").strip().lower()
+        if email_raw and stored_email and email_raw != stored_email:
+            conn.close()
+            self.send_json({"error": "Email does not match this booking reference."}, 403)
+            return
+
+        real_id = booking["id"]
+        code = booking["confirmation_code"]
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        mins = self._minutes_until_pickup(booking.get("pickup_datetime"))
+        within_2h = (mins is not None and mins <= 120)
+
+        norm_veh = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
+        req_dt = str(payload.get("pickup_datetime") or booking.get("pickup_datetime") or "").strip().replace("T", " ")
+        req_pu = str(payload.get("pickup_address") or booking.get("pickup_address") or "").strip()
+        req_do = str(payload.get("dropoff_address") or booking.get("dropoff_address") or "").strip()
+        req_phone = str(payload.get("customer_phone") or booking.get("customer_phone") or "").strip()
+        req_flight = str(payload.get("flight_number") if "flight_number" in payload else (booking.get("flight_number") or "")).strip()
+        req_pax = int(payload.get("passenger_count", booking.get("passenger_count", 1)) or 1)
+        req_lg = int(payload.get("large_cases", booking.get("large_cases", 1)) or 0)
+        req_md = int(payload.get("medium_cases", booking.get("medium_cases", 0)) or 0)
+        req_hd = int(payload.get("hand_luggage", booking.get("hand_luggage", 1)) or 0)
+        if norm_veh == "mercedes_s_class":
+            req_pax = min(req_pax, 3)
+            req_lg = min(req_lg, 1)
+            req_md = 0
+            req_hd = min(req_hd, 1)
+        req_notes = str(payload.get("special_requests") if "special_requests" in payload else (booking.get("special_requests") or "")).strip()
+
+        owner_inbox = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
+
+        if within_2h:
+            # Within 2 hours of pickup: store as pending_amendment and require Dispatch confirmation first!
+            amend_obj = {
+                "requested_at": now_str,
+                "pickup_datetime": req_dt,
+                "pickup_address": req_pu,
+                "dropoff_address": req_do,
+                "customer_phone": req_phone,
+                "flight_number": req_flight,
+                "passenger_count": req_pax,
+                "large_cases": req_lg,
+                "medium_cases": req_md,
+                "hand_luggage": req_hd,
+                "special_requests": req_notes
+            }
+            cursor.execute("UPDATE bookings SET pending_amendment = ?, updated_at = ? WHERE id = ?", (json.dumps(amend_obj), now_str, real_id))
+            cursor.execute("""
+                INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
+                VALUES (?, ?, 'AMENDMENT_REQUESTED_2H', 'Customer Online', ?, ?)
+            """, (real_id, booking.get("chauffeur_id"), f"Customer requested <2h amendment for {code}: PU {req_dt} | {req_pu} -> {req_do}", now_str))
+            conn.commit()
+            conn.close()
+
+            alert_html = f"""
+            <div style="font-family:sans-serif;background:#121715;color:#edf0ea;padding:24px;border:2px solid #f59e0b;border-radius:8px;max-width:600px;">
+              <h2 style="color:#fbbf24;margin-top:0;">🚨 URGENT (&lt;2 Hours) Amendment Request — {code}</h2>
+              <p><strong>{booking.get('customer_name')}</strong> ({booking.get('customer_phone')}) has requested an amendment within 2 hours of pickup. Please review and click <strong>Approve Edit</strong> on the Dispatch Console to confirm to the customer.</p>
+              <table width="100%" style="background:#171f1b;padding:12px;border-radius:6px;font-size:13px;">
+                <tr><td style="color:#aab5ae;">Requested Pickup Time:</td><td style="color:#fff;font-weight:bold;">{req_dt} (was {booking.get('pickup_datetime')})</td></tr>
+                <tr><td style="color:#aab5ae;">Requested Pickup:</td><td style="color:#fff;font-weight:bold;">{req_pu}</td></tr>
+                <tr><td style="color:#aab5ae;">Requested Drop-off:</td><td style="color:#fff;font-weight:bold;">{req_do}</td></tr>
+                <tr><td style="color:#aab5ae;">Flight / Notes:</td><td style="color:#fff;">{req_flight or 'None'} | {req_notes or 'None'}</td></tr>
+              </table>
+              <p style="margin-top:16px;"><a href="https://dispatch.gachauffeurs.co.uk/" style="background:#c9b894;color:#121715;padding:10px 18px;border-radius:4px;text-decoration:none;font-weight:bold;">Open Dispatch Console to Approve / Decline ↗</a></p>
+            </div>
+            """
+            send_smtp_email(owner_inbox, f"🚨 URGENT (<2h) Amendment Request {code}: {booking.get('customer_name')}", alert_html, f"Urgent <2h amendment requested for {code}. Open https://dispatch.gachauffeurs.co.uk/ to approve.")
+            broadcast_event("amendment_requested", {"booking_id": real_id, "confirmation_code": code})
+            self.send_json({
+                "success": True,
+                "mode": "REQUESTED",
+                "message": "Because your pickup is within 2 hours, your amendment request has been sent to our Dispatch Team for confirmation first. You will receive an updated confirmation email as soon as Dispatch approves the change, or you may call +44 7886 622082."
+            })
+            return
+
+        # More than 2 hours before pickup: apply immediately and send updated confirmation
+        lug_cnt = req_lg + req_md
+        if norm_veh == "mercedes_s_class":
+            lug_cnt = min(max(lug_cnt, req_lg), 1)
+        cursor.execute("""
+            UPDATE bookings SET
+                pickup_datetime = ?,
+                pickup_address = ?,
+                dropoff_address = ?,
+                customer_phone = ?,
+                flight_number = ?,
+                passenger_count = ?,
+                luggage_count = ?,
+                large_cases = ?,
+                medium_cases = ?,
+                hand_luggage = ?,
+                special_requests = ?,
+                pending_amendment = NULL,
+                updated_at = ?
+            WHERE id = ?
+        """, (
+            req_dt, req_pu, req_do, req_phone, req_flight or None,
+            req_pax, lug_cnt, req_lg, req_md, req_hd, req_notes, now_str, real_id
+        ))
+        cursor.execute("""
+            INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
+            VALUES (?, ?, 'CUSTOMER_AMENDED_BOOKING', 'Customer Online', ?, ?)
+        """, (real_id, booking.get("chauffeur_id"), f"Customer amended booking {code} (>2h prior to pickup).", now_str))
+        conn.commit()
+        conn.close()
+
+        self.handle_send_booking_confirmation(real_id, {"recipient_email": booking.get("customer_email")})
+        return
+
+    def handle_resolve_amendment(self, booking_id, payload):
+        decision = str(payload.get("decision") or "APPROVE").upper()
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.send_json({"error": "Booking not found"}, 404)
+            return
+
+        booking = dict(row)
+        real_id = booking["id"]
+        code = booking["confirmation_code"]
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        raw_amend = booking.get("pending_amendment")
+        if not raw_amend:
+            conn.close()
+            self.send_json({"error": "No pending amendment found on this booking."}, 400)
+            return
+
+        amend = json.loads(raw_amend)
+        if decision == "APPROVE":
+            norm_veh = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
+            req_lg = int(amend.get("large_cases", booking.get("large_cases", 1)) or 0)
+            req_md = int(amend.get("medium_cases", booking.get("medium_cases", 0)) or 0)
+            req_hd = int(amend.get("hand_luggage", booking.get("hand_luggage", 1)) or 0)
+            if norm_veh == "mercedes_s_class":
+                req_lg = min(req_lg, 1)
+                req_md = 0
+                req_hd = min(req_hd, 1)
+            lug_cnt = min(req_lg, 1) if norm_veh == "mercedes_s_class" else (req_lg + req_md)
+
+            cursor.execute("""
+                UPDATE bookings SET
+                    pickup_datetime = ?,
+                    pickup_address = ?,
+                    dropoff_address = ?,
+                    customer_phone = ?,
+                    flight_number = ?,
+                    passenger_count = ?,
+                    luggage_count = ?,
+                    large_cases = ?,
+                    medium_cases = ?,
+                    hand_luggage = ?,
+                    special_requests = ?,
+                    pending_amendment = NULL,
+                    updated_at = ?
+                WHERE id = ?
+            """, (
+                amend.get("pickup_datetime", booking.get("pickup_datetime")),
+                amend.get("pickup_address", booking.get("pickup_address")),
+                amend.get("dropoff_address", booking.get("dropoff_address")),
+                amend.get("customer_phone", booking.get("customer_phone")),
+                amend.get("flight_number") or None,
+                int(amend.get("passenger_count", booking.get("passenger_count", 1)) or 1),
+                lug_cnt, req_lg, req_md, req_hd,
+                amend.get("special_requests", booking.get("special_requests", "")),
+                now_str, real_id
+            ))
+            conn.commit()
+            conn.close()
+            # Automatically send updated confirmation email to the customer!
+            self.handle_send_booking_confirmation(real_id, {"recipient_email": booking.get("customer_email")})
+            return
+        else:
+            cursor.execute("UPDATE bookings SET pending_amendment = NULL, updated_at = ? WHERE id = ?", (now_str, real_id))
+            conn.commit()
+            conn.close()
+            if booking.get("customer_email"):
+                send_smtp_email(
+                    booking["customer_email"],
+                    f"Amendment Request Update: {code} — GA Chauffeur Services Limited",
+                    f"<p>Dear {booking.get('customer_name')},</p><p>Regarding your last-minute amendment request for booking <strong>{code}</strong>: because your pickup is within 2 hours, we could not automatically apply this change. Please call our 24/7 Dispatch Desk on <strong>{COMPANY_PHONE}</strong> so we can assist you directly.</p><p>Warm regards,<br><strong>{COMPANY_NAME}</strong></p>",
+                    f"Dear {booking.get('customer_name')},\nPlease call our Dispatch Desk on {COMPANY_PHONE} regarding your amendment request for {code}."
+                )
+            self.send_json({"success": True, "decision": "REJECTED"})
+
+    def handle_serve_manage_booking_page(self):
+        html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit or Amend Your Booking | GA Chauffeur Services</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #121715;
+      color: #edf0ea;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px 14px;
+    }
+    .card {
+      max-width: 620px;
+      margin: 0 auto;
+      background: #171f1b;
+      border: 1px solid #c9b894;
+      border-radius: 8px;
+      padding: 26px 24px;
+      box-shadow: 0 20px 45px rgba(0,0,0,0.55);
+    }
+    .brand { text-align: center; border-bottom: 1px solid #2e3b33; padding-bottom: 16px; margin-bottom: 18px; }
+    .brand-ga { font-family: Georgia, serif; font-size: 32px; color: #c9b894; letter-spacing: -3px; }
+    h1 { font-family: Georgia, serif; font-size: 22px; font-weight: normal; color: #fff; margin: 0 0 6px; }
+    label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #c9b894; font-weight: 700; margin-bottom: 5px; }
+    input, select, textarea {
+      width: 100%;
+      background: #111614;
+      border: 1px solid #2e3b33;
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 5px;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .btn {
+      width: 100%;
+      background: #c9b894;
+      color: #121715;
+      border: none;
+      padding: 13px 20px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 5px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .alert-2h {
+      background: rgba(245, 158, 11, 0.14);
+      border: 1px solid #f59e0b;
+      color: #fde68a;
+      padding: 12px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .alert-ok {
+      background: rgba(16, 185, 129, 0.14);
+      border: 1px solid #10b981;
+      color: #6ee7b7;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 600px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <span class="brand-ga">GA</span>
+      <div style="font-size:11px;color:#c9b894;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">GA Chauffeur Services Limited</div>
+    </div>
+
+    <h1>Edit or Amend Your Booking</h1>
+    <p style="font-size:13px;color:#aab5ae;margin-top:0;">Enter your Booking Reference and Email to view or amend your reservation.</p>
+
+    <div class="grid2">
+      <div>
+        <label>Booking Reference *</label>
+        <input type="text" id="mb-code" placeholder="e.g. GA-2WV8V">
+      </div>
+      <div>
+        <label>Booking Email Address *</label>
+        <input type="email" id="mb-email" placeholder="your@email.com">
+      </div>
+    </div>
+    <button type="button" class="btn" id="mb-find-btn" onclick="lookupBooking()" style="margin-bottom:16px;">Load My Booking</button>
+
+    <div id="mb-status-msg"></div>
+
+    <form id="mb-edit-form" style="display:none;" onsubmit="submitAmendment(event)">
+      <div id="mb-rule-banner"></div>
+
+      <div class="grid2">
+        <div>
+          <label>Pickup Date &amp; Time *</label>
+          <input type="datetime-local" id="mb-dt" required>
+        </div>
+        <div>
+          <label>Contact Phone Number *</label>
+          <input type="tel" id="mb-phone" required>
+        </div>
+      </div>
+
+      <div>
+        <label>Collection / Pickup Address *</label>
+        <input type="text" id="mb-pu" required>
+      </div>
+
+      <div>
+        <label>Drop-off Destination *</label>
+        <input type="text" id="mb-do" required>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Flight Number (Optional)</label>
+          <input type="text" id="mb-flight" placeholder="e.g. BA 178">
+        </div>
+        <div>
+          <label>Passengers *</label>
+          <input type="number" id="mb-pax" min="1" max="6" value="1" required>
+        </div>
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label>Large Suitcase</label>
+          <input type="number" id="mb-lg" min="0" max="6" value="1">
+        </div>
+        <div id="mb-md-wrap">
+          <label>Medium Case</label>
+          <input type="number" id="mb-md" min="0" max="6" value="0">
+        </div>
+        <div>
+          <label>Hand Luggage</label>
+          <input type="number" id="mb-hd" min="0" max="6" value="1">
+        </div>
+      </div>
+      <div id="mb-sclass-note" style="font-size:11.5px;color:#c9b894;margin-bottom:10px;display:none;">
+        ℹ️ Mercedes-Benz S-Class capacity: up to 3 passengers, maximum 1 large suitcase and 1 hand luggage.
+      </div>
+
+      <div>
+        <label>Special Requests / Chauffeur Notes</label>
+        <input type="text" id="mb-notes" placeholder="Nameboard, child seat, or instructions">
+      </div>
+
+      <button type="submit" class="btn" id="mb-submit-btn">Save &amp; Update Booking</button>
+      <div style="text-align:center;margin-top:12px;font-size:12.5px;color:#aab5ae;">
+        Need immediate assistance? Call our 24/7 Dispatch Desk: <a href="tel:+447886622082" style="color:#c9b894;font-weight:bold;">+44 7886 622082</a>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('code')) document.getElementById('mb-code').value = params.get('code');
+    if (params.get('email')) document.getElementById('mb-email').value = params.get('email');
+
+    async function lookupBooking() {
+      const code = document.getElementById('mb-code').value.trim();
+      const email = document.getElementById('mb-email').value.trim();
+      const msg = document.getElementById('mb-status-msg');
+      msg.innerHTML = '';
+      if (!code) {
+        msg.innerHTML = '<div class="alert-2h">Please enter your Booking Reference.</div>';
+        return;
+      }
+      try {
+        const res = await fetch('/api/public/booking?code=' + encodeURIComponent(code) + '&email=' + encodeURIComponent(email));
+        const data = await res.json();
+        if (!res.ok || !data.booking) {
+          msg.innerHTML = '<div class="alert-2h">' + (data.error || 'Could not load booking.') + '</div>';
+          return;
+        }
+        const b = data.booking;
+        document.getElementById('mb-edit-form').style.display = 'block';
+        document.getElementById('mb-dt').value = String(b.pickup_datetime || '').replace(' ', 'T').slice(0, 16);
+        document.getElementById('mb-phone').value = b.customer_phone || '';
+        document.getElementById('mb-pu').value = b.pickup_address || '';
+        document.getElementById('mb-do').value = b.dropoff_address || '';
+        document.getElementById('mb-flight').value = b.flight_number || '';
+        document.getElementById('mb-pax').value = b.passenger_count || 1;
+        document.getElementById('mb-lg').value = b.large_cases ?? 1;
+        document.getElementById('mb-md').value = b.medium_cases ?? 0;
+        document.getElementById('mb-hd').value = b.hand_luggage ?? 1;
+        document.getElementById('mb-notes').value = b.special_requests || '';
+
+        const isSClass = String(b.vehicle_class || '').toLowerCase().includes('s_class') || String(b.vehicle_class || '').toLowerCase().includes('s-class');
+        if (isSClass) {
+          document.getElementById('mb-lg').max = 1;
+          document.getElementById('mb-lg').value = Math.min(Number(b.large_cases ?? 1), 1);
+          document.getElementById('mb-md').value = 0;
+          document.getElementById('mb-md-wrap').style.display = 'none';
+          document.getElementById('mb-hd').max = 1;
+          document.getElementById('mb-hd').value = Math.min(Number(b.hand_luggage ?? 1), 1);
+          document.getElementById('mb-sclass-note').style.display = 'block';
+        }
+
+        const banner = document.getElementById('mb-rule-banner');
+        const subBtn = document.getElementById('mb-submit-btn');
+        if (b.within_two_hours) {
+          banner.innerHTML = '<div class="alert-2h"><strong>⚠️ Within 2 Hours of Pickup — Dispatch Approval Required</strong><br>Because your pickup is within 2 hours, any amendment must be confirmed by Dispatch first before taking effect. Submit your requested changes below for immediate Dispatch approval, or call <a href="tel:+447886622082" style="color:#fff;font-weight:bold;">+44 7886 622082</a>.</div>';
+          subBtn.textContent = '📩 Request Amendment for Dispatch Approval';
+        } else {
+          banner.innerHTML = '<div class="alert-ok"><strong>✓ Direct Online Amendment Available</strong> — More than 2 hours remain before pickup. Your update will be confirmed immediately.</div>';
+          subBtn.textContent = '💾 Save & Confirm Updated Booking';
+        }
+      } catch (e) {
+        msg.innerHTML = '<div class="alert-2h">Network error loading booking.</div>';
+      }
+    }
+
+    async function submitAmendment(e) {
+      e.preventDefault();
+      const subBtn = document.getElementById('mb-submit-btn');
+      const msg = document.getElementById('mb-status-msg');
+      subBtn.disabled = true;
+      subBtn.textContent = 'Submitting...';
+      const payload = {
+        code: document.getElementById('mb-code').value.trim(),
+        email: document.getElementById('mb-email').value.trim(),
+        pickup_datetime: document.getElementById('mb-dt').value.replace('T', ' '),
+        customer_phone: document.getElementById('mb-phone').value.trim(),
+        pickup_address: document.getElementById('mb-pu').value.trim(),
+        dropoff_address: document.getElementById('mb-do').value.trim(),
+        flight_number: document.getElementById('mb-flight').value.trim(),
+        passenger_count: Number(document.getElementById('mb-pax').value || 1),
+        large_cases: Number(document.getElementById('mb-lg').value || 0),
+        medium_cases: Number(document.getElementById('mb-md').value || 0),
+        hand_luggage: Number(document.getElementById('mb-hd').value || 0),
+        special_requests: document.getElementById('mb-notes').value.trim()
+      };
+      try {
+        const res = await fetch('/api/public/booking-amend', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          msg.innerHTML = '<div class="' + (data.mode === 'REQUESTED' ? 'alert-2h' : 'alert-ok') + '"><strong>' + (data.mode === 'REQUESTED' ? '⏳ Amendment Request Sent to Dispatch' : '✓ Booking Updated & Confirmation Sent') + '</strong><br>' + data.message + '</div>';
+          window.scrollTo({top: 0, behavior: 'smooth'});
+        } else {
+          msg.innerHTML = '<div class="alert-2h">' + (data.error || 'Could not submit amendment.') + '</div>';
+        }
+      } catch (err) {
+        msg.innerHTML = '<div class="alert-2h">Network error submitting amendment.</div>';
+      } finally {
+        subBtn.disabled = false;
+        subBtn.textContent = 'Save & Update Booking';
+      }
+    }
+
+    if (params.get('code')) lookupBooking();
+  </script>
+</body>
+</html>"""
+        body = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def handle_clear_all_bookings(self):
         conn = db.get_connection()
