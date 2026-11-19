@@ -1799,7 +1799,54 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
         self.end_headers()
 
+    def serve_arrival_video(self):
+        target = os.path.join(WEBSITE_DIR, "assets", "chauffeur-arrival.mp4")
+        with open(target, "rb") as video:
+            size = os.fstat(video.fileno()).st_size
+            start, end = 0, size - 1
+            status = 200
+            range_header = self.headers.get("Range", "")
+            requested_range = re.fullmatch(r"bytes=([0-9]{0,20})-([0-9]{0,20})", range_header)
+            if requested_range and any(requested_range.groups()):
+                first, last = requested_range.groups()
+                if first:
+                    start = int(first)
+                    end = min(int(last), end) if last else end
+                else:
+                    start = max(0, size - int(last))
+                if start >= size or end < start:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                status = 206
+
+            remaining = end - start + 1
+            self.send_response(status)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("Content-Length", str(remaining))
+            if status == 206:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.end_headers()
+
+            video.seek(start)
+            try:
+                while remaining:
+                    chunk = video.read(min(remaining, 65536))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
     def serve_website_file(self, path):
+        if path == "/assets/chauffeur-arrival.mp4":
+            self.serve_arrival_video()
+            return
         rel_path = path.lstrip("/")
         if not rel_path or rel_path == "":
             target = os.path.join(WEBSITE_DIR, "index.html")

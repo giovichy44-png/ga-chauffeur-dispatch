@@ -1,0 +1,49 @@
+
+.hero .arrival-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.arrival-controls {
+  position: absolute;
+  z-index: 3;
+  right: 6%;
+  bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.arrival-controls[hidden] {
+  display: none;
+}
+
+.arrival-controls button {
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1px solid #c9b894;
+  border-radius: 3px;
+  background: #171c1c;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+@media (max-width: 800px) {
+  .hero .arrival-video {
+    position: relative;
+    display: block;
+    aspect-ratio: 16 / 9;
+    height: auto;
+  }
+
+  .arrival-controls {
+    position: static;
+    order: 1;
+    padding: 10px 7% 0;
+  }
+}
