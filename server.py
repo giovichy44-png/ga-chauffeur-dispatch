@@ -824,9 +824,9 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     has_airport_arrival = is_airport_arrival_journey(pickup, final_type)
     parking_fee = 15.0 if has_airport_arrival else 0.0
 
-    # Calculate Heathrow / Airport Drop-off Charge (£7.00)
+    # Calculate Airport Drop-off / Parking (£15.00 — same £15 parking for pickup and drop-off)
     has_airport_departure = is_airport_departure_journey(dropoff, final_type)
-    dropoff_fee = (10.0 if re.search(r"\b(gatwick|lgw)\b", str(dropoff), re.I) else 7.0) if has_airport_departure else 0.0
+    dropoff_fee = 15.0 if has_airport_departure else 0.0
 
     # Calculate London Congestion Charge (£18.00)
     has_congestion = is_congestion_charge_zone(pickup) or is_congestion_charge_zone(dropoff)
@@ -865,7 +865,7 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
             "vat_amount": vat_amount,
             "total_fare": total_fare
         },
-        "disclaimer": "Parking (£15.00 for airport collections), Airport Drop-off (£7.00 for Heathrow/airport departures), and London Congestion Charge (£18.00 for Central London zones) are included in the itemized pre-authorisation breakdown."
+        "disclaimer": "Airport Parking (£15.00 for airport pickups and drop-offs) and London Congestion Charge (£18.00 for Central London zones) are included in the itemized breakdown."
     }
 
 def generate_confirmation_code():
@@ -1051,8 +1051,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
         <tr>
           <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Account Status</td>
           <td style="text-align: right; color: #4ade80; font-size: 13px; font-weight: 600; padding-top: 10px;">
-            ✓ Corporate Account Confirmed<br>
-            <span style="color: #aab5ae; font-size: 12px; font-weight: normal;">Billed by Corporate Invoice after journey completion</span>
+            ✓ Corporate Account Confirmed
           </td>
         </tr>
         """
@@ -1079,7 +1078,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     if parking_fee > 0:
         parking_row = f"""
         <tr>
-          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">Airport Parking &amp; Meet/Greet</td>
+          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">Airport Parking</td>
           <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{parking_fee:.2f} GBP</td>
         </tr>
         """
@@ -1087,7 +1086,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     if dropoff_fee > 0:
         parking_row += f"""
         <tr>
-          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">Airport Drop-off Fee</td>
+          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">Airport Parking</td>
           <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{dropoff_fee:.2f} GBP</td>
         </tr>
         """
@@ -1290,8 +1289,8 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
         + (f"Flight Number: {flight}\n" if flight else "")
         + (f"Special Requests: {special_requests}\n" if special_requests else "")
         + f"\nBase Journey Fare: £{float(net_fare):.2f} GBP\n"
-        + (f"Airport Parking & Meet/Greet: £{float(parking_fee):.2f} GBP\n" if float(parking_fee or 0) > 0 else "")
-        + (f"Airport Drop-off Fee: £{float(dropoff_fee):.2f} GBP\n" if float(dropoff_fee or 0) > 0 else "")
+        + (f"Airport Parking: £{float(parking_fee):.2f} GBP\n" if float(parking_fee or 0) > 0 else "")
+        + (f"Airport Parking: £{float(dropoff_fee):.2f} GBP\n" if float(dropoff_fee or 0) > 0 else "")
         + (f"London Congestion Charge: £{float(congestion_charge):.2f} GBP\n" if float(congestion_charge or 0) > 0 else "")
         + f"VAT (20%): £{float(vat_amt):.2f} GBP\n"
         + f"Total: £{float(total_fare):.2f} GBP\n"
@@ -1569,14 +1568,14 @@ def build_tax_invoice_html(booking, invoice_number, net_fare, parking_fee, dropo
     if float(parking_fee or 0) > 0:
         extra_rows += f"""
         <tr>
-          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">Airport Parking &amp; Meet/Greet</td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">Airport Parking</td>
           <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(parking_fee):.2f} GBP</td>
         </tr>
         """
     if float(dropoff_fee or 0) > 0:
         extra_rows += f"""
         <tr>
-          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">Airport Drop-off Fee</td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">Airport Parking</td>
           <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(dropoff_fee):.2f} GBP</td>
         </tr>
         """
@@ -1717,8 +1716,8 @@ def build_tax_invoice_text(booking, invoice_number, net_fare, parking_fee, dropo
         f"Destination: {booking.get('dropoff_address')}\n"
         + (f"Notes: {notes}\n" if notes else "")
         + f"\nBase Journey Fare: £{float(net_fare):.2f} GBP\n"
-        + (f"Airport Parking & Meet/Greet: £{float(parking_fee):.2f} GBP\n" if float(parking_fee or 0) > 0 else "")
-        + (f"Airport Drop-off Fee: £{float(dropoff_fee):.2f} GBP\n" if float(dropoff_fee or 0) > 0 else "")
+        + (f"Airport Parking: £{float(parking_fee):.2f} GBP\n" if float(parking_fee or 0) > 0 else "")
+        + (f"Airport Parking: £{float(dropoff_fee):.2f} GBP\n" if float(dropoff_fee or 0) > 0 else "")
         + (f"London Congestion Charge: £{float(congestion_charge):.2f} GBP\n" if float(congestion_charge or 0) > 0 else "")
         + f"UK VAT (20%): £{float(vat_amount):.2f} GBP\n"
         + f"TOTAL INVOICE AMOUNT: £{float(total_fare):.2f} GBP\n\n"
@@ -2331,6 +2330,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             parts = path.split("/")
             booking_id = parts[3]
             self.handle_delete_booking(booking_id)
+            return
+
+        if path.endswith("/edit"):
+            parts = path.split("/")
+            booking_id = parts[3]
+            self.handle_edit_booking(booking_id, payload)
+            return
+
+        if path.endswith("/send-confirmation"):
+            parts = path.split("/")
+            booking_id = parts[3]
+            self.handle_send_booking_confirmation(booking_id, payload)
             return
 
         if path == "/api/bookings/clear-all":
@@ -3160,6 +3171,173 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.close()
         broadcast_event("booking_deleted", {"booking_id": b_id})
         self.send_json({"success": True, "deleted_id": b_id})
+
+    def handle_edit_booking(self, booking_id, payload):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.send_json({"error": "Booking not found"}, 404)
+            return
+
+        booking = dict(row)
+        real_id = booking["id"]
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        customer_name = str(payload.get("customer_name", booking.get("customer_name", ""))).strip()
+        customer_phone = str(payload.get("customer_phone", booking.get("customer_phone", ""))).strip()
+        customer_email = str(payload.get("customer_email", booking.get("customer_email", ""))).strip()
+        pickup_datetime = str(payload.get("pickup_datetime", booking.get("pickup_datetime", ""))).strip().replace("T", " ")
+        pickup_address = str(payload.get("pickup_address", booking.get("pickup_address", ""))).strip()
+        dropoff_address = str(payload.get("dropoff_address", booking.get("dropoff_address", ""))).strip()
+        flight_number = str(payload.get("flight_number") if "flight_number" in payload else (booking.get("flight_number") or "")).strip() or None
+        vehicle_class = normalize_vehicle_tier(payload.get("vehicle_class", booking.get("vehicle_class", "mercedes_s_class")))
+        passenger_count = int(payload.get("passenger_count", booking.get("passenger_count", 1)) or 1)
+        luggage_count = int(payload.get("luggage_count", booking.get("luggage_count", 1)) or 0)
+        special_requests = str(payload.get("special_requests") if "special_requests" in payload else (booking.get("special_requests") or "")).strip()
+
+        net_fare = float(payload.get("fare_amount", booking.get("fare_amount", 165.0)) or 0.0)
+        parking_fee = float(payload.get("parking_fee", booking.get("parking_fee", 0.0)) or 0.0)
+        dropoff_fee = float(payload.get("dropoff_fee", booking.get("dropoff_fee", 0.0)) or 0.0)
+        congestion_charge = float(payload.get("congestion_charge", booking.get("congestion_charge", 0.0)) or 0.0)
+        vat_amount = round((net_fare + parking_fee + dropoff_fee) * 0.20, 2)
+        total_fare = round(net_fare + parking_fee + dropoff_fee + vat_amount + congestion_charge, 2)
+
+        cursor.execute("""
+            UPDATE bookings SET
+                customer_name = ?,
+                customer_phone = ?,
+                customer_email = ?,
+                pickup_datetime = ?,
+                pickup_address = ?,
+                dropoff_address = ?,
+                flight_number = ?,
+                vehicle_class = ?,
+                passenger_count = ?,
+                luggage_count = ?,
+                special_requests = ?,
+                fare_amount = ?,
+                parking_fee = ?,
+                dropoff_fee = ?,
+                congestion_charge = ?,
+                vat_amount = ?,
+                total_fare = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (
+            customer_name, customer_phone, customer_email, pickup_datetime,
+            pickup_address, dropoff_address, flight_number, vehicle_class,
+            passenger_count, luggage_count, special_requests, net_fare,
+            parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare,
+            now_str, real_id
+        ))
+        conn.commit()
+        conn.close()
+        broadcast_event("booking_updated", {"booking_id": real_id})
+        self.send_json({"success": True, "booking_id": real_id})
+
+    def handle_send_booking_confirmation(self, booking_id, payload):
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            self.send_json({"error": "Booking not found"}, 404)
+            return
+
+        booking = dict(row)
+        real_id = booking["id"]
+        code = booking.get("confirmation_code", real_id)
+        recipient = str(payload.get("recipient_email") or booking.get("customer_email") or "").strip()
+        if not recipient or "@" not in recipient:
+            conn.close()
+            self.send_json({"error": "Booking does not have a valid customer email address."}, 400)
+            return
+
+        ch_row = None
+        if booking.get("chauffeur_id"):
+            ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (booking["chauffeur_id"],)).fetchone()
+        chauffeur_dict = dict(ch_row) if ch_row else None
+
+        norm_veh = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
+        veh_name = VEHICLE_CONFIGS.get(norm_veh, VEHICLE_CONFIGS["mercedes_s_class"])["name"]
+        subject = f"Booking Confirmation: {code} - GA Chauffeur Services Limited"
+
+        html_body = build_luxury_email_html(
+            booking_ref=code,
+            customer_name=booking.get("customer_name", ""),
+            pickup_addr=booking.get("pickup_address", ""),
+            dropoff_addr=booking.get("dropoff_address", ""),
+            pickup_dt=booking.get("pickup_datetime", ""),
+            vehicle_tier=norm_veh,
+            net_fare=booking.get("fare_amount", 165.0),
+            vat_amt=booking.get("vat_amount"),
+            total_fare=booking.get("total_fare"),
+            service_type=booking.get("service_type", "Airport Transfer"),
+            passengers=booking.get("passenger_count", 1),
+            large_cases=booking.get("large_cases", 0),
+            medium_cases=booking.get("medium_cases", 0),
+            hand_luggage=booking.get("hand_luggage", 0),
+            chauffeur=chauffeur_dict,
+            flight=booking.get("flight_number"),
+            parking_fee=booking.get("parking_fee", 0.0),
+            dropoff_fee=booking.get("dropoff_fee", 0.0),
+            congestion_charge=booking.get("congestion_charge", 0.0),
+            card_brand=booking.get("card_brand"),
+            card_last4=booking.get("card_last4"),
+            card_auth_code=booking.get("card_auth_code"),
+            duration_min=booking.get("estimated_duration_min", 0),
+            hours_booked=booking.get("hours_booked", 0),
+            distance_mi=booking.get("estimated_distance_mi", 0.0),
+            special_requests=booking.get("special_requests", ""),
+            customer_phone=booking.get("customer_phone", ""),
+            customer_email=recipient,
+            payment_status=booking.get("payment_status", "PRE_AUTHORIZED")
+        )
+        text_body = build_luxury_email_text(
+            booking_ref=code,
+            customer_name=booking.get("customer_name", ""),
+            pickup_addr=booking.get("pickup_address", ""),
+            dropoff_addr=booking.get("dropoff_address", ""),
+            pickup_dt=booking.get("pickup_datetime", ""),
+            vehicle_name=veh_name,
+            net_fare=booking.get("fare_amount", 165.0),
+            vat_amt=booking.get("vat_amount") or 0.0,
+            total_fare=booking.get("total_fare") or booking.get("fare_amount", 165.0),
+            service_type=booking.get("service_type", "Airport Transfer"),
+            passengers=booking.get("passenger_count", 1),
+            large_cases=booking.get("large_cases", 0),
+            medium_cases=booking.get("medium_cases", 0),
+            hand_luggage=booking.get("hand_luggage", 0),
+            flight=booking.get("flight_number"),
+            special_requests=booking.get("special_requests", ""),
+            parking_fee=booking.get("parking_fee", 0.0),
+            dropoff_fee=booking.get("dropoff_fee", 0.0),
+            congestion_charge=booking.get("congestion_charge", 0.0),
+            card_brand=booking.get("card_brand"),
+            card_last4=booking.get("card_last4"),
+            card_auth_code=booking.get("card_auth_code"),
+            duration_min=booking.get("estimated_duration_min", 0),
+            hours_booked=booking.get("hours_booked", 0),
+            distance_mi=booking.get("estimated_distance_mi", 0.0)
+        )
+
+        ok, note = send_smtp_email(recipient, subject, html_body, text_body)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cnf_id = f"CNF-{random.randint(1000, 9999)}"
+        cursor.execute("""
+            INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
+            VALUES (?, ?, 'EMAIL', ?, ?, ?, ?, ?)
+        """, (cnf_id, real_id, recipient, subject, text_body, "DELIVERED" if ok else "FAILED", now_str))
+        conn.commit()
+        conn.close()
+        if not ok:
+            self.send_json({"error": f"Failed to send email to {recipient}: {note}"}, 502)
+            return
+        self.send_json({"success": True, "recipient": recipient, "confirmation_code": code})
 
     def handle_clear_all_bookings(self):
         conn = db.get_connection()

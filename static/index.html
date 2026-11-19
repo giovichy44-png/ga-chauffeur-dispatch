@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="style.css?v=20261118a3">
+  <link rel="stylesheet" href="style.css?v=20261119a1">
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())).catch(() => {});
@@ -47,7 +47,7 @@
         <button type="button" class="btn btn-secondary" onclick="openModal('modal-sound-iphone')" style="font-size: 12px; padding: 7px 11px;" title="Test Notification Chimes &amp; Install on iPhone">
           🔔 Test Sound &amp; iPhone App
         </button>
-        <button type="button" class="btn btn-secondary" onclick="openFleetManageModal()" style="font-size: 12px; padding: 7px 11px;">
+        <button type="button" class="btn btn-secondary" onclick="switchTab('fleet')" style="font-size: 12px; padding: 7px 11px;">
           🚘 Fleet &amp; Drivers
         </button>
         <a href="/widget-demo.html" target="_blank" class="btn btn-secondary" style="font-size: 12px; padding: 7px 11px;">
@@ -78,64 +78,23 @@
     </div>
   </div>
 
-  <!-- 3 Car Status Overview (Glance Overview) -->
-  <section class="top-status-bar">
-    <div class="status-container">
-      
-      <!-- Card 1: Mercedes S-Class -->
-      <div class="car-status-card" id="card-car-s-class">
-        <div class="car-badge-icon">S</div>
-        <div class="car-meta">
-          <span class="car-eyebrow">Executive Saloon</span>
-          <div class="car-title">Mercedes-Benz S-Class</div>
-          <div class="car-sub">Reg: <strong class="car-plate">HN76GYG</strong> • 4 Pax</div>
-        </div>
-        <button class="status-toggle-btn available" id="toggle-ch-1" onclick="toggleCarStatus('GA-CHF-01')">
-          Available
-        </button>
-      </div>
-
-      <!-- Card 2: Mercedes V-Class -->
-      <div class="car-status-card" id="card-car-v-class">
-        <div class="car-badge-icon">V</div>
-        <div class="car-meta">
-          <span class="car-eyebrow">Luxury MPV</span>
-          <div class="car-title">Mercedes-Benz V-Class</div>
-          <div class="car-sub">Reg: <strong class="car-plate">LR74EOG</strong> • 6-Seater</div>
-        </div>
-        <button class="status-toggle-btn available" id="toggle-ch-2" onclick="toggleCarStatus('GA-CHF-02')">
-          Available
-        </button>
-      </div>
-
-      <!-- Card 3: Range Rover Autobiography -->
-      <div class="car-status-card" id="card-car-range-rover">
-        <div class="car-badge-icon">RR</div>
-        <div class="car-meta">
-          <span class="car-eyebrow">Prestige 4x4</span>
-          <div class="car-title">Range Rover Autobiography</div>
-          <div class="car-sub">Reg: <strong class="car-plate">UKZ 545</strong> • LWB</div>
-        </div>
-        <button class="status-toggle-btn available" id="toggle-ch-3" onclick="toggleCarStatus('GA-CHF-03')">
-          Available
-        </button>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- Clean Tab Navigation -->
+  <!-- Clean Tab Navigation (No Vehicles Clutter on Main Page) -->
   <nav class="simple-tabs-nav">
     <div class="tabs-container">
       <button class="simple-tab-btn active" data-tab="jobs">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Active Jobs &amp; Bookings
+        Booked Jobs &amp; Dispatch Sheet
         <span class="tab-count-badge" id="badge-active-count">0</span>
       </button>
 
       <button class="simple-tab-btn" data-tab="new-booking">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         + Create New Booking
+      </button>
+
+      <button class="simple-tab-btn" data-tab="fleet">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="8" rx="2"/><path d="M5 11l2-5h10l2 5"/></svg>
+        🚘 Fleet &amp; Drivers
       </button>
 
       <button class="simple-tab-btn" data-tab="driver-mode">
@@ -153,42 +112,43 @@
   <!-- Main Content Area -->
   <main class="app-main">
 
-    <!-- TAB 1: ACTIVE JOBS (SIMPLE, CLEAR & DIRECT) -->
+    <!-- TAB 1: EXCEL-STYLE THIN-LINE DISPATCH SHEET (CLICK ANY ROW TO EXPAND) -->
     <section class="tab-content active" id="pane-jobs">
-      <div class="content-container">
+      <div class="content-container wide-sheet">
         
         <!-- Filter Bar -->
-        <div class="jobs-filter-bar">
+        <div class="jobs-filter-bar" style="margin-bottom: 12px;">
           <div class="filter-pills">
-            <button class="pill-btn active" data-filter="ACTIVE">On Road / Upcoming</button>
-            <button class="pill-btn" data-filter="ALL">All Jobs</button>
+            <button class="pill-btn active" data-filter="ACTIVE">Active / Upcoming</button>
+            <button class="pill-btn" data-filter="ALL">All Booked Jobs</button>
             <button class="pill-btn" data-filter="PENDING">Unallocated (<span id="count-unallocated">0</span>)</button>
             <button class="pill-btn" data-filter="URGENT" style="border-color: rgba(245,158,11,0.45); color: #fbbf24;">⚠️ Due &lt; 2h (<span id="count-urgent">0</span>)</button>
-            <button class="pill-btn" data-filter="COMPLETED">Completed</button>
+            <button class="pill-btn" data-filter="COMPLETED">📜 History Jobs (<span id="count-history">0</span>)</button>
           </div>
           <div class="search-wrap" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <div class="cds-view-toggle" role="group" aria-label="View Mode">
-              <button type="button" class="cds-view-btn active" id="btn-view-grid" onclick="setJobsViewMode('GRID')">📊 Dispatch Columns</button>
+              <button type="button" class="cds-view-btn active" id="btn-view-grid" onclick="setJobsViewMode('GRID')">📊 Thin Lines (Excel)</button>
               <button type="button" class="cds-view-btn" id="btn-view-cards" onclick="setJobsViewMode('CARDS')">🗂️ Cards</button>
             </div>
-            <input type="text" id="jobs-search-input" placeholder="Search reference, customer, flight, airport...">
-            <button type="button" class="btn btn-secondary" onclick="clearAllBookings()" style="white-space: nowrap; font-size: 12px; padding: 8px 12px; border-color: rgba(239,68,68,0.4); color: #f87171;">🗑️ Clear All</button>
+            <input type="text" id="jobs-search-input" placeholder="Search ref, customer, flight, location...">
+            <button type="button" class="btn btn-secondary" onclick="clearAllBookings()" style="white-space: nowrap; font-size: 11.5px; padding: 6px 10px; border-color: rgba(239,68,68,0.4); color: #f87171;">🗑️ Clear All</button>
           </div>
         </div>
 
-        <!-- CDS Simple Columns Dispatch Grid (Default on Desktop) -->
+        <!-- Excel-Style Thin-Line Dispatch Sheet (Click any line to expand full details) -->
         <div id="cds-table-container" class="cds-table-wrap">
-          <table class="cds-dispatch-table">
+          <table class="cds-dispatch-table excel-thin-table">
             <thead>
               <tr>
-                <th style="width: 145px;">Date &amp; Time</th>
-                <th style="width: 185px;">Customer &amp; Contact</th>
-                <th>Pickup &amp; Destination / Flight</th>
-                <th style="width: 155px;">Vehicle Req. &amp; Pax</th>
-                <th style="width: 245px;">Allocate Vehicle &amp; Driver</th>
-                <th style="width: 185px;">Live Status</th>
-                <th style="width: 120px;">Fare / Payment</th>
-                <th style="width: 155px; text-align: right;">Actions</th>
+                <th style="width: 95px;">Ref</th>
+                <th style="width: 135px;">Date &amp; Time</th>
+                <th style="width: 165px;">Customer</th>
+                <th>Pickup &rarr; Destination / Flight</th>
+                <th style="width: 145px;">Vehicle &amp; Pax</th>
+                <th style="width: 195px;">Allocate Driver &amp; Car</th>
+                <th style="width: 155px;">Live Status</th>
+                <th style="width: 90px;">Fare</th>
+                <th style="width: 215px; text-align: right;">Actions (Allocate / Email / Edit)</th>
               </tr>
             </thead>
             <tbody id="cds-table-body">
@@ -197,7 +157,7 @@
           </table>
         </div>
 
-        <!-- Jobs List Cards Container (Mobile / Card View) -->
+        <!-- Jobs List Cards Container (Optional Card View) -->
         <div class="jobs-list" id="jobs-list-container" style="display: none;">
           <!-- Dynamically populated clean cards -->
         </div>
@@ -474,6 +434,41 @@
       </div>
     </section>
 
+    <!-- TAB 5: DEDICATED FLEET & DRIVERS PAGE (THIN-LINE EXCEL LIST + CLICK TO EXPAND) -->
+    <section class="tab-content" id="pane-fleet">
+      <div class="content-container wide-sheet">
+        <div class="jobs-filter-bar" style="margin-bottom: 12px;">
+          <div>
+            <h2 style="font-family: var(--font-serif); font-size: 20px; color: #fff; font-weight: 500;">🚘 Fleet Vehicles &amp; Chauffeurs Roster</h2>
+            <p style="font-size: 12.5px; color: var(--text-muted);">Click any thin vehicle row to expand full driver &amp; vehicle details, or use the right-hand actions to toggle availability and edit.</p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-gold" onclick="openFleetManageModal()">+ Add / Edit Vehicle &amp; Driver</button>
+          </div>
+        </div>
+
+        <div class="cds-table-wrap">
+          <table class="cds-dispatch-table excel-thin-table">
+            <thead>
+              <tr>
+                <th style="width: 115px;">Reg Plate</th>
+                <th style="width: 240px;">Vehicle Make &amp; Model</th>
+                <th style="width: 175px;">Vehicle Class</th>
+                <th style="width: 190px;">Chauffeur Name</th>
+                <th style="width: 155px;">Direct Phone</th>
+                <th style="width: 130px;">Capacity</th>
+                <th style="width: 135px;">Live Status</th>
+                <th style="width: 210px; text-align: right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="fleet-thin-table-body">
+              <!-- Populated by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <!-- MOBILE BOTTOM BAR (Thumb Navigation) -->
@@ -487,6 +482,10 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
       <span>New</span>
     </button>
+    <button class="m-btn" data-tab="fleet">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="8" rx="2"/><path d="M5 11l2-5h10l2 5"/></svg>
+      <span>Fleet</span>
+    </button>
     <button class="m-btn" data-tab="driver-mode">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
       <span>Driver</span>
@@ -496,6 +495,79 @@
       <span>Emails</span>
     </button>
   </nav>
+
+  <!-- MODAL: EDIT BOOKING -->
+  <div class="modal-backdrop" id="modal-edit-booking" style="display: none;" onclick="if(event.target===this)closeModal('modal-edit-booking')">
+    <div class="modal-box" style="max-width: 620px;">
+      <div class="modal-head">
+        <h3 id="edit-booking-modal-title">✏️ Edit Booking</h3>
+        <button type="button" class="modal-x" onclick="closeModal('modal-edit-booking')">← Back</button>
+      </div>
+      <form id="edit-booking-form" onsubmit="submitEditBooking(event)" class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <input type="hidden" id="eb-id" value="">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Pickup Date &amp; Time *</label>
+            <input type="datetime-local" id="eb-datetime" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Vehicle Required *</label>
+            <select id="eb-vehicle" style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+              <option value="mercedes_s_class">Mercedes-Benz S-Class (4 Pax)</option>
+              <option value="mercedes_v_class">Mercedes-Benz V-Class (6 Pax)</option>
+              <option value="range_rover_autobiography">Range Rover Autobiography (4 Pax)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Passenger Full Name *</label>
+            <input type="text" id="eb-name" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Phone Number *</label>
+            <input type="tel" id="eb-phone" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Customer Email *</label>
+            <input type="email" id="eb-email" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Flight Number</label>
+            <input type="text" id="eb-flight" placeholder="e.g. BA 178" style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          </div>
+        </div>
+        <div>
+          <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Collection / Pickup Address *</label>
+          <input type="text" id="eb-pickup" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+        </div>
+        <div>
+          <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Drop-off Destination *</label>
+          <input type="text" id="eb-dropoff" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Passengers</label>
+            <input type="number" id="eb-pax" min="1" max="16" value="1" style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Luggage Bags</label>
+            <input type="number" id="eb-bags" min="0" max="20" value="1" style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Base Net Fare (£)</label>
+            <input type="number" step="0.01" id="eb-fare" min="0" value="165.00" style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          </div>
+        </div>
+        <div>
+          <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Special Requests / Notes</label>
+          <input type="text" id="eb-notes" style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-booking')">Cancel</button>
+          <button type="submit" class="btn btn-gold">💾 Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- MODAL: ALLOCATE CAR (SIMPLE 3-CAR CHOOSER) -->
   <div class="modal-backdrop" id="modal-allocate" style="display: none;" onclick="if(event.target===this)closeModal('modal-allocate')">
@@ -653,6 +725,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=20261118a3"></script>
+  <script src="app.js?v=20261119a1"></script>
 </body>
 </html>

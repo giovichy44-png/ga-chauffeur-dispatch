@@ -67,8 +67,8 @@ if (typeof document !== 'undefined') (() => {
         if(q.base_to_base_miles && q.billable_hours && !/airport/i.test(q.service_label||'')){
           line(`Base-to-base (Hyde Park Corner): ${Number(q.base_to_base_miles).toFixed(1)} miles · ${Number(q.billable_hours).toFixed(2).replace(/\.00$/,'')} hrs (${Number(q.included_miles||0).toFixed(0)} miles included, £4/mile thereafter)`);
         }
-        if(q.parking_fee)line('Airport collection and meet-and-greet: '+money(q.parking_fee));
-        if(q.dropoff_fee)line('Airport drop-off: '+money(q.dropoff_fee));
+        if(q.parking_fee)line('Airport parking: '+money(q.parking_fee));
+        if(q.dropoff_fee)line('Airport parking: '+money(q.dropoff_fee));
         if(q.congestion_charge)line('London congestion-zone surcharge: '+money(q.congestion_charge));
         if(q.vat_amount)line('VAT (20%): '+money(q.vat_amount));
         const link=document.createElement('a');link.textContent='Book this journey';link.className='text-link';

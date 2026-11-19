@@ -1525,6 +1525,141 @@ button, input, textarea, select {
   color: #0d1210;
 }
 
+.content-container.wide-sheet {
+  max-width: 1560px;
+}
+
+/* EXCEL-STYLE THIN-LINE TABLE (10-18 JOBS ON ONE SCREEN + CLICK TO EXPAND) */
+.excel-thin-table {
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.excel-thin-table thead th {
+  padding: 8px 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  background: #111714;
+  border-bottom: 1px solid #33423a;
+}
+
+.excel-thin-table tbody tr.excel-thin-row {
+  cursor: pointer;
+  height: 36px;
+}
+
+.excel-thin-table tbody tr.excel-thin-row:hover {
+  background: rgba(201, 184, 148, 0.08);
+}
+
+.excel-thin-table tbody tr.excel-thin-row td {
+  padding: 5px 10px;
+  vertical-align: middle;
+  white-space: nowrap;
+  border-right: 1px solid rgba(44, 56, 49, 0.45);
+}
+
+.excel-thin-table tbody tr.excel-thin-row td:last-child {
+  border-right: none;
+}
+
+.excel-cell-truncate {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.excel-expand-icon {
+  display: inline-block;
+  width: 14px;
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.excel-thin-row.expanded .excel-expand-icon {
+  transform: rotate(90deg);
+}
+
+.excel-thin-table .cds-inline-select,
+.excel-thin-table .cds-status-select {
+  padding: 3px 6px;
+  font-size: 11.5px;
+  height: 26px;
+  border-radius: 4px;
+}
+
+.excel-act-btn {
+  background: #141c18;
+  border: 1px solid var(--border-light);
+  color: #edf0ea;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 25px;
+  transition: all 0.12s ease;
+}
+
+.excel-act-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(201, 184, 148, 0.12);
+}
+
+.excel-act-btn.gold {
+  background: rgba(201, 184, 148, 0.18);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.excel-act-btn.danger {
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #f87171;
+}
+
+.excel-expand-row {
+  background: #121815;
+  border-bottom: 2px solid var(--gold-border);
+}
+
+.excel-expand-row td {
+  padding: 14px 18px !important;
+  white-space: normal !important;
+}
+
+.excel-expand-drawer {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  font-size: 12.5px;
+}
+
+.excel-drawer-box {
+  background: #18211d;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 11px 14px;
+}
+
+.excel-drawer-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+
 /* ==========================================================================
    13. IPHONE PORTRAIT (VERTICAL) FULL-WIDTH LOCK & COMPACT MOBILE LAYOUT
    ========================================================================== */
@@ -1765,5 +1900,9 @@ button, input, textarea, select {
     max-width: 100% !important;
     margin: 10px !important;
     padding: 16px !important;
+  }
+
+  .excel-expand-drawer {
+    grid-template-columns: 1fr !important;
   }
 }

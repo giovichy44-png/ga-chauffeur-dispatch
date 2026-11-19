@@ -9,9 +9,11 @@ const App = {
   chauffeurs: [],
   confirmations: [],
   activeFilter: 'ACTIVE',
-  viewMode: window.innerWidth <= 820 ? 'CARDS' : 'GRID',
+  viewMode: 'GRID',
   allocatingJobId: null,
   activeDriverCarId: 'GA-CHF-01',
+  expandedBookingIds: new Set(),
+  expandedFleetIds: new Set(),
   audioEnabled: true,
   audioCtx: null,
   initialLoadDone: false,
@@ -225,11 +227,15 @@ function checkLiveNotificationsAndUrgency(newBookings) {
 
   const unallocCountEl = document.getElementById('count-unallocated');
   const urgentCountEl = document.getElementById('count-urgent');
+  const historyCountEl = document.getElementById('count-history');
   if (unallocCountEl) {
     unallocCountEl.textContent = newBookings.filter(b => isBookingUnallocated(b)).length;
   }
   if (urgentCountEl) {
     urgentCountEl.textContent = urgent1h.length + warning2h.length;
+  }
+  if (historyCountEl) {
+    historyCountEl.textContent = newBookings.filter(b => b.status === 'COMPLETED' || b.status === 'CANCELLED').length;
   }
 }
 
@@ -257,6 +263,7 @@ function hydrateFromLocalCache() {
       updateTopCarCards();
       populateDriverSelectDropdown();
       renderJobsList();
+      renderFleetThinTable();
       renderOutboxTable();
       renderDriverView();
     }
@@ -321,6 +328,8 @@ function switchTab(tabId) {
 
   if (tabId === 'driver-mode') {
     renderDriverView();
+  } else if (tabId === 'fleet') {
+    renderFleetThinTable();
   }
 }
 
@@ -352,6 +361,7 @@ async function loadData() {
     updateTopCarCards();
     populateDriverSelectDropdown();
     renderJobsList();
+    renderFleetThinTable();
     renderOutboxTable();
     renderDriverView();
   } catch (err) {
@@ -439,7 +449,7 @@ function renderJobsList() {
     } else if (App.activeFilter === 'URGENT') {
       if (!getBookingUrgency(b)) return false;
     } else if (App.activeFilter === 'COMPLETED') {
-      if (b.status !== 'COMPLETED') return false;
+      if (b.status !== 'COMPLETED' && b.status !== 'CANCELLED') return false;
     }
 
     // Text Search
@@ -588,17 +598,32 @@ function renderJobsList() {
 
 function formatVehTierLabel(tier) {
   const t = String(tier || '').toLowerCase();
-  if (t.includes('v_class') || t.includes('v-class')) return 'Mercedes V-Class (MPV)';
-  if (t.includes('range') || t.includes('rover')) return 'Range Rover Autobiography';
-  return 'Mercedes S-Class (Saloon)';
+  if (t.includes('v_class') || t.includes('v-class')) return 'Mercedes V-Class';
+  if (t.includes('range') || t.includes('rover')) return 'Range Rover LWB';
+  return 'Mercedes S-Class';
 }
 
 function formatCdsPickupTime(dtStr) {
   const d = parsePickupDate(dtStr);
   if (!d) return { time: dtStr || '--:--', date: '' };
   const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  const date = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
   return { time, date };
+}
+
+function toggleExpandBookingRow(bookingId, evt) {
+  if (evt) {
+    const tag = (evt.target && evt.target.tagName || '').toUpperCase();
+    if (['SELECT', 'OPTION', 'BUTTON', 'A', 'INPUT'].includes(tag) || evt.target.closest('button, select, a')) {
+      return;
+    }
+  }
+  if (App.expandedBookingIds.has(bookingId)) {
+    App.expandedBookingIds.delete(bookingId);
+  } else {
+    App.expandedBookingIds.add(bookingId);
+  }
+  renderJobsList();
 }
 
 function renderCdsDispatchTable(filtered) {
@@ -608,7 +633,7 @@ function renderCdsDispatchTable(filtered) {
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align: center; padding: 36px; color: var(--text-muted);">
+        <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
           No bookings found under this filter. Click <strong>"+ New Booking ↗"</strong> to add a job.
         </td>
       </tr>
@@ -620,41 +645,43 @@ function renderCdsDispatchTable(filtered) {
     const { time, date } = formatCdsPickupTime(b.pickup_datetime);
     const urg = getBookingUrgency(b);
     const mins = getMinutesUntilPickup(b.pickup_datetime);
+    const isExpanded = App.expandedBookingIds.has(b.id);
 
-    let rowClass = '';
-    if (b.status === 'ON_BOARD') rowClass = 'cds-row-pob';
-    else if (b.status === 'EN_ROUTE' || b.status === 'NEXT_STOP') rowClass = 'cds-row-enroute';
-    else if (b.status === 'ARRIVED') rowClass = 'cds-row-arrived';
-    else if (urg === 'CRITICAL_1H') rowClass = 'cds-row-urgent-1h';
-    else if (urg === 'WARNING_2H') rowClass = 'cds-row-urgent-2h';
-    else if (b.status === 'COMPLETED') rowClass = 'cds-row-completed';
+    let rowClass = 'excel-thin-row';
+    if (isExpanded) rowClass += ' expanded';
+    if (b.status === 'ON_BOARD') rowClass += ' cds-row-pob';
+    else if (b.status === 'EN_ROUTE' || b.status === 'NEXT_STOP') rowClass += ' cds-row-enroute';
+    else if (b.status === 'ARRIVED') rowClass += ' cds-row-arrived';
+    else if (urg === 'CRITICAL_1H') rowClass += ' cds-row-urgent-1h';
+    else if (urg === 'WARNING_2H') rowClass += ' cds-row-urgent-2h';
+    else if (b.status === 'COMPLETED' || b.status === 'CANCELLED') rowClass += ' cds-row-completed';
 
-    let countdownHtml = '';
+    let urgencyDot = '';
     if (urg === 'CRITICAL_1H') {
-      const lbl = mins >= 0 ? `🚨 In ${mins}m (Unallocated!)` : `🚨 ${Math.abs(mins)}m overdue!`;
-      countdownHtml = `<div><span class="cds-countdown-badge cds-countdown-1h">${lbl}</span></div>`;
+      const lbl = mins >= 0 ? `🚨${mins}m` : `🚨-${Math.abs(mins)}m`;
+      urgencyDot = `<span class="cds-countdown-badge cds-countdown-1h" style="margin-top:0;margin-left:4px;padding:1px 5px;font-size:10px;">${lbl}</span>`;
     } else if (urg === 'WARNING_2H') {
       const h = Math.floor(mins / 60);
       const m = mins % 60;
-      countdownHtml = `<div><span class="cds-countdown-badge cds-countdown-2h">⚠️ In ${h}h ${m}m (Unallocated)</span></div>`;
+      urgencyDot = `<span class="cds-countdown-badge cds-countdown-2h" style="margin-top:0;margin-left:4px;padding:1px 5px;font-size:10px;">⚠️${h}h${m}m</span>`;
     }
 
     const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
 
     const allocOptions = [
-      `<option value="UNALLOCATE" ${!b.chauffeur_id ? 'selected' : ''}>⚠️ -- Unallocated (Assign Vehicle & Driver) --</option>`,
+      `<option value="UNALLOCATE" ${!b.chauffeur_id ? 'selected' : ''}>⚠️ Unallocated</option>`,
       ...App.chauffeurs.map(ch =>
-        `<option value="${escapeHtml(ch.id)}" ${b.chauffeur_id === ch.id ? 'selected' : ''}>🚘 ${escapeHtml(ch.license_plate)} • ${escapeHtml(ch.name)} (${escapeHtml(ch.vehicle_model)})</option>`
+        `<option value="${escapeHtml(ch.id)}" ${b.chauffeur_id === ch.id ? 'selected' : ''}>${escapeHtml(ch.name)} [${escapeHtml(ch.license_plate)}]</option>`
       )
     ].join('');
 
     const statusChoices = [
-      { status: 'PENDING', action: 'UNALLOCATE', label: '🔴 Unallocated / Pending' },
-      { status: 'ASSIGNED', action: 'CONFIRMED', label: '🔵 Allocated / Confirmed' },
-      { status: 'EN_ROUTE', action: 'EN_ROUTE_PICKUP', label: '🚗 En Route to Pickup' },
-      { status: 'ARRIVED', action: 'ARRIVED', label: '📍 Arrived at Pickup' },
-      { status: 'ON_BOARD', action: 'ON_BOARD', label: '🟢 Passenger On Board' },
-      { status: 'NEXT_STOP', action: 'NEXT_STOP', label: '➡️ Proceeding to Next Stop' },
+      { status: 'PENDING', action: 'UNALLOCATE', label: '🔴 Pending' },
+      { status: 'ASSIGNED', action: 'CONFIRMED', label: '🔵 Allocated' },
+      { status: 'EN_ROUTE', action: 'EN_ROUTE_PICKUP', label: '🚗 En Route' },
+      { status: 'ARRIVED', action: 'ARRIVED', label: '📍 At Pickup' },
+      { status: 'ON_BOARD', action: 'ON_BOARD', label: '🟢 On Board (POB)' },
+      { status: 'NEXT_STOP', action: 'NEXT_STOP', label: '➡️ Next Stop' },
       { status: 'COMPLETED', action: 'COMPLETED', label: '🏁 Completed' },
       { status: 'CANCELLED', action: 'CANCEL', label: '✖️ Cancelled' }
     ];
@@ -664,102 +691,317 @@ function renderCdsDispatchTable(filtered) {
       `<option value="${sc.action}" ${normalizedStatus === sc.status ? 'selected' : ''}>${sc.label}</option>`
     ).join('');
 
-    let liveSubLabel = '';
-    if (b.status === 'ON_BOARD') {
-      liveSubLabel = `<div style="font-size:11px;color:#34d399;font-weight:700;margin-top:4px;">● LIVE: Passenger On Board</div>`;
-    } else if (b.status === 'ARRIVED') {
-      liveSubLabel = `<div style="font-size:11px;color:#d8b4fe;font-weight:700;margin-top:4px;">● LIVE: Waiting at Pickup</div>`;
-    } else if (b.status === 'EN_ROUTE' || b.status === 'NEXT_STOP') {
-      liveSubLabel = `<div style="font-size:11px;color:#67e8f9;font-weight:700;margin-top:4px;">● LIVE: Chauffeur En Route</div>`;
-    } else if (isBookingUnallocated(b)) {
-      liveSubLabel = `<div style="font-size:11px;color:#fca5a5;margin-top:4px;">Needs vehicle &amp; driver</div>`;
-    }
-
     const fareVal = parseFloat(b.total_fare || b.fare_amount || 0).toFixed(2);
-    let payBadgeHtml = '';
-    if (b.payment_status === 'PRE_AUTHORIZED') {
-      payBadgeHtml = `<div style="margin-top:4px;"><span style="background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.4);color:#4ade80;font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;">💳 PRE-AUTH ••${escapeHtml(b.card_last4 || '')}</span></div>`;
-    } else if (b.payment_status === 'CORPORATE_INVOICE') {
-      payBadgeHtml = `<div style="margin-top:4px;"><span style="background:rgba(201,184,148,0.18);border:1px solid var(--gold-accent);color:var(--gold-accent);font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;">🏢 ACCOUNT</span></div>`;
-    } else if (b.payment_status === 'PAID') {
-      payBadgeHtml = `<div style="margin-top:4px;"><span style="background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.4);color:#34d399;font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;">✓ PAID</span></div>`;
-    }
+    let payShort = '';
+    if (b.payment_status === 'PRE_AUTHORIZED') payShort = `<span style="color:#4ade80;font-size:10px;font-weight:700;margin-left:4px;">HOLD</span>`;
+    else if (b.payment_status === 'CORPORATE_INVOICE') payShort = `<span style="color:var(--gold);font-size:10px;font-weight:700;margin-left:4px;">ACCT</span>`;
+    else if (b.payment_status === 'PAID') payShort = `<span style="color:#34d399;font-size:10px;font-weight:700;margin-left:4px;">PAID</span>`;
 
-    return `
-      <tr class="${rowClass}">
-        <!-- 1. Date & Time -->
+    const shortPu = (b.pickup_address || '').split(',')[0];
+    const shortDo = (b.dropoff_address || '').split(',')[0];
+    const flightTag = b.flight_number ? ` <span style="background:rgba(56,189,248,0.16);color:#38bdf8;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;">✈️${escapeHtml(b.flight_number)}</span>` : '';
+
+    const mainRowHtml = `
+      <tr class="${rowClass}" onclick="toggleExpandBookingRow('${b.id}', event)" title="Click row to expand full booking details">
+        <!-- 1. Expand & Ref -->
         <td>
-          <div class="cds-dt-time">${escapeHtml(time)}</div>
-          <div class="cds-dt-date">${escapeHtml(date)}</div>
-          <span class="cds-ref-pill">${escapeHtml(b.confirmation_code)}</span>
-          ${countdownHtml}
+          <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
+          <span style="font-family:monospace;color:var(--gold);font-weight:700;font-size:11.5px;">${escapeHtml(b.confirmation_code)}</span>
         </td>
 
-        <!-- 2. Customer & Contact -->
+        <!-- 2. Date & Time -->
         <td>
-          <div style="font-weight:700;color:#fff;font-size:13.5px;">${escapeHtml(b.customer_name)}</div>
-          <div style="margin-top:3px;font-size:12px;">
-            <a href="tel:${cleanPhone}" style="color:var(--gold);text-decoration:none;">📞 ${escapeHtml(b.customer_phone)}</a>
-          </div>
-          <div style="margin-top:3px;font-size:11px;display:flex;gap:8px;">
-            <a href="https://wa.me/${cleanPhone.replace('+', '')}" target="_blank" style="color:#4ade80;text-decoration:none;">WhatsApp ↗</a>
-          </div>
+          <strong style="color:#fff;font-size:12.5px;">${escapeHtml(date)} ${escapeHtml(time)}</strong>${urgencyDot}
         </td>
 
-        <!-- 3. Route, Flight & Notes -->
+        <!-- 3. Customer -->
         <td>
-          <div style="margin-bottom:4px;line-height:1.35;">
-            <span style="color:#4ade80;font-weight:700;font-size:11px;">PU:</span>
-            <span style="color:#fff;">${escapeHtml(b.pickup_address)}</span>
-          </div>
-          <div style="line-height:1.35;">
-            <span style="color:#38bdf8;font-weight:700;font-size:11px;">DO:</span>
-            <span style="color:#cbd5e1;">${escapeHtml(b.dropoff_address)}</span>
-          </div>
-          ${b.flight_number ? `<div style="margin-top:5px;"><span style="background:rgba(56,189,248,0.14);border:1px solid rgba(56,189,248,0.35);color:#38bdf8;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;">✈️ ${escapeHtml(b.flight_number)}</span></div>` : ''}
-          ${b.special_requests ? `<div style="margin-top:5px;font-size:11.5px;color:#fde68a;background:rgba(255,255,255,0.04);border-left:2px solid var(--gold);padding:3px 7px;">📝 ${escapeHtml(b.special_requests)}</div>` : ''}
+          <span class="excel-cell-truncate" style="max-width:155px;font-weight:600;color:#fff;">${escapeHtml(b.customer_name)}</span>
         </td>
 
-        <!-- 4. Vehicle Req & Pax -->
+        <!-- 4. Pickup -> Destination / Flight -->
         <td>
-          <div style="font-weight:700;color:var(--gold);font-size:12px;margin-bottom:4px;">${escapeHtml(formatVehTierLabel(b.vehicle_class))}</div>
-          <div style="font-size:12px;color:var(--text-muted);">👥 <strong>${b.passenger_count || 1}</strong> Pax · 🧳 <strong>${b.luggage_count || 0}</strong> Bags</div>
+          <span class="excel-cell-truncate" style="max-width:310px;color:#cbd5e1;">
+            <strong style="color:#4ade80;">${escapeHtml(shortPu)}</strong> &rarr; <strong style="color:#93c5fd;">${escapeHtml(shortDo)}</strong>
+          </span>${flightTag}
         </td>
 
-        <!-- 5. Allocate Vehicle & Driver -->
+        <!-- 5. Vehicle & Pax -->
         <td>
+          <span style="color:var(--gold);font-weight:600;">${escapeHtml(formatVehTierLabel(b.vehicle_class))}</span>
+          <span style="color:var(--text-muted);font-size:11px;margin-left:4px;">(${b.passenger_count || 1}P/${b.luggage_count || 0}B)</span>
+        </td>
+
+        <!-- 6. Allocate Driver & Car -->
+        <td onclick="event.stopPropagation()">
           <select class="cds-inline-select ${b.chauffeur_id ? 'allocated' : 'unallocated'}" onchange="inlineAllocateVehicle('${b.id}', this.value)">
             ${allocOptions}
           </select>
-          ${b.chauffeur_name ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Driver: <strong style="color:#fff;">${escapeHtml(b.chauffeur_name)}</strong> [${escapeHtml(b.license_plate || '')}]</div>` : ''}
         </td>
 
-        <!-- 6. Live Status -->
-        <td>
+        <!-- 7. Live Status -->
+        <td onclick="event.stopPropagation()">
           <select class="cds-status-select st-${b.status}" onchange="inlineChangeStatus('${b.id}', this.value)">
             ${statusOptionsHtml}
           </select>
-          ${liveSubLabel}
         </td>
 
-        <!-- 7. Fare & Payment -->
+        <!-- 8. Fare -->
         <td>
-          <div style="font-weight:700;font-size:14px;color:#fff;">£${fareVal}</div>
-          ${payBadgeHtml}
-          ${b.payment_status === 'PRE_AUTHORIZED' ? `<button type="button" class="btn btn-secondary" onclick="captureBookingPayment('${b.id}', ${b.total_fare || b.fare_amount})" style="margin-top:5px;padding:3px 7px;font-size:10.5px;border-color:#4ade80;color:#4ade80;">Capture £${fareVal}</button>` : ''}
+          <strong style="color:#fff;">£${fareVal}</strong>${payShort}
         </td>
 
-        <!-- 8. Actions -->
-        <td style="text-align:right;">
-          <div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;">
-            <button type="button" class="btn btn-secondary" style="padding:5px 8px;font-size:11px;" onclick="copyDriverJobSheet('${b.id}')" title="Copy Driver Run Sheet for WhatsApp/SMS">📋</button>
-            <button type="button" class="btn btn-secondary" style="padding:5px 8px;font-size:11px;" onclick="viewVoucher('${b.id}')" title="View Voucher">Voucher</button>
-            <button type="button" class="btn btn-secondary" style="padding:5px 8px;font-size:11px;border-color:var(--gold);color:var(--gold);" onclick="openInvoiceModal('${b.id}')" title="Email Tax Invoice">📄 Inv</button>
-            <button type="button" class="btn btn-secondary" style="padding:5px 8px;font-size:11px;border-color:rgba(239,68,68,0.4);color:#f87171;" onclick="deleteBooking('${b.id}', '${b.confirmation_code}')" title="Delete Booking">🗑️</button>
+        <!-- 9. Right-Hand Actions (Allocate / Send Email / Edit / Inv / Del) -->
+        <td style="text-align:right;" onclick="event.stopPropagation()">
+          <div style="display:inline-flex;gap:4px;align-items:center;justify-content:flex-end;">
+            <button type="button" class="excel-act-btn gold" onclick="openAllocateModal('${b.id}')" title="Allocate Driver &amp; Vehicle">🚘 Alloc</button>
+            <button type="button" class="excel-act-btn" onclick="sendBookingConfirmationEmail('${b.id}')" title="Send Booking Confirmation Email to Customer">✉️ Email</button>
+            <button type="button" class="excel-act-btn" onclick="openEditBookingModal('${b.id}')" title="Edit Booking Details">✏️ Edit</button>
+            <button type="button" class="excel-act-btn" onclick="openInvoiceModal('${b.id}')" title="Tax Invoice">📄 Inv</button>
+            <button type="button" class="excel-act-btn danger" onclick="deleteBooking('${b.id}', '${b.confirmation_code}')" title="Delete Booking">🗑️</button>
           </div>
         </td>
       </tr>
     `;
+
+    if (!isExpanded) return mainRowHtml;
+
+    const netFare = parseFloat(b.fare_amount || 0).toFixed(2);
+    const parkFee = parseFloat(b.parking_fee || 0).toFixed(2);
+    const dropFee = parseFloat(b.dropoff_fee || 0).toFixed(2);
+    const congFee = parseFloat(b.congestion_charge || 0).toFixed(2);
+    const vatFee = parseFloat(b.vat_amount || 0).toFixed(2);
+
+    const expandRowHtml = `
+      <tr class="excel-expand-row">
+        <td colspan="9">
+          <div class="excel-expand-drawer">
+            <!-- Box 1: Full Route, Flight & Notes -->
+            <div class="excel-drawer-box">
+              <div class="excel-drawer-title">📍 Full Itinerary &amp; Special Instructions</div>
+              <div style="margin-bottom:6px;"><strong style="color:#4ade80;">Pickup (${escapeHtml(b.pickup_datetime)}):</strong><br><span style="color:#fff;">${escapeHtml(b.pickup_address)}</span></div>
+              <div style="margin-bottom:6px;"><strong style="color:#38bdf8;">Destination:</strong><br><span style="color:#fff;">${escapeHtml(b.dropoff_address)}</span></div>
+              ${b.flight_number ? `<div style="margin-top:6px;color:#38bdf8;">✈️ <strong>Flight Number:</strong> ${escapeHtml(b.flight_number)} (45m free wait)</div>` : ''}
+              ${b.special_requests ? `<div style="margin-top:6px;color:#fde68a;">📝 <strong>Special Requests:</strong> ${escapeHtml(b.special_requests)}</div>` : '<div style="margin-top:4px;color:var(--text-muted);font-size:11.5px;">No special requests noted.</div>'}
+            </div>
+
+            <!-- Box 2: Passenger & Allocated Chauffeur -->
+            <div class="excel-drawer-box">
+              <div class="excel-drawer-title">👤 Passenger &amp; Chauffeur Details</div>
+              <div style="color:#fff;font-weight:700;font-size:14px;">${escapeHtml(b.customer_name)}</div>
+              <div style="margin-top:4px;">📞 <a href="tel:${cleanPhone}" style="color:var(--gold);">${escapeHtml(b.customer_phone)}</a> &nbsp;•&nbsp; <a href="https://wa.me/${cleanPhone.replace('+', '')}" target="_blank" style="color:#4ade80;">WhatsApp ↗</a></div>
+              <div style="margin-top:3px;color:var(--text-muted);">✉️ ${escapeHtml(b.customer_email || 'No email')}</div>
+              <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">
+                <span style="color:var(--text-muted);font-size:11.5px;">Vehicle Requested:</span> <strong style="color:var(--gold);">${escapeHtml(formatVehTierLabel(b.vehicle_class))}</strong> (${b.passenger_count || 1} Pax, ${b.luggage_count || 0} Bags)
+              </div>
+              <div style="margin-top:4px;">
+                <span style="color:var(--text-muted);font-size:11.5px;">Assigned Chauffeur:</span>
+                ${b.chauffeur_name ? `<strong style="color:#4ade80;">${escapeHtml(b.chauffeur_name)} [${escapeHtml(b.license_plate || '')}]</strong>` : `<strong style="color:#f87171;">⚠️ Unallocated</strong>`}
+              </div>
+            </div>
+
+            <!-- Box 3: Fare Breakdown & Actions -->
+            <div class="excel-drawer-box">
+              <div class="excel-drawer-title">💷 Itemized Fare &amp; Actions</div>
+              <div style="display:flex;justify-content:space-between;color:var(--text-muted);"><span>Base Fare:</span><span style="color:#fff;">£${netFare}</span></div>
+              ${parseFloat(parkFee) > 0 ? `<div style="display:flex;justify-content:space-between;color:#38bdf8;"><span>Airport Parking (Pickup):</span><span>+£${parkFee}</span></div>` : ''}
+              ${parseFloat(dropFee) > 0 ? `<div style="display:flex;justify-content:space-between;color:#38bdf8;"><span>Airport Parking (Drop-off):</span><span>+£${dropFee}</span></div>` : ''}
+              ${parseFloat(congFee) > 0 ? `<div style="display:flex;justify-content:space-between;color:#facc15;"><span>Congestion Charge:</span><span>+£${congFee}</span></div>` : ''}
+              <div style="display:flex;justify-content:space-between;color:var(--text-muted);"><span>VAT (20%):</span><span style="color:#fff;">£${vatFee}</span></div>
+              <div style="display:flex;justify-content:space-between;color:var(--gold);font-weight:700;font-size:14px;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;">
+                <span>Total (${escapeHtml((b.payment_status || 'PENDING').replace('_', ' '))}):</span>
+                <span>£${fareVal} GBP</span>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+                <button type="button" class="excel-act-btn gold" onclick="openEditBookingModal('${b.id}')">✏️ Edit Booking</button>
+                <button type="button" class="excel-act-btn" onclick="sendBookingConfirmationEmail('${b.id}')">✉️ Send Confirmation</button>
+                <button type="button" class="excel-act-btn" onclick="copyDriverJobSheet('${b.id}')">📋 Copy Driver Sheet</button>
+                <button type="button" class="excel-act-btn" onclick="viewVoucher('${b.id}')">Voucher</button>
+                <button type="button" class="excel-act-btn" onclick="openInvoiceModal('${b.id}')">📄 Tax Invoice</button>
+                ${b.payment_status === 'PRE_AUTHORIZED' ? `<button type="button" class="excel-act-btn" style="border-color:#4ade80;color:#4ade80;" onclick="captureBookingPayment('${b.id}', ${b.total_fare || b.fare_amount})">💳 Capture £${fareVal}</button>` : ''}
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+
+    return mainRowHtml + expandRowHtml;
+  }).join('');
+}
+
+async function sendBookingConfirmationEmail(bookingId) {
+  const b = App.bookings.find(x => x.id === bookingId);
+  if (!b) return;
+  showToast(`✉️ Sending confirmation email for ${b.confirmation_code}...`);
+  try {
+    const res = await fetch(`/api/bookings/${bookingId}/send-confirmation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient_email: b.customer_email })
+    });
+    const data = await res.json();
+    if (data.success) {
+      playStatusBlipSound();
+      showToast(`✅ Booking Confirmation sent to ${data.recipient}!`);
+      loadData();
+    } else {
+      alert(data.error || 'Could not send confirmation email');
+    }
+  } catch (err) {
+    alert('Failed to send confirmation email');
+  }
+}
+
+function openEditBookingModal(bookingId) {
+  const b = App.bookings.find(x => x.id === bookingId);
+  if (!b) return;
+  document.getElementById('eb-id').value = b.id;
+  document.getElementById('edit-booking-modal-title').textContent = `✏️ Edit Booking ${b.confirmation_code}`;
+  const rawDt = String(b.pickup_datetime || '').trim().replace(' ', 'T').slice(0, 16);
+  document.getElementById('eb-datetime').value = rawDt;
+  document.getElementById('eb-vehicle').value = b.vehicle_class || 'mercedes_s_class';
+  document.getElementById('eb-name').value = b.customer_name || '';
+  document.getElementById('eb-phone').value = b.customer_phone || '';
+  document.getElementById('eb-email').value = b.customer_email || '';
+  document.getElementById('eb-flight').value = b.flight_number || '';
+  document.getElementById('eb-pickup').value = b.pickup_address || '';
+  document.getElementById('eb-dropoff').value = b.dropoff_address || '';
+  document.getElementById('eb-pax').value = b.passenger_count || 1;
+  document.getElementById('eb-bags').value = b.luggage_count || 0;
+  document.getElementById('eb-fare').value = parseFloat(b.fare_amount || 165.0).toFixed(2);
+  document.getElementById('eb-notes').value = b.special_requests || '';
+  openModal('modal-edit-booking');
+}
+
+async function submitEditBooking(e) {
+  e.preventDefault();
+  const bookingId = document.getElementById('eb-id').value;
+  if (!bookingId) return;
+  const payload = {
+    pickup_datetime: document.getElementById('eb-datetime').value.replace('T', ' '),
+    vehicle_class: document.getElementById('eb-vehicle').value,
+    customer_name: document.getElementById('eb-name').value,
+    customer_phone: document.getElementById('eb-phone').value,
+    customer_email: document.getElementById('eb-email').value,
+    flight_number: document.getElementById('eb-flight').value,
+    pickup_address: document.getElementById('eb-pickup').value,
+    dropoff_address: document.getElementById('eb-dropoff').value,
+    passenger_count: parseInt(document.getElementById('eb-pax').value || 1),
+    luggage_count: parseInt(document.getElementById('eb-bags').value || 0),
+    fare_amount: parseFloat(document.getElementById('eb-fare').value || 165.0),
+    special_requests: document.getElementById('eb-notes').value
+  };
+  try {
+    const res = await fetch(`/api/bookings/${bookingId}/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeModal('modal-edit-booking');
+      playStatusBlipSound();
+      showToast('💾 Booking updated successfully!');
+      loadData();
+    } else {
+      alert(data.error || 'Could not update booking');
+    }
+  } catch (err) {
+    alert('Failed to update booking');
+  }
+}
+
+function toggleExpandFleetRow(chId, evt) {
+  if (evt) {
+    const tag = (evt.target && evt.target.tagName || '').toUpperCase();
+    if (['SELECT', 'OPTION', 'BUTTON', 'A', 'INPUT'].includes(tag) || evt.target.closest('button, select, a')) {
+      return;
+    }
+  }
+  if (App.expandedFleetIds.has(chId)) {
+    App.expandedFleetIds.delete(chId);
+  } else {
+    App.expandedFleetIds.add(chId);
+  }
+  renderFleetThinTable();
+}
+
+function renderFleetThinTable() {
+  const tbody = document.getElementById('fleet-thin-table-body');
+  if (!tbody) return;
+
+  if (!App.chauffeurs || App.chauffeurs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);">No vehicles in fleet. Click "+ Add / Edit Vehicle & Driver".</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = App.chauffeurs.map(ch => {
+    const isExpanded = App.expandedFleetIds.has(ch.id);
+    const isAvail = ch.status === 'AVAILABLE';
+    const assignedJobs = App.bookings.filter(b => b.chauffeur_id === ch.id && b.status !== 'COMPLETED' && b.status !== 'CANCELLED');
+
+    const mainRow = `
+      <tr class="excel-thin-row ${isExpanded ? 'expanded' : ''}" onclick="toggleExpandFleetRow('${escapeHtml(ch.id)}', event)" title="Click row to expand vehicle &amp; driver details">
+        <td>
+          <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
+          <strong style="font-family:monospace;color:var(--gold);background:rgba(201,184,148,0.14);padding:2px 6px;border-radius:4px;">${escapeHtml(ch.license_plate)}</strong>
+        </td>
+        <td><strong style="color:#fff;">${escapeHtml(ch.vehicle_model)}</strong></td>
+        <td><span style="color:var(--gold);">${escapeHtml(formatVehTierLabel(ch.vehicle_class))}</span></td>
+        <td><strong style="color:#fff;">👤 ${escapeHtml(ch.name)}</strong></td>
+        <td><a href="tel:${escapeHtml(ch.phone)}" style="color:var(--gold);text-decoration:none;" onclick="event.stopPropagation()">📞 ${escapeHtml(ch.phone)}</a></td>
+        <td><span style="color:var(--text-muted);">👥 ${ch.passenger_capacity || 4} Pax · 🧳 ${ch.luggage_capacity || 2} Bags</span></td>
+        <td>
+          <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:${isAvail ? 'rgba(52,211,153,0.15)' : 'rgba(251,191,36,0.15)'};color:${isAvail ? '#34d399' : '#fbbf24'};">
+            ${isAvail ? '🟢 Available' : '🚗 On Trip'}
+          </span>
+        </td>
+        <td style="text-align:right;" onclick="event.stopPropagation()">
+          <div style="display:inline-flex;gap:4px;justify-content:flex-end;">
+            <button type="button" class="excel-act-btn" onclick="toggleCarStatus('${escapeHtml(ch.id)}')">${isAvail ? 'Mark On Trip' : 'Mark Available'}</button>
+            <button type="button" class="excel-act-btn gold" onclick="openFleetManageModal(); editFleetChauffeur('${escapeHtml(ch.id)}')">✏️ Edit</button>
+            <button type="button" class="excel-act-btn danger" onclick="deleteFleetChauffeur('${escapeHtml(ch.id)}')">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `;
+
+    if (!isExpanded) return mainRow;
+
+    const expandRow = `
+      <tr class="excel-expand-row">
+        <td colspan="8">
+          <div class="excel-expand-drawer">
+            <div class="excel-drawer-box">
+              <div class="excel-drawer-title">🚘 Vehicle Specifications</div>
+              <div><strong>Model:</strong> <span style="color:#fff;">${escapeHtml(ch.vehicle_model)}</span></div>
+              <div style="margin-top:4px;"><strong>Registration Plate:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.license_plate)}</span></div>
+              <div style="margin-top:4px;"><strong>Class &amp; Capacity:</strong> ${escapeHtml(formatVehTierLabel(ch.vehicle_class))} (${ch.passenger_capacity || 4} Passengers, ${ch.luggage_capacity || 2} Suitcases)</div>
+            </div>
+            <div class="excel-drawer-box">
+              <div class="excel-drawer-title">👤 Chauffeur Profile</div>
+              <div><strong>Chauffeur:</strong> <span style="color:#fff;">${escapeHtml(ch.name)}</span> (${ch.rating || '5.0'}★ • ${ch.trips_count || 0} Trips)</div>
+              <div style="margin-top:4px;"><strong>Direct Mobile:</strong> <a href="tel:${escapeHtml(ch.phone)}" style="color:var(--gold);">${escapeHtml(ch.phone)}</a></div>
+              <div style="margin-top:4px;"><strong>Base / Current Zone:</strong> ${escapeHtml(ch.current_zone || 'London')}</div>
+            </div>
+            <div class="excel-drawer-box">
+              <div class="excel-drawer-title">📋 Active Assigned Runs (${assignedJobs.length})</div>
+              ${assignedJobs.length === 0
+                ? `<div style="color:var(--text-muted);">No active runs assigned right now.</div>`
+                : assignedJobs.map(j => `<div style="margin-bottom:4px;"><strong style="color:var(--gold);">${escapeHtml(j.confirmation_code)}</strong> (${escapeHtml(j.pickup_datetime)}): ${escapeHtml(j.customer_name)}</div>`).join('')
+              }
+              <div style="margin-top:10px;display:flex;gap:6px;">
+                <button type="button" class="excel-act-btn gold" onclick="openFleetManageModal(); editFleetChauffeur('${escapeHtml(ch.id)}')">✏️ Edit Vehicle / Chauffeur</button>
+                <button type="button" class="excel-act-btn" onclick="toggleCarStatus('${escapeHtml(ch.id)}')">Toggle Status</button>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+
+    return mainRow + expandRow;
   }).join('');
 }
 
@@ -990,9 +1232,26 @@ function openAllocateModal(bookingId) {
   const summary = document.getElementById('modal-job-summary');
   if (summary) {
     summary.innerHTML = `
-      <strong>${booking.confirmation_code}</strong>: ${booking.customer_name}<br>
-      ${booking.pickup_address} &rarr; ${booking.dropoff_address}
+      <strong>${escapeHtml(booking.confirmation_code)}</strong>: ${escapeHtml(booking.customer_name)}<br>
+      ${escapeHtml(booking.pickup_address)} &rarr; ${escapeHtml(booking.dropoff_address)}
     `;
+  }
+
+  const choiceList = document.querySelector('#modal-allocate .car-choice-list');
+  if (choiceList && App.chauffeurs.length > 0) {
+    choiceList.innerHTML = App.chauffeurs.map(ch => {
+      const iconLbl = ch.vehicle_class === 'mercedes_v_class' ? 'V' : (ch.vehicle_class === 'range_rover_autobiography' ? 'RR' : 'S');
+      return `
+        <div class="car-choice-btn" onclick="assignVehicle('${escapeHtml(ch.id)}')">
+          <div class="choice-icon">${iconLbl}</div>
+          <div class="choice-info">
+            <strong>${escapeHtml(ch.name)} • ${escapeHtml(ch.vehicle_model)}</strong>
+            <span>Reg: ${escapeHtml(ch.license_plate)} • Up to ${ch.passenger_capacity || 4} Passengers</span>
+          </div>
+          <span class="choice-badge">Select ↗</span>
+        </div>
+      `;
+    }).join('');
   }
 
   document.getElementById('modal-allocate').style.display = 'flex';
@@ -1669,11 +1928,11 @@ async function openInvoiceModal(bookingId) {
             <input type="number" step="0.01" id="inv-net" value="${net}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
           </div>
           <div>
-            <label style="font-size: 11px; color: var(--text-muted);">Airport Parking / Meet (£)</label>
+            <label style="font-size: 11px; color: var(--text-muted);">Airport Parking (Pickup, £)</label>
             <input type="number" step="0.01" id="inv-park" value="${park}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
           </div>
           <div>
-            <label style="font-size: 11px; color: var(--text-muted);">Airport Drop-off Fee (£)</label>
+            <label style="font-size: 11px; color: var(--text-muted);">Airport Parking (Drop-off, £)</label>
             <input type="number" step="0.01" id="inv-drop" value="${drop}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
           </div>
           <div>

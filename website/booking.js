@@ -629,9 +629,9 @@
     let hasParking = isAirportLocation(pVal);
     let parkingFee = hasParking ? 15 : 0;
 
-    // Airport Drop-off Charge: £7 (e.g. London to Heathrow or Airport departures)
+    // Airport Drop-off / Parking: £15 (same £15 parking for airport pickup and drop-off)
     let hasDropoffCharge = isHeathrowOrAirportDropoff(dVal);
-    let dropoffFee = hasDropoffCharge ? (/\b(gatwick|lgw)\b/i.test(dVal) ? 10 : 7) : 0;
+    let dropoffFee = hasDropoffCharge ? 15 : 0;
 
     // London Congestion Charge: £18 (auto-added if pickup or drop-off in CC zone)
     let hasCongestion = isCongestionLocation(pVal) || isCongestionLocation(dVal);
@@ -1140,7 +1140,7 @@
         </h2>
         <p style="color: #475569; font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
           ${corporateBooking
-            ? `Your corporate account reservation has been confirmed and will be billed by invoice (<strong>£${total.toFixed(2)}</strong>) after journey completion. An executive booking confirmation has been automatically sent to <strong>${data.email}</strong>.`
+            ? `Your corporate account reservation has been confirmed (<strong>£${total.toFixed(2)}</strong>). An executive booking confirmation has been automatically sent to <strong>${data.email}</strong>.`
             : (preauthSuccess
               ? `A credit card pre-authorisation hold of <strong>£${total.toFixed(2)}</strong> has been placed on your card. Your card is only charged after journey completion. An executive confirmation has been dispatched to <strong>${data.email}</strong>.`
               : `Your journey request has been received by GA Operations. We will contact <strong>${data.email}</strong> directly to confirm chauffeur allocation.`)}
