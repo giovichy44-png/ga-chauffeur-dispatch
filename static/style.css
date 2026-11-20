@@ -1132,22 +1132,25 @@ button, input, textarea, select {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 3000;
+  z-index: 4000;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  pointer-events: none;
 }
 
-.toast {
-  background: var(--bg-header);
-  border: 1px solid var(--gold);
+.toast,
+.toast-item {
+  background: #171f1b;
+  border: 1.5px solid var(--gold);
   color: var(--text-white);
   padding: 12px 18px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
-  font-weight: 500;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  font-weight: 600;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.75);
   animation: slideIn 0.2s ease;
+  pointer-events: auto;
 }
 
 @keyframes slideIn {
@@ -1679,7 +1682,24 @@ button, input, textarea, select {
   }
 
   .app-header {
-    padding: 10px 12px !important;
+    padding: max(48px, calc(12px + env(safe-area-inset-top, 44px))) 12px 10px !important;
+  }
+
+  .mobile-bar {
+    padding: 8px 12px max(10px, env(safe-area-inset-bottom, 10px)) !important;
+  }
+
+  .toast-stack {
+    bottom: calc(78px + env(safe-area-inset-bottom, 12px)) !important;
+    left: 14px !important;
+    right: 14px !important;
+    z-index: 4000 !important;
+  }
+
+  .toast,
+  .toast-item {
+    width: 100%;
+    text-align: center;
   }
 
   .header-container {
@@ -1824,22 +1844,43 @@ button, input, textarea, select {
     width: 100% !important;
   }
 
-  .cds-dispatch-table tbody tr {
+  .cds-dispatch-table tbody tr,
+  .excel-thin-table tbody tr.excel-thin-row {
     display: flex !important;
     flex-direction: column !important;
     width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
     background: var(--bg-card) !important;
     border: 1px solid var(--border) !important;
     border-radius: 8px !important;
-    padding: 12px !important;
-    gap: 8px !important;
+    padding: 12px 14px !important;
+    gap: 7px !important;
   }
 
-  .cds-dispatch-table td {
+  .cds-dispatch-table td,
+  .excel-thin-table tbody tr.excel-thin-row td {
     display: block !important;
     width: 100% !important;
-    padding: 0 !important;
+    padding: 2px 0 !important;
     text-align: left !important;
+    white-space: normal !important;
+    border-right: none !important;
+  }
+
+  .excel-cell-truncate {
+    max-width: 100% !important;
+    white-space: normal !important;
+  }
+
+  .field select,
+  .field input,
+  .field textarea,
+  select {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    text-overflow: ellipsis;
   }
 
   .cds-dispatch-table td:first-child {

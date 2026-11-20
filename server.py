@@ -253,10 +253,17 @@ def check_credentials(username, password):
                     return True
     return False
 
-def check_auth(headers):
+def check_auth(headers, query=None):
+    expected = get_auth_token()
+
+    # 0. Check query auth_token (used for instant iPhone PWA token restore)
+    if query:
+        q_tok = (query.get("auth_token") or [""])[0].strip()
+        if q_tok and q_tok == expected:
+            return True
+
     # 1. Check Cookie
     cookie_str = headers.get("Cookie", "")
-    expected = get_auth_token()
     if f"ga_dispatch_auth={expected}" in cookie_str:
         return True
 
@@ -358,12 +365,33 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Private Dispatch Portal | GA Chauffeur Services</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#121715">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23171f1b'/%3E%3Ctext x='4' y='28' fill='%23c9b894' font-family='Georgia' font-size='23'%3EGA%3C/text%3E%3C/svg%3E">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+        <script>
+          // Auto-restore persistent login from localStorage on iPhone Home Screen launch
+          (function() {
+            try {
+              var params = new URLSearchParams(window.location.search);
+              if (params.get('logged_out') === '1') {
+                localStorage.removeItem('ga_dispatch_saved_token');
+                localStorage.removeItem('ga_dispatch_saved_user');
+                localStorage.removeItem('ga_dispatch_saved_pass');
+              } else {
+                var savedToken = localStorage.getItem('ga_dispatch_saved_token');
+                if (savedToken && !sessionStorage.getItem('ga_auto_restored')) {
+                  sessionStorage.setItem('ga_auto_restored', '1');
+                  document.cookie = 'ga_dispatch_auth=' + savedToken + '; Path=/; Max-Age=31536000; SameSite=Lax';
+                  window.location.replace('/?auth_token=' + encodeURIComponent(savedToken));
+                  return;
+                }
+              }
+            } catch (e) {}
+          })();
+        </script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -371,17 +399,17 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
       min-height: 100vh;
       background: #121715;
       color: #edf0ea;
-      font-family: 'DM Sans', -apple-system, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'DM Sans', sans-serif;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: calc(28px + env(safe-area-inset-top, 20px)) 18px calc(24px + env(safe-area-inset-bottom, 20px));
     }
     .login-card {
       background: #171f1b;
       border: 1px solid #2e3b33;
       border-radius: 8px;
-      padding: 40px 36px;
+      padding: 36px 28px;
       max-width: 440px;
       width: 100%;
       box-shadow: 0 25px 60px rgba(0,0,0,0.6);
@@ -409,7 +437,7 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
     }
     .eyebrow {
       display: block;
-      margin-top: 24px;
+      margin-top: 20px;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: .2em;
@@ -421,17 +449,17 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
       font-weight: normal;
       font-size: 24px;
       color: #ffffff;
-      margin: 8px 0 12px;
+      margin: 8px 0 10px;
     }
     .subtitle {
       font-size: 13px;
       color: #8c9891;
-      margin: 0 0 28px;
+      margin: 0 0 22px;
       line-height: 1.5;
     }
     .form-group {
       text-align: left;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
     }
     label {
       display: block;
@@ -442,31 +470,46 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
       margin-bottom: 6px;
       font-weight: 600;
     }
-    input {
+    input[type="text"], input[type="password"] {
       width: 100%;
       background: #121715;
       border: 1px solid #2e3b33;
       border-radius: 4px;
       padding: 12px 14px;
       color: #fff;
-      font-size: 14px;
+      font-size: 15px;
       font-family: inherit;
     }
     input:focus {
       outline: none;
       border-color: #c9b894;
     }
+    .remember-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-align: left;
+      font-size: 13px;
+      color: #d0d8d1;
+      margin: 4px 0 16px;
+      cursor: pointer;
+    }
+    .remember-row input {
+      width: 17px;
+      height: 17px;
+      accent-color: #c9b894;
+    }
     .btn-submit {
       width: 100%;
       background: #c9b894;
       color: #171f1b;
-      font-weight: 600;
+      font-weight: 700;
       font-size: 14px;
       padding: 14px;
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      margin-top: 8px;
+      margin-top: 4px;
       letter-spacing: .05em;
       transition: background 0.2s;
     }
@@ -481,14 +524,14 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
       padding: 10px 14px;
       border-radius: 4px;
       font-size: 13px;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
     }
     .footer-note {
-      margin-top: 24px;
+      margin-top: 22px;
       font-size: 11px;
       color: #637169;
       border-top: 1px solid #2e3b33;
-      padding-top: 16px;
+      padding-top: 14px;
     }
   </style>
 </head>
@@ -500,56 +543,55 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
     </div>
     <span class="eyebrow">Private Operations</span>
     <h1>Dispatch Console</h1>
-    <p class="subtitle">Access restricted to authorized personnel of GA Chauffeur Services Limited.</p>
+    <p class="subtitle">Sign in once — your iPhone &amp; browser will remember your login automatically.</p>
 
     <div id="login-error" class="error-msg">Invalid username or password. Please try again.</div>
 
-    <form id="login-form">
+    <form id="login-form" method="POST" action="/api/login" autocomplete="on">
       <div class="form-group">
         <label for="username">Username</label>
-        <input type="text" id="username" name="username" required autocomplete="username" placeholder="e.g. admin">
+        <input type="text" id="username" name="username" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="admin">
       </div>
       <div class="form-group">
         <label for="password">Password</label>
         <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
       </div>
-      <button type="submit" class="btn-submit" id="btn-login">Sign In to Dispatch</button>
+      <label class="remember-row">
+        <input type="checkbox" id="remember-me" name="remember" value="1" checked>
+        <span>Save password &amp; stay logged in on this device</span>
+      </label>
+      <button type="submit" class="btn-submit" id="btn-login">Sign In &amp; Save Login</button>
     </form>
     <div class="footer-note">
       gachauffeurs.co.uk • 1 Glebe Road, Stanmore • +44 7886 622082
     </div>
   </div>
   <script>
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const u = document.getElementById('username').value.trim();
-      const p = document.getElementById('password').value;
-      const btn = document.getElementById('btn-login');
-      const err = document.getElementById('login-error');
-      btn.disabled = true;
-      btn.textContent = 'Verifying...';
-      err.style.display = 'none';
-
-      try {
-        const res = await fetch('/api/login', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({username: u, password: p})
-        });
-        if (res.ok) {
-          window.location.href = '/';
-        } else {
-          err.style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = 'Sign In to Dispatch';
-        }
-      } catch (e) {
-        err.textContent = 'Connection error. Please try again.';
-        err.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Sign In to Dispatch';
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('error') === '1') {
+        document.getElementById('login-error').style.display = 'block';
       }
-    });
+      try {
+        var su = localStorage.getItem('ga_dispatch_saved_user');
+        var sp = localStorage.getItem('ga_dispatch_saved_pass');
+        if (su) document.getElementById('username').value = su;
+        if (sp) document.getElementById('password').value = sp;
+      } catch (e) {}
+
+      document.getElementById('login-form').addEventListener('submit', function() {
+        try {
+          if (document.getElementById('remember-me').checked) {
+            localStorage.setItem('ga_dispatch_saved_user', document.getElementById('username').value.trim());
+            localStorage.setItem('ga_dispatch_saved_pass', document.getElementById('password').value);
+          } else {
+            localStorage.removeItem('ga_dispatch_saved_user');
+            localStorage.removeItem('ga_dispatch_saved_pass');
+            localStorage.removeItem('ga_dispatch_saved_token');
+          }
+        } catch (e) {}
+      });
+    })();
   </script>
 </body>
 </html>
@@ -1771,8 +1813,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
 
     def end_headers(self):
-        path_only = (self.path or "").split("?")[0].lower()
-        if path_only.endswith((".html", ".js", ".css", "/")) or path_only in ("", "/"):
+        raw_path = (self.path or "")
+        path_only = raw_path.split("?")[0].lower()
+        if ("?v=" in raw_path and path_only.endswith((".js", ".css"))) or path_only.endswith((".png", ".jpg", ".webp", ".svg", ".ico")):
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        elif path_only.endswith((".html", ".js", ".css", "/")) or path_only in ("", "/"):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")
@@ -1913,9 +1958,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         # If on website host and not an API route, serve website static files directly
         if not is_dispatch and not path.startswith("/api/"):
             if path in ("/dispatch", "/dispatch/", "/admin"):
-                if not check_auth(self.headers):
-                    self.send_response(401)
-                    self.send_header("WWW-Authenticate", 'Basic realm="GA Chauffeur Services Private Dispatch"')
+                if not check_auth(self.headers, query):
+                    self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.end_headers()
                     self.wfile.write(LOGIN_PAGE_HTML.encode("utf-8"))
@@ -1930,17 +1974,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         # Logout endpoint
         if path == "/api/logout":
             self.send_response(302)
-            self.send_header("Set-Cookie", "ga_dispatch_auth=; Path=/; HttpOnly; Max-Age=0")
-            self.send_header("Location", "/")
+            self.send_header("Set-Cookie", "ga_dispatch_auth=; Path=/; Max-Age=0")
+            self.send_header("Location", "/?logged_out=1")
             self.end_headers()
             return
 
         # Check authentication for private endpoints
         if not is_public_request("GET", path):
-            if not check_auth(self.headers):
+            if not check_auth(self.headers, query):
                 if path in ("/", "/index.html", "") or not path.startswith("/api/"):
-                    self.send_response(401)
-                    self.send_header("WWW-Authenticate", 'Basic realm="GA Chauffeur Services Private Dispatch"')
+                    self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.end_headers()
                     self.wfile.write(LOGIN_PAGE_HTML.encode("utf-8"))
@@ -2328,22 +2371,42 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             finally:conn.close()
             return
 
-        # Login endpoint (Public)
+        # Login endpoint (Public - supports both standard HTML form POST for iOS Safari Keychain & JSON API)
         if path == "/api/login":
-            username = payload.get("username", "").strip()
-            password = payload.get("password", "")
+            content_type = (self.headers.get("Content-Type") or "").lower()
+            is_form_post = "application/x-www-form-urlencoded" in content_type
+            if is_form_post:
+                form_fields = parse_qs(post_data.decode("utf-8", errors="ignore"))
+                username = (form_fields.get("username") or [""])[0].strip()
+                password = (form_fields.get("password") or [""])[0]
+            else:
+                username = str(payload.get("username", "")).strip()
+                password = str(payload.get("password", ""))
+
             if check_credentials(username, password):
                 token = get_auth_token()
+                cookie_header = f"ga_dispatch_auth={token}; Path=/; SameSite=Lax; Max-Age=31536000"
+                if is_form_post:
+                    self.send_response(303)
+                    self.send_header("Set-Cookie", cookie_header)
+                    self.send_header("Location", f"/?saved_token={token}")
+                    self.end_headers()
+                    return
                 body = json.dumps({"success": True, "token": token}).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
-                self.send_header("Set-Cookie", f"ga_dispatch_auth={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000")
+                self.send_header("Set-Cookie", cookie_header)
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(body)
                 return
             else:
+                if is_form_post:
+                    self.send_response(303)
+                    self.send_header("Location", "/?error=1")
+                    self.end_headers()
+                    return
                 self.send_json({"error": "Invalid username or password"}, 401)
                 return
 
@@ -2487,8 +2550,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "description": "Executive Dispatch & Fleet Operations - gachauffeurs.co.uk",
             "start_url": "/?source=pwa",
             "display": "standalone",
-            "background_color": "#090c10",
-            "theme_color": "#d4af37",
+            "background_color": "#121715",
+            "theme_color": "#121715",
             "orientation": "portrait-primary",
             "icons": [
                 {

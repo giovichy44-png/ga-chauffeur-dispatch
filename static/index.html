@@ -9,22 +9,14 @@
   <meta name="apple-mobile-web-app-title" content="GA Chauffeurs">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#0a0a0a">
+  <meta name="theme-color" content="#121715">
   <link rel="manifest" href="/manifest.json">
 
   <!-- Google Fonts matching gachauffeurs.co.uk (non-render-blocking for instant iPhone load) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="style.css?v=20261119a1">
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())).catch(() => {});
-    }
-    if ('caches' in window) {
-      caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
-    }
-  </script>
+  <link rel="stylesheet" href="style.css?v=20261120a1">
 </head>
 <body>
 
@@ -725,6 +717,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=booking-change-chime"></script>
+  <script src="app.js?v=20261120a1"></script>
 </body>
 </html>

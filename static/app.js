@@ -26,6 +26,32 @@ const App = {
   snoozeUrgentUntilMs: 0
 };
 
+// Persist login token across iPhone Home Screen launches so dispatch stays logged in
+(function syncPersistentAuthToken() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('saved_token') || params.get('auth_token');
+    if (urlToken) {
+      localStorage.setItem('ga_dispatch_saved_token', urlToken);
+      document.cookie = `ga_dispatch_auth=${urlToken}; Path=/; Max-Age=31536000; SameSite=Lax`;
+      params.delete('saved_token');
+      params.delete('auth_token');
+      const cleanQuery = params.toString();
+      window.history.replaceState({}, document.title, window.location.pathname + (cleanQuery ? `?${cleanQuery}` : ''));
+    } else {
+      const match = document.cookie.match(/(?:^|;\s*)ga_dispatch_auth=([^;]+)/);
+      if (match && match[1]) {
+        localStorage.setItem('ga_dispatch_saved_token', match[1]);
+      } else {
+        const stored = localStorage.getItem('ga_dispatch_saved_token');
+        if (stored) {
+          document.cookie = `ga_dispatch_auth=${stored}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        }
+      }
+    }
+  } catch (_) {}
+})();
+
 // ============================================================================
 // WEB AUDIO API NOTIFICATION SYNTHESIZER (New Booking + 2h Warning + 1h Alarm)
 // ============================================================================
