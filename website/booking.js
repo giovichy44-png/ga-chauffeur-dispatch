@@ -1058,6 +1058,7 @@
     let paymentPreAuthorized = false;
     let corporateConfirmed = false;
     let dispatchRef = null;
+    let manageUrl = null;
     let dispatchError = null;
 
     try {
@@ -1075,6 +1076,7 @@
           dispatchSuccess = true;
           corporateConfirmed = true;
           dispatchRef = jsonRes.reference || jsonRes.booking?.confirmation_code || jsonRes.booking_id;
+          manageUrl = jsonRes.booking?.manage_url;
         } else {
           dispatchError = jsonRes.error || 'Could not confirm corporate booking.';
         }
@@ -1095,6 +1097,7 @@
         if (res.ok && (jsonRes.ok || jsonRes.success)) {
           dispatchSuccess = true;
           dispatchRef = jsonRes.reference || jsonRes.booking?.confirmation_code || jsonRes.booking_id;
+          manageUrl = jsonRes.booking?.manage_url;
           paymentPreAuthorized = (jsonRes.booking?.payment_status === 'PRE_AUTHORIZED') || (jsonRes.payment_status === 'PRE_AUTHORIZED');
         } else {
           dispatchError = jsonRes.error || 'Card pre-authorisation could not be verified.';
@@ -1111,7 +1114,7 @@
 
     if (dispatchSuccess && (paymentPreAuthorized || corporateConfirmed)) {
       const ref = dispatchRef || 'GA-CONFIRMED';
-      renderSuccessConfirmation(ref, payload.total_fare, data, payload, true, corporateConfirmed);
+      renderSuccessConfirmation(ref, payload.total_fare, data, payload, true, corporateConfirmed, manageUrl);
       return;
     }
 
@@ -1131,7 +1134,7 @@
   });
 
   // Render Luxury Light On-Screen Confirmation Screen
-  function renderSuccessConfirmation(ref, total, data, payload, preauthSuccess = true, corporateBooking = false) {
+  function renderSuccessConfirmation(ref, total, data, payload, preauthSuccess = true, corporateBooking = false, manageUrl = null) {
     const root = document.querySelector('#ga-chauffeur-booking-widget');
     if (!root) return;
 
@@ -1187,6 +1190,7 @@
           <a href="${whatsappSummary}" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #25D366; color: #fff; font-weight: 700; font-size: 14px; padding: 14px 22px; border-radius: 4px; text-decoration: none; box-shadow: 0 4px 15px rgba(37,211,102,0.25);">
             📱 Save to WhatsApp (+44 7886 622082) ↗
           </a>
+          <span id="booking-customer-chat"></span>
           <button type="button" onclick="window.print()" style="background: #ffffff; color: #171c1c; border: 1px solid #cbd5e1; font-weight: 600; font-size: 14px; padding: 14px 22px; border-radius: 4px; cursor: pointer;">
             🖨️ Print / Save Receipt
           </button>
@@ -1197,6 +1201,16 @@
         </p>
       </div>
     `;
+    if (typeof manageUrl === 'string' && manageUrl.startsWith('https://dispatch.gachauffeurs.co.uk/manage-booking?')) {
+      const chatLink = document.createElement('a');
+      chatLink.className = 'button dark';
+      chatLink.href = manageUrl + '#mb-chat';
+      chatLink.textContent = 'Chat with Dispatch';
+      root.querySelector('#booking-customer-chat').replaceWith(chatLink);
+    } else {
+      root.querySelector('#booking-customer-chat').remove();
+    }
+
   }
 
   // Load Google Maps API or fallback

@@ -175,6 +175,18 @@ def init_db():
         WHERE LOWER(vehicle_class) LIKE '%s_class%' OR LOWER(vehicle_model) LIKE '%s-class%'
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS customer_chat_messages (
+            id INTEGER PRIMARY KEY,
+            booking_id TEXT NOT NULL REFERENCES bookings(id),
+            sender TEXT NOT NULL CHECK (sender IN ('dispatch', 'customer')),
+            message TEXT NOT NULL,
+            sent_at TEXT NOT NULL,
+            dispatch_read INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS customer_chat_booking ON customer_chat_messages (booking_id, id)")
+
     # Confirmations Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS confirmations (

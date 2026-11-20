@@ -22,6 +22,7 @@ import smtplib
 import ssl
 import base64
 import hashlib
+import html
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -32,6 +33,7 @@ from urllib.parse import urlparse, parse_qs
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 import db
+import customer_chat
 import quote_service
 import flight_monitor
 from prepared_pricing.zone_quote import QuoteUnavailable
@@ -1113,298 +1115,137 @@ def format_luggage_summary(large_cases=0, medium_cases=0, hand_luggage=0, vehicl
     return ", ".join(parts) if parts else "1 Large, 1 Hand" if ("s_class" in vt or "s-class" in vt) else "No Luggage"
 
 
+def customer_manage_url(reference, email):
+    reference, email = str(reference or ""), str(email or "")
+    params = {"code": reference, "email": email, "chat": customer_chat.access_token(reference, email)}
+    return "https://dispatch.gachauffeurs.co.uk/manage-booking?" + urllib.parse.urlencode(params)
+
+
+def chauffeur_first_name(chauffeur):
+    return (str(chauffeur.get("name") or "").split() or ["Chauffeur"])[0]
+
+
+def confirmation_fare(net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare):
+    base = float(net_fare if net_fare is not None else 165)
+    parking = float(parking_fee or 0)
+    dropoff = float(dropoff_fee or 0)
+    congestion = float(congestion_charge or 0)
+    subtotal = round(base + parking + dropoff + congestion, 2)
+    tax = round((base + parking + dropoff) * .20, 2) if vat_amt is None else float(vat_amt)
+    total = round(subtotal + tax, 2) if total_fare is None else float(total_fare)
+    rows = [("Base journey fare", base)]
+    if parking + dropoff:
+        rows.append(("Airport parking", parking + dropoff))
+    if congestion:
+        rows.append(("London congestion charge", congestion))
+    return [*rows, ("Subtotal before VAT", subtotal), ("VAT (20%)", tax), ("Total", total)]
+
+
+def confirmation_pickup(pickup_addr):
+    return re.sub(r"^Heathrow Terminal\b", "Heathrow Airport Terminal", pickup_addr, flags=re.IGNORECASE)
+
+
 def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare=None, fare_amt=None, vat_amt=None, total_fare=None, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, chauffeur=None, flight=None, parking_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, dropoff_fee=0.0, duration_min=0, hours_booked=0, distance_mi=0.0, special_requests="", customer_phone="", customer_email="", payment_status="PRE_AUTHORIZED"):
-    tier_key = normalize_vehicle_tier(vehicle_tier)
-    vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
+    def esc(value):
+        return html.escape(str(value or ""), quote=True)
 
-    if net_fare is None and fare_amt is not None:
-        net_fare = float(fare_amt)
-    elif net_fare is None:
-        net_fare = 165.0
-
-    net_fare = float(net_fare)
-    parking_fee = float(parking_fee or 0.0)
-    dropoff_fee = float(dropoff_fee or 0.0)
-    congestion_charge = float(congestion_charge or 0.0)
-    subtotal = round(net_fare + parking_fee + dropoff_fee + congestion_charge, 2)
-
-    if vat_amt is None:
-        vat_amt = round((net_fare + parking_fee + dropoff_fee) * 0.20, 2)
-    if total_fare is None:
-        total_fare = round(subtotal + float(vat_amt), 2)
-
-    pickup_display, dropoff_display = format_pickup_and_dropoff_times(
-        pickup_dt, duration_min=duration_min, hours_booked=hours_booked, distance_mi=distance_mi, service_type=service_type
+    vehicle = VEHICLE_CONFIGS[normalize_vehicle_tier(vehicle_tier)]
+    display_vehicle = VEHICLE_CONFIGS.get(normalize_vehicle_tier(chauffeur.get("vehicle_class") or vehicle_tier)) if chauffeur else vehicle
+    pickup_time, _ = format_pickup_and_dropoff_times(pickup_dt)
+    fare_rows = confirmation_fare(net_fare if net_fare is not None else fare_amt, parking_fee,
+                                  dropoff_fee, congestion_charge, vat_amt, total_fare)
+    fare_table = "".join(
+        f'<tr><td style="padding:6px 8px 6px 0;">{label}</td>'
+        f'<td align="right" style="white-space:nowrap;font-weight:{"700" if label == "Total" else "400"};'
+        f'font-size:{"21px" if label == "Total" else "15px"};">£{amount:,.2f}</td></tr>'
+        for label, amount in fare_rows
     )
 
-    payment_line = ""
-    if payment_status == "CORPORATE_INVOICE" or "CORPORATE" in str(card_brand or "").upper():
-        payment_line = """
-        <tr>
-          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Account Status</td>
-          <td style="text-align: right; color: #4ade80; font-size: 13px; font-weight: 600; padding-top: 10px;">
-            ✓ Corporate Account Confirmed
-          </td>
-        </tr>
-        """
-    elif card_last4:
-        hold_badge = "Card Pre-Authorised (Test — No Charge)" if "TEST" in str(card_auth_code or "").upper() or "TEST" in str(card_brand or "").upper() else f"Card Pre-Authorised (Hold Ref: {card_auth_code or 'VERIFIED'})"
-        payment_line = f"""
-        <tr>
-          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Payment Status</td>
-          <td style="text-align: right; color: #4ade80; font-size: 13px; font-weight: 600; padding-top: 10px;">
-            {hold_badge}<br>
-            <span style="color: #aab5ae; font-size: 12px; font-weight: normal;">{card_brand or 'Card'} ending in •••• {card_last4}</span>
-          </td>
-        </tr>
-        """
-    elif payment_status:
-        payment_line = f"""
-        <tr>
-          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 10px;">Payment Status</td>
-          <td style="text-align: right; color: #c9b894; font-size: 13px; font-weight: 600; padding-top: 10px;">{payment_status.replace('_', ' ')}</td>
-        </tr>
-        """
-
-    parking_row = ""
-    if parking_fee > 0:
-        parking_row = f"""
-        <tr>
-          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">Airport Parking</td>
-          <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{parking_fee:.2f} GBP</td>
-        </tr>
-        """
-
-    if dropoff_fee > 0:
-        parking_row += f"""
-        <tr>
-          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">Airport Parking</td>
-          <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{dropoff_fee:.2f} GBP</td>
-        </tr>
-        """
-
-    congestion_row = ""
-    if congestion_charge > 0:
-        congestion_row = f"""
-        <tr>
-          <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">London Congestion Charge (No VAT)</td>
-          <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{congestion_charge:.2f} GBP</td>
-        </tr>
-        """
-
-    driver_block = ""
+    driver_details = ""
     if chauffeur:
-        driver_block = f"""
-        <div style="background-color: #171f1b; border: 1px solid #c9b894; border-radius: 6px; padding: 18px; margin: 20px 0;">
-          <h3 style="color: #c9b894; margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; letter-spacing: .15em; font-family: Georgia, serif;">Allocated Chauffeur &amp; Vehicle Details</h3>
-          <p style="margin: 4px 0; color: #ffffff; font-size: 15px;"><strong>{chauffeur['name']}</strong> ({chauffeur.get('rating', 5.0)}★)</p>
-          <p style="margin: 4px 0; color: #aab5ae; font-size: 13px;">Vehicle: <span style="color: #fff;">{chauffeur['vehicle_model']}</span></p>
-          <p style="margin: 4px 0; color: #aab5ae; font-size: 13px;">Registration Plate: <span style="color: #c9b894; font-weight: bold; font-family: monospace;">{chauffeur['license_plate']}</span></p>
-          <p style="margin: 4px 0; color: #aab5ae; font-size: 13px;">Direct Contact: <a href="tel:{chauffeur['phone']}" style="color: #c9b894; text-decoration: none;">{chauffeur['phone']}</a></p>
-        </div>
+        phone = str(chauffeur.get("phone") or "")
+        dial = re.sub(r"[^+0-9]", "", phone)
+        driver_details = f"""
+          <h2 style="margin:0 0 10px;color:#c9b894;font-size:17px;">Chauffeur and vehicle details</h2>
+          <p style="margin:0 0 5px;font-size:18px;"><strong>{esc(chauffeur_first_name(chauffeur))}</strong></p>
+          <p style="margin:0 0 12px;">{esc(display_vehicle["name"])}</p>
+          <p style="margin:0 0 2px;color:#cfd6d1;">Registration</p>
+          <div style="display:inline-block;padding:5px 10px;margin-bottom:10px;background:#f2dfae;color:#141a17;
+                      font:700 28px/1.15 Arial,sans-serif;letter-spacing:1.5px;border-radius:4px;">{esc(chauffeur.get("license_plate"))}</div>
+          <p style="margin:0;">Chauffeur phone <a href="tel:{esc(dial)}" style="color:#e2ce9f;">{esc(phone)}</a></p>
         """
     else:
-        driver_block = """
-        <div style="background-color: rgba(201, 184, 148, 0.08); border: 1px solid rgba(201, 184, 148, 0.35); border-radius: 6px; padding: 14px 18px; margin: 20px 0; font-size: 13px; color: #edf0ea; line-height: 1.55;">
-          <strong style="color: #c9b894;">Chauffeur &amp; Vehicle Details:</strong> Your chauffeur and vehicle details will be sent to you as soon as possible.
-        </div>
-        """
+        driver_details = f'<p style="margin:0;"><strong>{esc(vehicle["name"])}</strong><br>Your chauffeur details will follow.</p>'
 
-    flight_block = ""
-    if flight:
-        flight_block = f"""
-        <div style="background: rgba(56,189,248,0.08); border-left: 3px solid #38bdf8; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #cbd5e1;">
-          <strong style="color: #38bdf8;">Flight Reference:</strong> {flight} — Live flight tracking active. Complimentary waiting time commences 45 minutes after flight landing.
-        </div>
-        """
-
-    notes_block = ""
-    if special_requests:
-        notes_block = f"""
-        <div style="background: rgba(201,184,148,0.08); border-left: 3px solid #c9b894; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #edf0ea;">
-          <strong style="color: #c9b894;">Special Requests / Notes:</strong> {special_requests}
-        </div>
-        """
-
-    luggage_summary = format_luggage_summary(large_cases, medium_cases, hand_luggage, tier_key)
-    edit_booking_url = f"https://dispatch.gachauffeurs.co.uk/manage-booking?code={urllib.parse.quote(str(booking_ref or ''))}&email={urllib.parse.quote(str(customer_email or ''))}"
-    vehicle_img_url = vehicle_info.get("image_url", "https://gachauffeurs.co.uk/assets/fleet/sclass-front.png")
-    passenger_contact_rows = ""
-    if customer_phone or customer_email:
-        passenger_contact_rows = f"""
-        <tr>
-          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Passenger</td>
-          <td style="text-align: right; color: #ffffff; font-size: 13px; font-weight: 600; padding-top: 8px;">{customer_name}</td>
-        </tr>
-        """ + (f"""
-        <tr>
-          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Contact Phone</td>
-          <td style="text-align: right; color: #c9b894; font-size: 13px; padding-top: 8px;">{customer_phone}</td>
-        </tr>
-        """ if customer_phone else "") + (f"""
-        <tr>
-          <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Email</td>
-          <td style="text-align: right; color: #aab5ae; font-size: 13px; padding-top: 8px;">{customer_email}</td>
-        </tr>
-        """ if customer_email else "")
+    flight_details = f'<p style="margin:12px 0 0;"><strong style="color:#c9b894;">Flight number</strong><br>{esc(flight)}</p>' if flight else ""
+    notes = f'<p style="margin:12px 0 0;"><strong style="color:#c9b894;">Special requests</strong><br>{esc(special_requests)}</p>' if special_requests else ""
+    if payment_status == "CORPORATE_INVOICE" or "CORPORATE" in str(card_brand or "").upper():
+        payment = "Corporate account confirmed"
+    elif card_last4:
+        payment = f"{card_brand or 'Card'} ending in {card_last4} · {str(payment_status or 'Pre-authorised').replace('_', ' ').title()}"
+    else:
+        payment = str(payment_status or "").replace("_", " ").title()
 
     return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Booking Confirmation {booking_ref} - GA Chauffeur Services Limited</title>
-    </head>
-    <body style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #121715; color: #edf0ea; margin: 0; padding: 20px;">
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 620px; margin: 0 auto; background-color: #171f1b; border: 1px solid #2e3b33; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-
-        <!-- Header Monogram -->
-        <tr>
-          <td style="background-color: #121715; padding: 24px 36px; text-align: center; border-bottom: 2px solid #c9b894;">
-            <div style="display: inline-block;">
-              <span style="font-family: Georgia, serif; font-size: 34px; letter-spacing: -4px; color: #c9b894; line-height: 1;">GA</span>
-              <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #3e4e44; padding-left: 14px; margin-left: 10px; color: #d0d8d1; line-height: 1.4; display: inline-block; vertical-align: middle; text-align: left;">Chauffeur<br>Services</span>
-            </div>
-            <p style="color: #c9b894; font-size: 11px; margin: 8px 0 0 0; letter-spacing: 2px; text-transform: uppercase;">Booking Confirmation • {booking_ref}</p>
-          </td>
-        </tr>
-
-        <!-- Content -->
-        <tr>
-          <td style="padding: 30px 36px;">
-            <h2 style="font-family: Georgia, serif; color: #ffffff; font-size: 21px; font-weight: normal; margin: 0 0 8px 0;">Dear {customer_name},</h2>
-            <p style="color: #aab5ae; font-size: 14px; line-height: 1.55; margin-top: 0;">
-              Thank you for booking with <strong>GA Chauffeur Services Limited</strong>. Your reservation is confirmed below.
-            </p>
-
-            <!-- Booked Vehicle Image Card (Exact Website Image) -->
-            <div style="background-color: #ffffff; border: 2px solid #c9b894; border-radius: 8px; padding: 16px 20px; margin: 18px 0; text-align: center;">
-              <img src="{vehicle_img_url}" alt="{vehicle_info['name']}" style="max-width: 280px; width: 100%; height: auto; display: block; margin: 0 auto 10px auto;">
-              <div style="font-family: Georgia, serif; font-size: 19px; color: #171c1c; font-weight: bold;">{vehicle_info['name']}</div>
-              <div style="font-size: 12px; color: #475569; margin-top: 3px;">{passengers} {'Passenger' if int(passengers or 1) == 1 else 'Passengers'} • Luggage: {luggage_summary}</div>
-            </div>
-
-            {driver_block}
-
-            <!-- Route & Pickup/Drop-off Times -->
-            <div style="background-color: #121715; border-left: 3px solid #c9b894; padding: 14px 18px; margin: 18px 0; border-radius: 0 6px 6px 0; border-top: 1px solid #2e3b33; border-right: 1px solid #2e3b33; border-bottom: 1px solid #2e3b33;">
-              <div style="margin-bottom: 10px;">
-                <span style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Collection Point &amp; Pickup Time</span>
-                <div style="color: #ffffff; font-size: 14px; font-weight: 600; margin-top: 3px;">{pickup_addr}</div>
-                <div style="color: #c9b894; font-size: 12px; margin-top: 2px;">Pickup: {pickup_display}</div>
-              </div>
-              <div style="border-top: 1px dashed #2e3b33; padding-top: 10px;">
-                <span style="color: #38bdf8; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Destination &amp; Estimated Drop-off</span>
-                <div style="color: #ffffff; font-size: 14px; font-weight: 600; margin-top: 3px;">{dropoff_addr}</div>
-                <div style="color: #94a3b8; font-size: 12px; margin-top: 2px;">Drop-off: {dropoff_display}</div>
-              </div>
-            </div>
-
-            {flight_block}
-            {notes_block}
-
-            <!-- Passenger, Journey & Fee Summary Table -->
-            <table width="100%" style="background-color: #121715; border-radius: 6px; padding: 16px 18px; margin: 18px 0; border: 1px solid #2e3b33;">
-              <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600;">Booking Reference</td>
-                <td style="text-align: right; color: #c9b894; font-size: 17px; font-weight: bold; font-family: monospace;">{booking_ref}</td>
-              </tr>
-              {passenger_contact_rows}
-              <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Service Type</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 8px;">{service_type}</td>
-              </tr>
-              <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Vehicle Booked</td>
-                <td style="text-align: right; color: #c9b894; font-size: 13px; padding-top: 8px; font-weight: 600;">{vehicle_info['name']}</td>
-              </tr>
-              <tr>
-                <td style="color: #717d76; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; font-weight: 600; padding-top: 8px;">Passengers &amp; Luggage</td>
-                <td style="text-align: right; color: #ffffff; font-size: 13px; padding-top: 8px;">{passengers} Pax • {luggage_summary}</td>
-              </tr>
-              {payment_line}
-              <tr>
-                <td colspan="2" style="border-top: 1px solid #2e3b33; padding-top: 10px; margin-top: 10px;"></td>
-              </tr>
-              <tr>
-                <td style="color: #aab5ae; font-size: 13px;">Base Journey Fare</td>
-                <td style="text-align: right; color: #ffffff; font-size: 14px;">£{net_fare:.2f} GBP</td>
-              </tr>
-              {parking_row}
-              {congestion_row}
-              <tr>
-                <td style="color: #aab5ae; font-size: 13px; padding-top: 6px;">VAT (20%)</td>
-                <td style="text-align: right; color: #ffffff; font-size: 14px; padding-top: 6px;">£{vat_amt:.2f} GBP</td>
-              </tr>
-              <tr>
-                <td style="color: #c9b894; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding-top: 10px;">Total</td>
-                <td style="text-align: right; color: #c9b894; font-size: 20px; font-weight: bold; padding-top: 10px; font-family: Georgia, serif;">£{total_fare:.2f} GBP</td>
-              </tr>
-              <tr>
-                <td colspan="2" style="padding-top: 4px; text-align: right; color: #aab5ae; font-size: 11px;">
-                  Final journey fee will be calculated at the end of the journey.
-                </td>
-              </tr>
-            </table>
-
-            <!-- Customer Self-Service Edit / Amend Booking Button -->
-            <div style="text-align: center; margin: 22px 0 8px 0; padding: 16px; background-color: #121715; border: 1px solid #2e3b33; border-radius: 6px;">
-              <a href="{edit_booking_url}" style="display: inline-block; background-color: #c9b894; color: #121715; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; padding: 12px 24px; border-radius: 4px; text-decoration: none;">
-                ✏️ Edit or Amend Booking ↗
-              </a>
-              <p style="color: #717d76; font-size: 11px; margin: 10px 0 0 0; line-height: 1.45;">
-                Amendments can be made directly online up to 3 hours before pickup. Within 3 hours of pickup, amendment requests are sent to Dispatch for confirmation first, or call <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a>.
-              </p>
-            </div>
-          </td>
-        </tr>
-
-        <!-- Clean Footer (No Street Address) -->
-        <tr>
-          <td style="background-color: #121715; padding: 20px 36px; text-align: center; border-top: 1px solid #2e3b33; color: #aab5ae; font-size: 12px; line-height: 1.7;">
-            <strong style="color: #edf0ea; font-size: 13px;">GA Chauffeur Services Limited</strong><br>
-            Direct Line: <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a> • Email: <a href="mailto:{FROM_EMAIL}" style="color: #c9b894; text-decoration: none;">{FROM_EMAIL}</a><br>
-            Website: <a href="{COMPANY_WEBSITE}" style="color: #c9b894; text-decoration: none;">gachauffeurs.co.uk</a>
-          </td>
-        </tr>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GA Chauffeur Services booking confirmation</title></head>
+<body style="margin:0;padding:12px;background:#121715;color:#f1f3ee;font:15px/1.5 Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:auto;background:#171f1b;border:1px solid #49564d;border-radius:8px;">
+    <tr><td style="padding:18px 16px;text-align:center;border-bottom:1px solid #c9b894;">
+      <div style="color:#c9b894;font:26px Georgia,serif;">GA Chauffeur Services</div>
+      <div style="margin-top:4px;">Booking confirmation · <strong>{esc(booking_ref)}</strong></div>
+    </td></tr>
+    <tr><td style="padding:18px 16px;">
+      <p style="margin:0 0 14px;">Dear {esc(customer_name)},</p>
+      <p style="margin:0 0 16px;">Thank you for booking with GA Chauffeur Services Limited.</p>
+      <div style="margin:0 0 14px;padding:10px;background:#fff;border:1px solid #c9b894;border-radius:6px;text-align:center;">
+        <img src="{esc(display_vehicle.get("image_url"))}" alt="" width="240" style="display:block;width:100%;max-width:240px;height:auto;margin:auto;">
+      </div>
+      <div style="margin-bottom:14px;padding:14px;border:1px solid #49564d;border-radius:6px;">{driver_details}</div>
+      <div style="margin-bottom:14px;padding:14px;background:#121715;border:1px solid #49564d;border-radius:6px;">
+        <p style="margin:0 0 12px;"><strong style="color:#c9b894;">Pickup</strong><br>{esc(confirmation_pickup(pickup_addr))}<br>{esc(pickup_time)}</p>
+        <p style="margin:0;"><strong style="color:#c9b894;">Destination</strong><br>{esc(dropoff_addr)}</p>
+        {flight_details}{notes}
+      </div>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:12px;background:#121715;border:1px solid #49564d;border-radius:6px;">
+        {fare_table}
       </table>
-    </body>
-    </html>
-    """
+      <p style="margin:8px 0 14px;color:#cfd6d1;">{esc(payment)}</p>
+      <p style="margin:0 0 16px;text-align:center;"><a href="{esc(customer_manage_url(booking_ref, customer_email))}" style="display:inline-block;color:#121715;background:#c9b894;border-radius:4px;padding:12px 20px;font-weight:700;text-decoration:none;">Amend booking</a></p>
+    </td></tr>
+    <tr><td style="padding:14px 16px;text-align:center;border-top:1px solid #49564d;color:#cfd6d1;font-size:12px;">
+      <strong>GA Chauffeur Services Limited</strong><br>
+      <a href="tel:{esc(COMPANY_PHONE)}" style="color:#e2ce9f;">{esc(COMPANY_PHONE)}</a> ·
+      <a href="mailto:{esc(FROM_EMAIL)}" style="color:#e2ce9f;">{esc(FROM_EMAIL)}</a><br>
+      <a href="{esc(COMPANY_WEBSITE)}" style="color:#e2ce9f;">gachauffeurs.co.uk</a>
+    </td></tr>
+  </table>
+</body></html>
+"""
 
 
-def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_name, net_fare, vat_amt, total_fare, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, flight=None, special_requests="", parking_fee=0.0, dropoff_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, duration_min=0, hours_booked=0, distance_mi=0.0):
-    pickup_display, dropoff_display = format_pickup_and_dropoff_times(
-        pickup_dt, duration_min=duration_min, hours_booked=hours_booked, distance_mi=distance_mi, service_type=service_type
-    )
-    lug_sum = format_luggage_summary(large_cases, medium_cases, hand_luggage, vehicle_name)
-    return (
-        f"Dear {customer_name},\n\n"
-        f"Thank you for booking with GA Chauffeur Services Limited.\n"
-        f"Your chauffeur and vehicle details will be sent to you as soon as possible.\n\n"
-        f"Booking Reference: {booking_ref}\n"
-        f"Service Type: {service_type}\n"
-        f"Vehicle Booked: {vehicle_name}\n"
-        f"Passengers & Luggage: {passengers} Pax • {lug_sum}\n"
-        f"Pickup Date & Time: {pickup_display}\n"
-        f"Collection Point: {pickup_addr}\n"
-        f"Destination: {dropoff_addr}\n"
-        f"Estimated Drop-off: {dropoff_display}\n"
-        + (f"Flight Number: {flight}\n" if flight else "")
-        + (f"Special Requests: {special_requests}\n" if special_requests else "")
-        + f"\nBase Journey Fare: £{float(net_fare):.2f} GBP\n"
-        + (f"Airport Parking: £{float(parking_fee):.2f} GBP\n" if float(parking_fee or 0) > 0 else "")
-        + (f"Airport Parking: £{float(dropoff_fee):.2f} GBP\n" if float(dropoff_fee or 0) > 0 else "")
-        + (f"London Congestion Charge: £{float(congestion_charge):.2f} GBP\n" if float(congestion_charge or 0) > 0 else "")
-        + f"VAT (20%): £{float(vat_amt):.2f} GBP\n"
-        + f"Total: £{float(total_fare):.2f} GBP\n"
-        + f"(Final journey fee will be calculated at the end of the journey.)\n\n"
-        + f"Edit or Amend Your Booking Online: https://dispatch.gachauffeurs.co.uk/manage-booking?code={booking_ref}\n\n"
-        f"GA Chauffeur Services Limited\n"
-        f"Direct Line: {COMPANY_PHONE}\n"
-        f"Email: {FROM_EMAIL}\n"
-        f"Website: {COMPANY_WEBSITE}"
-    )
+def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_name, net_fare, vat_amt, total_fare, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, flight=None, special_requests="", parking_fee=0.0, dropoff_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, duration_min=0, hours_booked=0, distance_mi=0.0, chauffeur=None, customer_email=""):
+    pickup_time, _ = format_pickup_and_dropoff_times(pickup_dt)
+    lines = [f"Booking confirmation · {booking_ref}", "", f"Dear {customer_name},", "",
+             "Thank you for booking with GA Chauffeur Services Limited.", ""]
+    if chauffeur:
+        vehicle_tier = normalize_vehicle_tier(chauffeur.get("vehicle_class") or vehicle_name)
+        lines.extend(["Chauffeur and vehicle details", chauffeur_first_name(chauffeur),
+                      VEHICLE_CONFIGS[vehicle_tier]["name"], f"Registration: {chauffeur.get('license_plate', '')}",
+                      f"Chauffeur phone: {chauffeur.get('phone', '')}", ""])
+    else:
+        lines.extend([vehicle_name, "Your chauffeur details will follow.", ""])
+    lines.extend([f"Pickup: {confirmation_pickup(pickup_addr)}", pickup_time, f"Destination: {dropoff_addr}"])
+    if flight:
+        lines.append(f"Flight number: {flight}")
+    if special_requests:
+        lines.append(f"Special requests: {special_requests}")
+    lines.extend(["", *(f"{label}: £{amount:,.2f}" for label, amount in confirmation_fare(
+        net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare
+    )), "", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
+    "GA Chauffeur Services Limited", COMPANY_PHONE, FROM_EMAIL, COMPANY_WEBSITE])
+    return "\n".join(lines)
 
 
 def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, customer_email, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare, vat_amt, total_fare, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, flight=None, special_requests="", parking_fee=0.0, dropoff_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, payment_status="PRE_AUTHORIZED", source="WEBSITE_GACHAUFFEURS", duration_min=0, hours_booked=0, distance_mi=0.0):
@@ -2459,6 +2300,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_public_booking_amend(payload)
             return
 
+        if path == "/api/public/customer-chat":
+            if len(post_data) > 8192:
+                self.send_json({"error": "Message is too long."}, 413)
+                return
+            response, status = customer_chat.handle(payload)
+            self.send_json(response, status)
+            return
+
         if path == "/api/driver/login":
             self.handle_driver_login(payload)
             return
@@ -2480,6 +2329,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if not check_auth(self.headers):
                 self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                 return
+
+        if path == "/api/customer-chat":
+            if len(post_data) > 8192:
+                self.send_json({"error": "Message is too long."}, 413)
+                return
+            response, status = customer_chat.handle(payload, dispatch=True)
+            self.send_json(response, status)
+            return
 
         if path == "/api/flight-monitor":
             conn=db.get_connection()
@@ -2732,7 +2589,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "bookings": bookings,
             "chauffeurs": chauffeurs,
             "confirmations": confirmations,
-            "driver_messages": driver_messages
+            "driver_messages": driver_messages,
+            "unread_customer_messages": customer_chat.unread_count()
         })
 
     def handle_get_bookings(self, query):
@@ -3096,7 +2954,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             card_auth_code=card_auth_code,
             duration_min=duration_min,
             hours_booked=hours_booked,
-            distance_mi=distance_mi
+            distance_mi=distance_mi,
+            customer_email=payload["customer_email"]
         )
 
         send_success, delivery_note = send_smtp_email(payload["customer_email"], email_subject, html_email, plain_text_email)
@@ -3238,6 +3097,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         }
 
         broadcast_event("booking_created", result)
+        result = {**result, "manage_url": customer_manage_url(code, payload["customer_email"])}
         self.send_json({"success": True, "booking": result, "message": f"Job {code} created and confirmation email sent to {payload['customer_email']}."}, 201)
 
     def handle_allocate_chauffeur(self, booking_id, payload):
@@ -3314,7 +3174,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         """, (chauffeur_id, now_str, booking_id))
 
         cnf_email_id = f"CNF-{random.randint(1000, 9999)}"
-        email_subject = f"Chauffeur Assigned: {chauffeur['name']} - {booking['confirmation_code']}"
+        email_subject = f"Chauffeur Assigned: {chauffeur_first_name(chauffeur)} - {booking['confirmation_code']}"
         html_email = build_luxury_email_html(
             booking_ref=booking['confirmation_code'],
             customer_name=booking['customer_name'],
@@ -3334,21 +3194,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             flight=booking.get('flight_number'),
             parking_fee=booking.get('parking_fee',0),
             dropoff_fee=booking.get('dropoff_fee',0),
-            congestion_charge=booking.get('congestion_charge',0)
+            congestion_charge=booking.get('congestion_charge',0),
+            customer_email=booking['customer_email'],
+            payment_status=booking.get('payment_status')
         )
-        plain_text_email = (
-            f"Dear {booking['customer_name']},\n\n"
-            f"Your executive chauffeur has been allocated for Booking {booking['confirmation_code']}.\n\n"
-            f"Chauffeur: {chauffeur['name']} (Rating: {chauffeur['rating']}★)\n"
-            f"Vehicle: {chauffeur['vehicle_model']}\n"
-            f"Registration Plate: {chauffeur['license_plate']}\n"
-            f"Direct Contact: {chauffeur['phone']}\n"
-            f"Pickup: {booking['pickup_address']} at {booking['pickup_datetime']}\n\n"
-            f"Your chauffeur will contact you prior to pickup.\n\n"
-            f"GA Chauffeur Services Limited\n"
-            f"{COMPANY_ADDRESS}\n"
-            f"Website: {COMPANY_WEBSITE}\n"
-            f"Direct Phone: {COMPANY_PHONE}"
+        plain_text_email = build_luxury_email_text(
+            booking_ref=booking['confirmation_code'], customer_name=booking['customer_name'],
+            pickup_addr=booking['pickup_address'], dropoff_addr=booking['dropoff_address'],
+            pickup_dt=booking['pickup_datetime'], vehicle_name=booking['vehicle_class'],
+            net_fare=booking.get('fare_amount'), vat_amt=booking.get('vat_amount'),
+            total_fare=booking.get('total_fare'), chauffeur=chauffeur, flight=booking.get('flight_number'),
+            special_requests=booking.get('special_requests', ''), parking_fee=booking.get('parking_fee'),
+            dropoff_fee=booking.get('dropoff_fee'), congestion_charge=booking.get('congestion_charge'),
+            customer_email=booking['customer_email']
         )
 
         send_success, _ = send_smtp_email(booking["customer_email"], email_subject, html_email, plain_text_email)
@@ -3481,14 +3339,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.send_json({"success": True, "booking_id": real_id})
 
     def handle_send_booking_confirmation(self, booking_id, payload):
+        response, status = self._send_booking_confirmation(booking_id, payload)
+        self.send_json(response, status)
+
+    def _send_booking_confirmation(self, booking_id, payload, *, accepted_driver=False):
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
         row = cursor.fetchone()
         if not row:
             conn.close()
-            self.send_json({"error": "Booking not found"}, 404)
-            return
+            return {"error": "Booking not found"}, 404
 
         booking = dict(row)
         real_id = booking["id"]
@@ -3496,17 +3357,20 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         recipient = str(payload.get("recipient_email") or booking.get("customer_email") or "").strip()
         if not recipient or "@" not in recipient:
             conn.close()
-            self.send_json({"error": "Booking does not have a valid customer email address."}, 400)
-            return
+            return {"error": "Booking does not have a valid customer email address."}, 400
 
         ch_row = None
         if booking.get("chauffeur_id"):
             ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (booking["chauffeur_id"],)).fetchone()
         chauffeur_dict = dict(ch_row) if ch_row else None
+        if chauffeur_dict:
+            chauffeur_dict["name"] = (str(chauffeur_dict["name"] or "").split() or ["Chauffeur"])[0]
 
         norm_veh = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
         veh_name = VEHICLE_CONFIGS.get(norm_veh, VEHICLE_CONFIGS["mercedes_s_class"])["name"]
         subject = f"Booking Confirmation: {code} - GA Chauffeur Services Limited"
+        if accepted_driver:
+            subject = f"Booking Confirmation: {code} - Chauffeur Accepted"
 
         html_body = build_luxury_email_html(
             booking_ref=code,
@@ -3564,12 +3428,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             card_auth_code=booking.get("card_auth_code"),
             duration_min=booking.get("estimated_duration_min", 0),
             hours_booked=booking.get("hours_booked", 0),
-            distance_mi=booking.get("estimated_distance_mi", 0.0)
+            distance_mi=booking.get("estimated_distance_mi", 0.0),
+            chauffeur=chauffeur_dict, customer_email=recipient
         )
 
         ok, note = send_smtp_email(recipient, subject, html_body, text_body)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cnf_id = f"CNF-{random.randint(1000, 9999)}"
+        cnf_id = f"CNF-{uuid.uuid4().hex}"
         cursor.execute("""
             INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
             VALUES (?, ?, 'EMAIL', ?, ?, ?, ?, ?)
@@ -3577,16 +3442,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.commit()
         conn.close()
         if not ok:
-            self.send_json({"error": f"Failed to send email to {recipient}: {note}"}, 502)
-            return
-        self.send_json({"success": True, "recipient": recipient, "confirmation_code": code})
+            return {"error": f"Failed to send email to {recipient}: {note}"}, 502
+        return {"success": True, "recipient": recipient, "confirmation_code": code}, 200
 
     def _minutes_until_pickup(self, pickup_dt_str):
         raw = str(pickup_dt_str or "").strip().replace("T", " ")
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M"):
             try:
                 dt = datetime.strptime(raw, fmt)
-                return int(round((dt - datetime.now()).total_seconds() / 60.0))
+                return int(round((dt.replace(tzinfo=customer_chat.LONDON).timestamp() - time.time()) / 60.0))
             except ValueError:
                 continue
         return None
@@ -3594,8 +3458,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def handle_public_get_booking(self, query):
         code_raw = str(query.get("code", [""])[0] or "").strip().upper().replace(" ", "")
         email_raw = str(query.get("email", [""])[0] or "").strip().lower()
-        if not code_raw:
-            self.send_json({"error": "Please enter your Booking Reference (e.g. GA-2WV8V)."}, 400)
+        if not code_raw or not email_raw:
+            self.send_json({"error": "Enter your booking reference and email address."}, 400)
             return
 
         code_nodash = code_raw.replace("-", "")
@@ -3616,7 +3480,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         booking = dict(row)
         stored_email = str(booking.get("customer_email") or "").strip().lower()
-        if email_raw and stored_email and email_raw != stored_email:
+        if email_raw != stored_email:
             self.send_json({"error": "The email address entered does not match this booking reference."}, 403)
             return
 
@@ -3657,8 +3521,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def handle_public_booking_amend(self, payload):
         code_raw = str(payload.get("code") or "").strip().upper().replace(" ", "")
         email_raw = str(payload.get("email") or "").strip().lower()
-        if not code_raw:
-            self.send_json({"error": "Missing booking reference."}, 400)
+        if not code_raw or not email_raw:
+            self.send_json({"error": "Enter your booking reference and email address."}, 400)
             return
 
         code_nodash = code_raw.replace("-", "")
@@ -3678,7 +3542,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         booking = dict(row)
         stored_email = str(booking.get("customer_email") or "").strip().lower()
-        if email_raw and stored_email and email_raw != stored_email:
+        if email_raw != stored_email:
             conn.close()
             self.send_json({"error": "Email does not match this booking reference."}, 403)
             return
@@ -3691,6 +3555,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         norm_veh = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
         req_dt = str(payload.get("pickup_datetime") or booking.get("pickup_datetime") or "").strip().replace("T", " ")
+        try:
+            req_dt = datetime.fromisoformat(req_dt).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            conn.close()
+            self.send_json({"error": "Select a valid pickup date and time."}, 400)
+            return
         req_pu = str(payload.get("pickup_address") or booking.get("pickup_address") or "").strip()
         req_do = str(payload.get("dropoff_address") or booking.get("dropoff_address") or "").strip()
         req_phone = str(payload.get("customer_phone") or booking.get("customer_phone") or "").strip()
@@ -3784,7 +3654,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.commit()
         conn.close()
 
-        self.handle_send_booking_confirmation(real_id, {"recipient_email": booking.get("customer_email")})
+        _, delivery_status = self._send_booking_confirmation(real_id, {"recipient_email": booking.get("customer_email")})
+        self.send_json({"success": True, "mode": "UPDATED", "confirmation_sent": delivery_status == 200})
         return
 
     def handle_resolve_amendment(self, booking_id, payload):
@@ -3870,6 +3741,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Edit or Amend Your Booking | GA Chauffeur Services</title>
   <style>
@@ -3905,6 +3777,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
       font-size: 14px;
       margin-bottom: 12px;
     }
+    #mb-chat { border-top: 1px solid #2e3b33; margin-top: 24px; }
+    .chat-log { max-height: 280px; overflow: auto; padding-left: 24px; }
+    .chat-log li { overflow-wrap: anywhere; white-space: pre-wrap; margin: .5rem 0; }
+    .pickup-time { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    #mb-date { color-scheme: dark; cursor: pointer; }
+    #mb-date::-webkit-calendar-picker-indicator { opacity: 1; cursor: pointer; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .btn {
@@ -3967,12 +3845,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     <div id="mb-status-msg"></div>
 
     <form id="mb-edit-form" style="display:none;" onsubmit="submitAmendment(event)">
-      <div id="mb-rule-banner"></div>
-
       <div class="grid2">
         <div>
-          <label>Pickup Date &amp; Time *</label>
-          <input type="datetime-local" id="mb-dt" required>
+          <label for="mb-date">Pickup date *</label>
+          <input type="date" id="mb-date" required>
+          <div class="pickup-time">
+            <div><label for="mb-hour">Pickup hour *</label><select id="mb-hour" required></select></div>
+            <div><label for="mb-minute">Minute *</label><select id="mb-minute" required></select></div>
+          </div>
         </div>
         <div>
           <label>Contact Phone Number *</label>
@@ -4029,10 +3909,32 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         Need immediate assistance? Call our 24/7 Dispatch Desk: <a href="tel:+447886622082" style="color:#c9b894;font-weight:bold;">+44 7886 622082</a>
       </div>
     </form>
+    <section id="mb-chat" hidden>
+      <h2>Chat with Dispatch</h2>
+      <p>Monday to Friday, 08:00–19:00 UK time.</p>
+      <p id="mb-chat-status" role="status"></p>
+      <ol id="mb-chat-history" class="chat-log" aria-label="Conversation"></ol>
+      <form id="mb-chat-form" hidden>
+        <label for="mb-chat-message">Message</label>
+        <textarea id="mb-chat-message" maxlength="1000" required></textarea>
+        <button class="btn" type="submit">Send message</button>
+      </form>
+    </section>
   </div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
+    const pickupDate = document.getElementById('mb-date');
+    for (const [id, limit] of [['mb-hour', 24], ['mb-minute', 60]]) {
+      const select = document.getElementById(id);
+      for (let i = 0; i < limit; i++) {
+        const value = String(i).padStart(2, '0');
+        select.add(new Option(value, value));
+      }
+    }
+    pickupDate.addEventListener('click', () => {
+      try { pickupDate.showPicker?.(); } catch (_) {}
+    });
     if (params.get('code')) document.getElementById('mb-code').value = params.get('code');
     if (params.get('email')) document.getElementById('mb-email').value = params.get('email');
 
@@ -4049,12 +3951,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         const res = await fetch('/api/public/booking?code=' + encodeURIComponent(code) + '&email=' + encodeURIComponent(email));
         const data = await res.json();
         if (!res.ok || !data.booking) {
-          msg.innerHTML = '<div class="alert-2h">' + (data.error || 'Could not load booking.') + '</div>';
+          msg.textContent = data.error || 'Could not load booking.';
           return;
         }
         const b = data.booking;
         document.getElementById('mb-edit-form').style.display = 'block';
-        document.getElementById('mb-dt').value = String(b.pickup_datetime || '').replace(' ', 'T').slice(0, 16);
+        const [date, time] = String(b.pickup_datetime || '').replace('T', ' ').split(' ');
+        pickupDate.value = date || '';
+        document.getElementById('mb-hour').value = time?.slice(0, 2) || '';
+        document.getElementById('mb-minute').value = time?.slice(3, 5) || '';
         document.getElementById('mb-phone').value = b.customer_phone || '';
         document.getElementById('mb-pu').value = b.pickup_address || '';
         document.getElementById('mb-do').value = b.dropoff_address || '';
@@ -4076,15 +3981,6 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
           document.getElementById('mb-sclass-note').style.display = 'block';
         }
 
-        const banner = document.getElementById('mb-rule-banner');
-        const subBtn = document.getElementById('mb-submit-btn');
-        if (b.within_three_hours) {
-          banner.innerHTML = '<div class="alert-2h"><strong>⚠️ Within 3 Hours of Pickup — Dispatch Approval Required</strong><br>Because your pickup is within 3 hours, any amendment must be confirmed by Dispatch first before taking effect. Submit your requested changes below for immediate Dispatch approval, or call <a href="tel:+447886622082" style="color:#fff;font-weight:bold;">+44 7886 622082</a>.</div>';
-          subBtn.textContent = '📩 Request Amendment for Dispatch Approval';
-        } else {
-          banner.innerHTML = '<div class="alert-ok"><strong>✓ Direct Online Amendment Available</strong> — More than 3 hours remain before pickup. Your update will be confirmed immediately.</div>';
-          subBtn.textContent = '💾 Save & Confirm Updated Booking';
-        }
       } catch (e) {
         msg.innerHTML = '<div class="alert-2h">Network error loading booking.</div>';
       }
@@ -4099,7 +3995,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
       const payload = {
         code: document.getElementById('mb-code').value.trim(),
         email: document.getElementById('mb-email').value.trim(),
-        pickup_datetime: document.getElementById('mb-dt').value.replace('T', ' '),
+        pickup_datetime: pickupDate.value + ' ' + document.getElementById('mb-hour').value + ':' + document.getElementById('mb-minute').value,
         customer_phone: document.getElementById('mb-phone').value.trim(),
         pickup_address: document.getElementById('mb-pu').value.trim(),
         dropoff_address: document.getElementById('mb-do').value.trim(),
@@ -4118,10 +4014,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         });
         const data = await res.json();
         if (data.success) {
-          msg.innerHTML = '<div class="' + (data.mode === 'REQUESTED' ? 'alert-2h' : 'alert-ok') + '"><strong>' + (data.mode === 'REQUESTED' ? '⏳ Amendment Request Sent to Dispatch' : '✓ Booking Updated & Confirmation Sent') + '</strong><br>' + data.message + '</div>';
+          const notice = document.createElement('div');
+          notice.className = data.mode === 'REQUESTED' || !data.confirmation_sent ? 'alert-2h' : 'alert-ok';
+          notice.textContent = data.mode === 'REQUESTED'
+            ? 'Your update request has been sent to Dispatch for approval.'
+            : data.confirmation_sent
+              ? 'Booking updated. Your updated booking confirmation has been sent.'
+              : 'Booking updated. The confirmation email could not be sent.';
+          msg.replaceChildren(notice);
           window.scrollTo({top: 0, behavior: 'smooth'});
         } else {
-          msg.innerHTML = '<div class="alert-2h">' + (data.error || 'Could not submit amendment.') + '</div>';
+          msg.textContent = data.error || 'Could not submit amendment.';
         }
       } catch (err) {
         msg.innerHTML = '<div class="alert-2h">Network error submitting amendment.</div>';
@@ -4131,7 +4034,57 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
       }
     }
 
-    if (params.get('code')) lookupBooking();
+    const chatToken = params.get('chat');
+    const chatCode = params.get('code');
+    if (chatToken && chatCode) {
+      const panel = document.getElementById('mb-chat');
+      const form = document.getElementById('mb-chat-form');
+      const entry = document.getElementById('mb-chat-message');
+      const history = document.getElementById('mb-chat-history');
+      const status = document.getElementById('mb-chat-status');
+      let lastTranscript = '';
+      let busy = false;
+      let timer;
+      panel.hidden = false;
+      async function chatRequest(message) {
+        if (busy) return;
+        busy = true;
+        try {
+          const response = await fetch('/api/public/customer-chat', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code: chatCode, token: chatToken, action: message ? 'send' : 'read', message})
+          });
+          const result = await response.json();
+          if (!response.ok) throw Error(result.error || 'Chat is unavailable.');
+          const transcript = JSON.stringify(result.messages);
+          if (transcript !== lastTranscript) {
+            history.replaceChildren(...result.messages.map(row => {
+              const item = document.createElement('li');
+              item.textContent = (row.sender === 'dispatch' ? 'Dispatch: ' : 'You: ') + row.message;
+              return item;
+            }));
+            history.scrollTop = history.scrollHeight;
+            lastTranscript = transcript;
+          }
+          form.hidden = result.closed || !result.within_hours;
+          status.textContent = result.closed ? 'This booking’s chat is closed.'
+            : result.within_hours ? 'Chat is open.' : 'Chat is closed. Please message us during opening hours.';
+          if (result.closed && timer) clearInterval(timer);
+          if (message) entry.value = '';
+        } catch (error) {
+          status.textContent = error.message;
+        } finally {
+          busy = false;
+        }
+      }
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        if (entry.value.trim()) chatRequest(entry.value.trim());
+      });
+      timer = setInterval(() => { if (!document.hidden) chatRequest(); }, 5000);
+      chatRequest();
+    }
+    if (params.get('code') && params.get('email')) lookupBooking();
   </script>
 </body>
 </html>"""
@@ -4142,15 +4095,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def handle_live_action(self, booking_id, payload):
+    def handle_live_action(self, booking_id, payload, *, acting_driver_id=None):
         action = payload.get("action", "").upper()
-        allowed = ["CONFIRMED", "ACCEPT", "EN_ROUTE_PICKUP", "ARRIVED", "ON_BOARD", "NEXT_STOP", "COMPLETED", "CANCEL"]
+        allowed = ["CONFIRMED", "ACCEPT", "EN_ROUTE_PICKUP", "ARRIVED", "ON_BOARD", "NEXT_STOP", "DROPPED_OFF", "COMPLETED", "CANCEL"]
         if action not in allowed:
             self.send_json({"error": f"Invalid action: {action}. Allowed: {allowed}"}, 400)
             return
 
         conn = db.get_connection()
         cursor = conn.cursor()
+        if action == "ACCEPT" and acting_driver_id:
+            cursor.execute("BEGIN IMMEDIATE")
 
         cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
         booking = cursor.fetchone()
@@ -4161,6 +4116,21 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         booking = dict(booking)
         chauffeur_id = booking["chauffeur_id"]
+        if acting_driver_id and chauffeur_id != acting_driver_id:
+            conn.close()
+            self.send_json({"error": "This booking is not assigned to you."}, 403)
+            return
+        if acting_driver_id and action != "ACCEPT" and booking["status"] in ("ASSIGNED", "CONFIRMED", "PENDING"):
+            conn.close()
+            self.send_json({"error": "Accept the booking before updating its status."}, 409)
+            return
+        if action == "ACCEPT" and acting_driver_id and booking["status"] not in ("ASSIGNED", "CONFIRMED", "PENDING"):
+            conn.close()
+            if booking["status"] == "ACCEPTED":
+                self.send_json({"success": True, "booking_status": "ACCEPTED"})
+            else:
+                self.send_json({"error": "This booking is no longer awaiting acceptance."}, 409)
+            return
         chauffeur = None
         if chauffeur_id:
             cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (chauffeur_id,))
@@ -4318,6 +4288,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.commit()
         conn.close()
 
+        result = {"success": True, "action": action, "booking_status": new_booking_status, "details": details}
+        if action == "ACCEPT" and acting_driver_id:
+            _, delivery_status = self._send_booking_confirmation(booking_id, {}, accepted_driver=True)
+            result["confirmation_sent"] = delivery_status == 200
+
         event_payload = {
             "booking_id": booking_id,
             "action": action,
@@ -4328,7 +4303,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         }
 
         broadcast_event("live_action_executed", event_payload)
-        self.send_json({"success": True, "action": action, "booking_status": new_booking_status, "details": details})
+        self.send_json(result)
 
     def handle_capture_payment(self, booking_id, payload):
         conn = db.get_connection()
@@ -4871,8 +4846,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if not token or not booking_id or not action:
             self.send_json({"error": "Missing token, booking_id, or action"}, 400)
             return
+        if action not in ("ACCEPT", "EN_ROUTE_PICKUP", "ARRIVED", "ON_BOARD", "NEXT_STOP", "DROPPED_OFF", "COMPLETED"):
+            self.send_json({"error": "Unknown chauffeur status update."}, 400)
+            return
         conn = db.get_connection()
-        ch_row = conn.execute("SELECT * FROM chauffeurs WHERE driver_token = ? OR id = ?", (token, token)).fetchone()
+        ch_row = conn.execute("SELECT * FROM chauffeurs WHERE driver_token = ?", (token,)).fetchone()
         conn.close()
         if not ch_row:
             self.send_json({"error": "Invalid driver token"}, 401)
@@ -4882,7 +4860,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "action": action,
             "actor": f"Chauffeur {ch['name']} [{ch['license_plate']}]",
             "stop_note": payload.get("stop_note")
-        })
+        }, acting_driver_id=ch["id"])
 
     def handle_driver_status(self, payload):
         token = str(payload.get("token") or "").strip()

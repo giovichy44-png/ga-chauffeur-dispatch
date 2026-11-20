@@ -2045,3 +2045,43 @@ button, input, textarea, select {
     width: auto !important;
   }
 }
+
+.dispatch-status-dot[data-status="UNALLOCATED"] { background: #fca5a5; }
+.dispatch-status-dot[data-status="ASSIGNED"] { background: #86efac; }
+.dispatch-status-dot[data-status="ARRIVED"] { background: #fbbf24; }
+.dispatch-status-dot[data-status="ON_BOARD"] { background: #f87171; }
+.dispatch-status-dot[data-status="NEXT_STOP"] { background: #c4b5fd; }
+.dispatch-status-dot[data-status="DROPPED_OFF"] { background: #5eead4; }
+.dispatch-status-dot[data-status="COMPLETED"],
+.dispatch-status-dot[data-status="CANCELLED"] { background: #94a3b8; }
+
+.customer-chat-body {
+  display: grid;
+  gap: 9px;
+}
+#customer-chat-history {
+  max-height: 260px;
+  overflow: auto;
+  padding-left: 25px;
+}
+#customer-chat-history li {
+  margin: 7px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#customer-chat-reply, #customer-chat-select {
+  width: 100%;
+  padding: 8px;
+  background: var(--bg-card);
+  color: inherit;
+  border: 1px solid var(--border);
+}
+#customer-chat-unread {
+  margin-left: 4px;
+  color: #fca5a5;
+}
+
+#modal-customer-chat [hidden],
+#customer-chat-unread[hidden] {
+  display: none !important;
+}

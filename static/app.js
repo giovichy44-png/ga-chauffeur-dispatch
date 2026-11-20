@@ -388,6 +388,7 @@ async function loadData() {
       App.chauffeurs = data.chauffeurs || [];
       App.confirmations = data.confirmations || [];
       App.driverMessages = data.driver_messages || [];
+      updateCustomerUnread(data.unread_customer_messages || 0);
     } else {
       const [bRes, cRes, confRes] = await Promise.all([
         fetch('/api/bookings?status=ALL'),
@@ -411,6 +412,7 @@ async function loadData() {
     renderFleetThinTable();
     renderOutboxTable();
     renderDriverView();
+    if (document.getElementById('modal-customer-chat')?.style.display === 'flex') refreshCustomerChat();
     if (document.getElementById('modal-driver-comms')?.style.display === 'flex') {
       renderDriverCommsModal();
     }
@@ -744,6 +746,7 @@ function runDispatchJobAction(bookingId, select) {
     email: sendBookingConfirmationEmail,
     invoice: openInvoiceModal,
     voucher: viewVoucher,
+    customerChat: id => openCustomerChat(App.bookings.find(b => b.id === id)?.confirmation_code),
     amend: id => resolveCustomerAmendment(id, 'APPROVE')
   };
   if (action.startsWith('status:')) {
@@ -808,6 +811,8 @@ function renderCdsDispatchTable(filtered) {
 
     const normalizedStatus = b.status === 'ACCEPTED' || (b.status === 'CONFIRMED' && b.chauffeur_id) ? 'ASSIGNED' : b.status;
     const statusLabel = statusChoices.find(choice => choice.status === normalizedStatus)?.label.split(' ').slice(1).join(' ') || (b.chauffeur_id ? 'Confirmed' : 'Unallocated');
+    const statusColour = ['COMPLETED', 'CANCELLED'].includes(b.status) ? b.status
+      : b.chauffeur_id ? normalizedStatus : 'UNALLOCATED';
     const hours = Number(b.hours_booked) || 0;
     const serviceLabel = hours > 0 ? `${hours} ${hours === 1 ? 'hour' : 'hours'}` : b.service_type || 'Transfer';
     const fareVal = parseFloat(b.total_fare ?? b.fare_amount ?? 0).toFixed(2);
@@ -850,7 +855,7 @@ function renderCdsDispatchTable(filtered) {
         <td>${escapeHtml(formatVehTierLabel(b.vehicle_class))}</td>
         <td>${escapeHtml(serviceLabel)}</td>
         <td>${escapeHtml(b.chauffeur_id ? (b.chauffeur_name || 'Allocated') : 'Unallocated')}</td>
-        <td class="dispatch-status-cell"><span class="dispatch-status-dot" role="img" aria-label="${escapeHtml(statusLabel)}" title="${escapeHtml(statusLabel)}"></span></td>
+        <td class="dispatch-status-cell"><span class="dispatch-status-dot" data-status="${escapeHtml(statusColour)}" role="img" aria-label="${escapeHtml(statusLabel)}" title="${escapeHtml(statusLabel)}"></span></td>
         <td class="dispatch-action-cell">
           <select class="dispatch-job-action" aria-label="Actions for ${escapeHtml(b.confirmation_code)}" onchange="runDispatchJobAction('${b.id}', this)">
             <option value="">Actions</option>
@@ -859,6 +864,7 @@ function renderCdsDispatchTable(filtered) {
             <option value="email">Send confirmation email</option>
             <option value="invoice">View tax invoice</option>
             <option value="voucher">View voucher</option>
+            <option value="customerChat">Customer messages</option>
             ${pendingAmendObj ? '<option value="amend">Approve customer amendment</option>' : ''}
             <optgroup label="Update status">
               ${statusChoices.map(choice => `<option value="status:${choice.action}">${escapeHtml(choice.label.split(' ').slice(1).join(' '))}</option>`).join('')}
@@ -2404,4 +2410,135 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+
+function updateCustomerUnread(count) {
+  const badge = document.getElementById('customer-chat-unread');
+  if (App.customerUnread !== undefined && count > App.customerUnread) {
+    playStatusBlipSound();
+    showToast('New customer message');
+  }
+  App.customerUnread = count;
+  badge.textContent = count;
+  badge.hidden = count === 0;
+}
+
+async function customerChatRequest(action, code, message) {
+  const response = await fetch('/api/customer-chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action, code, message})
+  });
+  const result = await response.json();
+  if (!response.ok) throw Error(result.error || 'Unable to load the conversation.');
+  return result;
+}
+
+function openCustomerChat(reference) {
+  const select = document.getElementById('customer-chat-select');
+  if (reference && ![...select.options].some(option => option.value === reference)) {
+    select.add(new Option(reference, reference));
+  }
+  if (reference) select.value = reference;
+  openModal('modal-customer-chat');
+  refreshCustomerChat();
+}
+
+async function refreshCustomerChat() {
+  const select = document.getElementById('customer-chat-select');
+  const status = document.getElementById('customer-chat-status');
+  const history = document.getElementById('customer-chat-history');
+  const form = document.getElementById('customer-chat-form');
+  const download = document.getElementById('customer-chat-export');
+  const reference = select.value;
+
+  try {
+    const inbox = await customerChatRequest('inbox');
+    if (select.value !== reference) return;
+    const active = document.createElement('optgroup');
+    active.label = 'Active';
+    const archive = document.createElement('optgroup');
+    archive.label = 'Archived';
+    const threads = new Map(inbox.threads.map(thread => [thread.confirmation_code, thread]));
+    if (reference && !threads.has(reference)) {
+      const booking = App.bookings.find(b => b.confirmation_code === reference);
+      threads.set(reference, booking || {customer_name: '', status: ''});
+    }
+    for (const [code, thread] of threads) {
+      const label = [code, thread.customer_name, thread.unread ? `${thread.unread} new` : ''].filter(Boolean).join(' · ');
+      const group = ['COMPLETED', 'CANCELLED'].includes(thread.status) ? archive : active;
+      group.append(new Option(label, code, false, code === reference));
+    }
+    const optionsSignature = JSON.stringify([...threads].map(([code, thread]) =>
+      [code, thread.customer_name, thread.status, thread.unread]));
+    if (select.dataset.options !== optionsSignature) {
+      select.replaceChildren(new Option('Select a conversation', ''), active, archive);
+      select.value = reference;
+      select.dataset.options = optionsSignature;
+    }
+    if (!reference) {
+      history.replaceChildren();
+      status.textContent = inbox.threads.length ? 'Select a booking to open its messages.' : 'No customer messages yet.';
+      form.hidden = true;
+      download.hidden = true;
+      return;
+    }
+    const conversation = await customerChatRequest('read', reference);
+    if (select.value !== reference) return;
+    const transcript = JSON.stringify(conversation.messages);
+    if (history.dataset.transcript !== transcript) {
+      history.replaceChildren(...conversation.messages.map(row => {
+        const item = document.createElement('li');
+        item.textContent = `${row.sender === 'customer' ? 'Customer' : 'Dispatch'}: ${row.message}`;
+        return item;
+      }));
+      history.scrollTop = history.scrollHeight;
+      history.dataset.transcript = transcript;
+    }
+    status.textContent = conversation.closed ? 'Booking closed. Download the transcript to keep a copy.'
+      : conversation.within_hours ? 'Live chat is open.' : 'Live chat is available Monday to Friday, 08:00–19:00 UK time.';
+    form.hidden = conversation.closed || !conversation.within_hours;
+    download.hidden = !conversation.closed || !conversation.messages.length;
+  } catch (error) {
+    if (select.value === reference) status.textContent = error.message;
+  }
+}
+
+async function sendCustomerChatReply(event) {
+  event.preventDefault();
+  const entry = document.getElementById('customer-chat-reply');
+  const reference = document.getElementById('customer-chat-select').value;
+  if (!entry.value.trim()) return;
+  const button = event.submitter;
+  if (button) button.disabled = true;
+  try {
+    await customerChatRequest('send', reference, entry.value);
+    entry.value = '';
+    await refreshCustomerChat();
+  } catch (error) {
+    document.getElementById('customer-chat-status').textContent = error.message;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function downloadCustomerChat() {
+  const reference = document.getElementById('customer-chat-select').value;
+  try {
+    const transcript = await customerChatRequest('download', reference);
+    const body = [`GA Chauffeurs · ${reference}`, ...transcript.messages.map(row =>
+      `${row.sent_at} · ${row.sender === 'customer' ? 'Customer' : 'Dispatch'}\n${row.message}`
+    )].join('\n\n');
+    const url = URL.createObjectURL(new Blob([body], {type: 'text/plain'}));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${reference}-customer-chat.txt`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    document.getElementById('customer-chat-status').textContent = error.message;
+  }
 }

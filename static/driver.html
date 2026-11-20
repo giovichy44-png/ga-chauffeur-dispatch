@@ -838,7 +838,10 @@
         const mapsPu = `https://maps.apple.com/?daddr=${encodeURIComponent(b.pickup_address || '')}`;
         const mapsDo = `https://maps.apple.com/?daddr=${encodeURIComponent(b.dropoff_address || '')}`;
 
-        const btnsHtml = stageButtons.map(st => {
+        const needsAcceptance = ['ASSIGNED', 'CONFIRMED', 'PENDING'].includes(b.status);
+        const btnsHtml = needsAcceptance
+          ? `<button type="button" class="act-btn complete-btn" onclick="triggerDriverStage('${esc(b.id)}', 'ACCEPT', 'Accept booking')">Accept booking</button>`
+          : stageButtons.map(st => {
           const isCurrent = st.match.includes(b.status);
           const cls = `act-btn ${isCurrent ? 'active-stage' : ''} ${st.fullWidth ? 'complete-btn' : ''}`;
           return `<button type="button" class="${cls}" onclick="triggerDriverStage('${esc(b.id)}', '${st.action}', '${esc(st.label)}')">${st.label}${isCurrent ? ' ✓' : ''}</button>`;
@@ -911,7 +914,9 @@
         const data = await res.json();
         if (data.success) {
           playDriverChime();
-          showDriverToast(`✓ Live Status Sent to Dispatch: ${labelText}`);
+          showDriverToast(data.confirmation_sent === false
+            ? 'Booking accepted. Customer email could not be sent. Notify Dispatch.'
+            : `Status sent to Dispatch: ${labelText}`);
           loadDriverPortal(true);
         } else {
           alert(data.error || 'Could not update status.');
