@@ -1286,7 +1286,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
                 ✏️ Edit or Amend Booking ↗
               </a>
               <p style="color: #717d76; font-size: 11px; margin: 10px 0 0 0; line-height: 1.45;">
-                Amendments can be made directly online up to 2 hours before pickup. Within 2 hours of pickup, amendment requests are sent to Dispatch for confirmation first, or call <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a>.
+                Amendments can be made directly online up to 3 hours before pickup. Within 3 hours of pickup, amendment requests are sent to Dispatch for confirmation first, or call <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a>.
               </p>
             </div>
           </td>
@@ -3501,7 +3501,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         mins = self._minutes_until_pickup(booking.get("pickup_datetime"))
-        within_2h = (mins is not None and mins <= 120)
+        within_3h = (mins is not None and mins <= 180)
         pending_amend = None
         if booking.get("pending_amendment"):
             try:
@@ -3529,7 +3529,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 "status": booking.get("status"),
                 "total_fare": booking.get("total_fare") or booking.get("fare_amount"),
                 "minutes_until_pickup": mins,
-                "within_two_hours": within_2h,
+                "within_three_hours": within_3h,
                 "pending_amendment": pending_amend
             }
         })
@@ -3567,7 +3567,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         code = booking["confirmation_code"]
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         mins = self._minutes_until_pickup(booking.get("pickup_datetime"))
-        within_2h = (mins is not None and mins <= 120)
+        within_3h = (mins is not None and mins <= 180)
 
         norm_veh = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
         req_dt = str(payload.get("pickup_datetime") or booking.get("pickup_datetime") or "").strip().replace("T", " ")
@@ -3588,8 +3588,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         owner_inbox = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
 
-        if within_2h:
-            # Within 2 hours of pickup: store as pending_amendment and require Dispatch confirmation first!
+        if within_3h:
+            # Within 3 hours of pickup: store as pending_amendment and require Dispatch confirmation first!
             amend_obj = {
                 "requested_at": now_str,
                 "pickup_datetime": req_dt,
@@ -3607,14 +3607,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             cursor.execute("""
                 INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
                 VALUES (?, ?, 'AMENDMENT_REQUESTED_2H', 'Customer Online', ?, ?)
-            """, (real_id, booking.get("chauffeur_id"), f"Customer requested <2h amendment for {code}: PU {req_dt} | {req_pu} -> {req_do}", now_str))
+            """, (real_id, booking.get("chauffeur_id"), f"Customer requested <3h amendment for {code}: PU {req_dt} | {req_pu} -> {req_do}", now_str))
             conn.commit()
             conn.close()
 
             alert_html = f"""
             <div style="font-family:sans-serif;background:#121715;color:#edf0ea;padding:24px;border:2px solid #f59e0b;border-radius:8px;max-width:600px;">
-              <h2 style="color:#fbbf24;margin-top:0;">🚨 URGENT (&lt;2 Hours) Amendment Request — {code}</h2>
-              <p><strong>{booking.get('customer_name')}</strong> ({booking.get('customer_phone')}) has requested an amendment within 2 hours of pickup. Please review and click <strong>Approve Edit</strong> on the Dispatch Console to confirm to the customer.</p>
+              <h2 style="color:#fbbf24;margin-top:0;">🚨 URGENT (&lt;3 Hours) Amendment Request — {code}</h2>
+              <p><strong>{booking.get('customer_name')}</strong> ({booking.get('customer_phone')}) has requested an amendment within 3 hours of pickup. Please review and click <strong>Approve Edit</strong> on the Dispatch Console to confirm to the customer.</p>
               <table width="100%" style="background:#171f1b;padding:12px;border-radius:6px;font-size:13px;">
                 <tr><td style="color:#aab5ae;">Requested Pickup Time:</td><td style="color:#fff;font-weight:bold;">{req_dt} (was {booking.get('pickup_datetime')})</td></tr>
                 <tr><td style="color:#aab5ae;">Requested Pickup:</td><td style="color:#fff;font-weight:bold;">{req_pu}</td></tr>
@@ -3624,16 +3624,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
               <p style="margin-top:16px;"><a href="https://dispatch.gachauffeurs.co.uk/" style="background:#c9b894;color:#121715;padding:10px 18px;border-radius:4px;text-decoration:none;font-weight:bold;">Open Dispatch Console to Approve / Decline ↗</a></p>
             </div>
             """
-            send_smtp_email(owner_inbox, f"🚨 URGENT (<2h) Amendment Request {code}: {booking.get('customer_name')}", alert_html, f"Urgent <2h amendment requested for {code}. Open https://dispatch.gachauffeurs.co.uk/ to approve.")
+            send_smtp_email(owner_inbox, f"🚨 URGENT (<3h) Amendment Request {code}: {booking.get('customer_name')}", alert_html, f"Urgent <3h amendment requested for {code}. Open https://dispatch.gachauffeurs.co.uk/ to approve.")
             broadcast_event("amendment_requested", {"booking_id": real_id, "confirmation_code": code})
             self.send_json({
                 "success": True,
                 "mode": "REQUESTED",
-                "message": "Because your pickup is within 2 hours, your amendment request has been sent to our Dispatch Team for confirmation first. You will receive an updated confirmation email as soon as Dispatch approves the change, or you may call +44 7886 622082."
+                "message": "Because your pickup is within 3 hours, your amendment request has been sent to our Dispatch Team for confirmation first. You will receive an updated confirmation email as soon as Dispatch approves the change, or you may call +44 7886 622082."
             })
             return
 
-        # More than 2 hours before pickup: apply immediately and send updated confirmation
+        # More than 3 hours before pickup: apply immediately and send updated confirmation
         lug_cnt = req_lg + req_md
         if norm_veh == "mercedes_s_class":
             lug_cnt = min(max(lug_cnt, req_lg), 1)
@@ -3740,7 +3740,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 send_smtp_email(
                     booking["customer_email"],
                     f"Amendment Request Update: {code} — GA Chauffeur Services Limited",
-                    f"<p>Dear {booking.get('customer_name')},</p><p>Regarding your last-minute amendment request for booking <strong>{code}</strong>: because your pickup is within 2 hours, we could not automatically apply this change. Please call our 24/7 Dispatch Desk on <strong>{COMPANY_PHONE}</strong> so we can assist you directly.</p><p>Warm regards,<br><strong>{COMPANY_NAME}</strong></p>",
+                    f"<p>Dear {booking.get('customer_name')},</p><p>Regarding your last-minute amendment request for booking <strong>{code}</strong>: because your pickup is within 3 hours, we could not automatically apply this change. Please call our 24/7 Dispatch Desk on <strong>{COMPANY_PHONE}</strong> so we can assist you directly.</p><p>Warm regards,<br><strong>{COMPANY_NAME}</strong></p>",
                     f"Dear {booking.get('customer_name')},\nPlease call our Dispatch Desk on {COMPANY_PHONE} regarding your amendment request for {code}."
                 )
             self.send_json({"success": True, "decision": "REJECTED"})
@@ -3958,11 +3958,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         const banner = document.getElementById('mb-rule-banner');
         const subBtn = document.getElementById('mb-submit-btn');
-        if (b.within_two_hours) {
-          banner.innerHTML = '<div class="alert-2h"><strong>⚠️ Within 2 Hours of Pickup — Dispatch Approval Required</strong><br>Because your pickup is within 2 hours, any amendment must be confirmed by Dispatch first before taking effect. Submit your requested changes below for immediate Dispatch approval, or call <a href="tel:+447886622082" style="color:#fff;font-weight:bold;">+44 7886 622082</a>.</div>';
+        if (b.within_three_hours) {
+          banner.innerHTML = '<div class="alert-2h"><strong>⚠️ Within 3 Hours of Pickup — Dispatch Approval Required</strong><br>Because your pickup is within 3 hours, any amendment must be confirmed by Dispatch first before taking effect. Submit your requested changes below for immediate Dispatch approval, or call <a href="tel:+447886622082" style="color:#fff;font-weight:bold;">+44 7886 622082</a>.</div>';
           subBtn.textContent = '📩 Request Amendment for Dispatch Approval';
         } else {
-          banner.innerHTML = '<div class="alert-ok"><strong>✓ Direct Online Amendment Available</strong> — More than 2 hours remain before pickup. Your update will be confirmed immediately.</div>';
+          banner.innerHTML = '<div class="alert-ok"><strong>✓ Direct Online Amendment Available</strong> — More than 3 hours remain before pickup. Your update will be confirmed immediately.</div>';
           subBtn.textContent = '💾 Save & Confirm Updated Booking';
         }
       } catch (e) {
