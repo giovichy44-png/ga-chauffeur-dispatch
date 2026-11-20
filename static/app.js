@@ -763,10 +763,19 @@ function renderCdsDispatchTable(filtered) {
 
     const mainRowHtml = `
       <tr class="${rowClass}" onclick="toggleExpandBookingRow('${b.id}', event)" title="Click row to expand full booking details">
-        <!-- 1. Expand & Ref -->
+        <!-- 1. Expand & Ref (+ Mobile Inline Summary: Date/Time, Customer, Vehicle) -->
         <td>
-          <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
-          <span style="font-family:monospace;color:var(--gold);font-weight:700;font-size:11.5px;">${escapeHtml(b.confirmation_code)}</span>${amendBadge}
+          <div class="excel-first-col-inner">
+            <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
+            <span style="font-family:monospace;color:var(--gold);font-weight:700;font-size:11.5px;">${escapeHtml(b.confirmation_code)}</span>${amendBadge}
+            <span class="mobile-thin-summary">
+              <strong style="color:#fff;">${escapeHtml(date)} ${escapeHtml(time)}</strong>
+              <span style="color:var(--text-muted);">•</span>
+              <strong style="color:#fff;">${escapeHtml(b.customer_name)}</strong>
+              <span style="color:var(--text-muted);">•</span>
+              <span style="color:var(--gold);font-weight:600;">${escapeHtml(formatVehTierLabel(b.vehicle_class))}</span>
+            </span>
+          </div>
         </td>
 
         <!-- 2. Date & Time -->
@@ -1051,8 +1060,15 @@ function renderFleetThinTable() {
     const mainRow = `
       <tr class="excel-thin-row ${isExpanded ? 'expanded' : ''}" onclick="toggleExpandFleetRow('${escapeHtml(ch.id)}', event)" title="Click row to expand vehicle &amp; driver details">
         <td>
-          <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
-          <strong style="font-family:monospace;color:var(--gold);background:rgba(201,184,148,0.14);padding:2px 6px;border-radius:4px;">${escapeHtml(ch.license_plate)}</strong>
+          <div class="excel-first-col-inner">
+            <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
+            <strong style="font-family:monospace;color:var(--gold);background:rgba(201,184,148,0.14);padding:2px 6px;border-radius:4px;">${escapeHtml(ch.license_plate)}</strong>
+            <span class="mobile-thin-summary">
+              <strong style="color:#fff;">${escapeHtml(ch.vehicle_model)}</strong>
+              <span style="color:var(--text-muted);">•</span>
+              <strong style="color:#fff;">👤 ${escapeHtml(ch.name)}</strong>
+            </span>
+          </div>
         </td>
         <td><strong style="color:#fff;">${escapeHtml(ch.vehicle_model)}</strong></td>
         <td><span style="color:var(--gold);">${escapeHtml(formatVehTierLabel(ch.vehicle_class))}</span></td>
