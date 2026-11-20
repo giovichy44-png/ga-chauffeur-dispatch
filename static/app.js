@@ -19,6 +19,7 @@ const App = {
   initialLoadDone: false,
   knownBookingIds: new Set(),
   knownStatusMap: new Map(),
+  knownBookingDetails: new Map(),
   alerted2hIds: new Set(),
   alerted1hIds: new Set(),
   lastUrgentRepeatMs: 0,
@@ -152,6 +153,16 @@ function getBookingUrgency(b) {
   return null;
 }
 
+function bookingDetailsSignature(booking) {
+  return JSON.stringify([
+    booking.pickup_datetime, booking.pickup_address, booking.dropoff_address,
+    booking.vehicle_class, booking.customer_name, booking.customer_phone,
+    booking.customer_email, booking.flight_number, booking.passenger_count,
+    booking.luggage_count, booking.fare_amount, booking.special_requests,
+    booking.pending_amendment
+  ]);
+}
+
 function checkLiveNotificationsAndUrgency(newBookings) {
   const nowMs = Date.now();
 
@@ -165,6 +176,9 @@ function checkLiveNotificationsAndUrgency(newBookings) {
         if (prevStatus && prevStatus !== b.status) {
           playStatusBlipSound();
           showToast(`🚘 Live Status ${b.confirmation_code}: ${b.customer_name} → ${b.status.replace('_', ' ')}`);
+        } else if (App.knownBookingDetails.get(b.id) !== bookingDetailsSignature(b)) {
+          playStatusBlipSound();
+          showToast(`Booking updated ${b.confirmation_code}`);
         }
       }
     }
@@ -172,6 +186,7 @@ function checkLiveNotificationsAndUrgency(newBookings) {
 
   App.knownBookingIds = new Set(newBookings.map(b => b.id));
   App.knownStatusMap = new Map(newBookings.map(b => [b.id, b.status]));
+  App.knownBookingDetails = new Map(newBookings.map(b => [b.id, bookingDetailsSignature(b)]));
   App.initialLoadDone = true;
 
   const urgent1h = [];
@@ -968,7 +983,6 @@ async function submitEditBooking(e) {
     const data = await res.json();
     if (data.success) {
       closeModal('modal-edit-booking');
-      playStatusBlipSound();
       showToast('💾 Booking updated successfully!');
       loadData();
     } else {
