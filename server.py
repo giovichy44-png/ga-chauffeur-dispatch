@@ -2548,10 +2548,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_manual_card_auth(booking_id, payload)
             return
 
-        if path.endswith("/delete"):
-            parts = path.split("/")
-            booking_id = parts[3]
-            self.handle_delete_booking(booking_id)
+        if path.startswith("/api/bookings/") and path.endswith("/delete"):
+            self.send_json({"error": "Booking records are kept in history. Cancel the job to close it."}, 409)
             return
 
         if path.endswith("/edit"):
@@ -2573,7 +2571,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/bookings/clear-all":
-            self.handle_clear_all_bookings()
+            self.send_json({"error": "Bookings and history cannot be cleared."}, 409)
             return
 
         if path == "/api/confirmations/resend":
@@ -2605,9 +2603,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/reset":
-            db.seed_data(force=True)
-            broadcast_event("system_reset", {"message": "Database reset to initial demo state"})
-            self.send_json({"success": True, "message": "System reset to demo baseline."})
+            self.send_json({"error": "Dispatch history cannot be reset."}, 409)
             return
 
         self.send_json({"error": "Endpoint not found"}, 404)
@@ -3406,26 +3402,6 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "status": "ASSIGNED"
         })
 
-    def handle_delete_booking(self, booking_id):
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, confirmation_code, chauffeur_id FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            self.send_json({"error": "Booking not found"}, 404)
-            return
-        b_id = row["id"]
-        if row["chauffeur_id"]:
-            cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ?", (row["chauffeur_id"],))
-        cursor.execute("DELETE FROM confirmations WHERE booking_id = ?", (b_id,))
-        cursor.execute("DELETE FROM action_logs WHERE booking_id = ?", (b_id,))
-        cursor.execute("DELETE FROM bookings WHERE id = ?", (b_id,))
-        conn.commit()
-        conn.close()
-        broadcast_event("booking_deleted", {"booking_id": b_id})
-        self.send_json({"success": True, "deleted_id": b_id})
-
     def handle_edit_booking(self, booking_id, payload):
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -4166,18 +4142,6 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def handle_clear_all_bookings(self):
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM confirmations")
-        cursor.execute("DELETE FROM action_logs")
-        cursor.execute("DELETE FROM bookings")
-        cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL")
-        conn.commit()
-        conn.close()
-        broadcast_event("system_reset", {"message": "All bookings cleared"})
-        self.send_json({"success": True, "message": "All bookings cleared from Dispatch Console."})
-
     def handle_live_action(self, booking_id, payload):
         action = payload.get("action", "").upper()
         allowed = ["CONFIRMED", "ACCEPT", "EN_ROUTE_PICKUP", "ARRIVED", "ON_BOARD", "NEXT_STOP", "COMPLETED", "CANCEL"]
@@ -4760,7 +4724,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         vehicle_class = str(payload.get("vehicle_class") or "mercedes_s_class").strip()
         license_plate = str(payload.get("license_plate") or "").strip().upper()
         pax_cap = int(payload.get("passenger_capacity") or (6 if "v_class" in vehicle_class else 4))
-        lug_cap = int(payload.get("luggage_capacity") or (6 if "v_class" in vehicle_class else (1 if "s_class" in vehicle_class else 2)))
+        requested_luggage_capacity = payload.get("luggage_capacity")
+        default_luggage_capacity = 6 if "v_class" in vehicle_class else (1 if "s_class" in vehicle_class else 2)
+        lug_cap = int(default_luggage_capacity if requested_luggage_capacity is None else requested_luggage_capacity)
 
         if not name or not license_plate:
             self.send_json({"error": "Chauffeur name and registration plate are required."}, 400)
@@ -4881,7 +4847,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
         ch = dict(ch_row)
         jobs = [dict(r) for r in cursor.execute("""
-            SELECT * FROM bookings
+            SELECT id, confirmation_code, customer_name, customer_phone,
+                   pickup_address, pickup_unit, dropoff_address, dropoff_unit,
+                   pickup_datetime, flight_number, passenger_count, luggage_count,
+                   special_requests, status
+            FROM bookings
             WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED')
             ORDER BY pickup_datetime ASC
         """, (ch["id"],)).fetchall()]

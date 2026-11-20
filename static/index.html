@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="style.css?v=20261120a3">
+  <link rel="stylesheet" href="style.css?v=dispatch-sheet-layout">
 </head>
 <body>
 
@@ -117,6 +117,7 @@
           <div class="filter-pills">
             <button class="pill-btn active" data-filter="ACTIVE">Active / Upcoming</button>
             <button class="pill-btn" data-filter="ALL">All Booked Jobs</button>
+            <button class="pill-btn" data-filter="ALLOCATED">Allocated</button>
             <button class="pill-btn" data-filter="PENDING">Unallocated (<span id="count-unallocated">0</span>)</button>
             <button class="pill-btn" data-filter="URGENT" style="border-color: rgba(245,158,11,0.45); color: #fbbf24;">⚠️ Due &lt; 2h (<span id="count-urgent">0</span>)</button>
             <button class="pill-btn" data-filter="COMPLETED">📜 History Jobs (<span id="count-history">0</span>)</button>
@@ -126,8 +127,15 @@
               <button type="button" class="cds-view-btn active" id="btn-view-grid" onclick="setJobsViewMode('GRID')">📊 Thin Lines (Excel)</button>
               <button type="button" class="cds-view-btn" id="btn-view-cards" onclick="setJobsViewMode('CARDS')">🗂️ Cards</button>
             </div>
-            <input type="text" id="jobs-search-input" placeholder="Search any booking ref (e.g. GA2WV8V), name, phone, or history..." style="min-width: 280px;">
-            <button type="button" class="btn btn-secondary" onclick="clearAllBookings()" style="white-space: nowrap; font-size: 11.5px; padding: 6px 10px; border-color: rgba(239,68,68,0.4); color: #f87171;">🗑️ Clear All</button>
+            <label class="jobs-sort-label" for="jobs-sort">Sort by
+              <select id="jobs-sort">
+                <option value="pickup">Pickup date and time</option>
+                <option value="reference">Reference number</option>
+                <option value="name">Customer name A–Z</option>
+                <option value="allocation">Allocated first</option>
+              </select>
+            </label>
+            <input type="search" id="jobs-search-input" placeholder="Search name, date or reference" aria-label="Search bookings">
           </div>
         </div>
 
@@ -140,11 +148,11 @@
                 <th style="width: 135px;">Date &amp; Time</th>
                 <th style="width: 165px;">Customer</th>
                 <th>Pickup &rarr; Destination / Flight</th>
-                <th style="width: 145px;">Vehicle &amp; Pax</th>
-                <th style="width: 195px;">Allocate Driver &amp; Car</th>
-                <th style="width: 155px;">Live Status</th>
-                <th style="width: 90px;">Fare</th>
-                <th style="width: 215px; text-align: right;">Actions (Allocate / Email / Edit)</th>
+                <th style="width: 145px;">Vehicle</th>
+                <th style="width: 140px;">Service / Hours</th>
+                <th style="width: 140px;">Chauffeur</th>
+                <th style="width: 65px;">Status</th>
+                <th style="width: 105px; text-align: right;">Actions</th>
               </tr>
             </thead>
             <tbody id="cds-table-body">
@@ -371,7 +379,7 @@
             <select id="driver-car-select" onchange="changeDriverCar(this.value)">
               <option value="GA-CHF-01">Mercedes-Benz S-Class [HN76GYG]</option>
               <option value="GA-CHF-02">Mercedes-Benz V-Class [LR74EOG]</option>
-              <option value="GA-CHF-03">Range Rover Autobiography [UKZ 545]</option>
+              <option value="GA-CHF-03">Range Rover Autobiography [UKZ 454]</option>
             </select>
           </div>
 
@@ -600,7 +608,7 @@
             <div class="choice-icon">RR</div>
             <div class="choice-info">
               <strong>Range Rover Autobiography LWB</strong>
-              <span>Reg: UKZ 545 • Luxury 4x4 SUV</span>
+              <span>Reg: UKZ 454 • Luxury 4x4 SUV</span>
             </div>
             <span class="choice-badge">Select ↗</span>
           </div>
@@ -700,6 +708,9 @@
             <input type="text" id="fm-pco" placeholder="PCO Licence / Badge Ref (e.g. TFL-PCO-948210)" style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
             <input type="text" id="fm-pin" placeholder="4-Digit Driver App PIN (e.g. 1234)" maxlength="8" style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
           </div>
+          <label for="fm-bag-capacity" class="jobs-sort-label">Vehicle luggage capacity
+            <input id="fm-bag-capacity" type="number" min="0" step="1" inputmode="numeric" class="dispatch-job-action" placeholder="Vehicle default">
+          </label>
           <label style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #34d399; font-weight: 600; cursor: pointer;">
             <input type="checkbox" id="fm-verified" checked style="width: 16px; height: 16px; accent-color: #10b981;">
             <span>✓ Driving Licence, PCO Badge, Insurance &amp; Vehicle Documents Verified</span>
@@ -756,6 +767,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=20261120a3"></script>
+  <script src="app.js?v=dispatch-sheet-layout"></script>
 </body>
 </html>

@@ -11,6 +11,7 @@
 
   const status = document.querySelector('#booking-status');
   const submitBtn = document.querySelector('#booking-submit-btn');
+  const reviewConfirmed = document.querySelector('#booking-review-confirmed');
   const query = new URLSearchParams(location.search);
   let serverQuotes=false, verifiedQuote=null, verifiedKey='';
 
@@ -68,6 +69,10 @@
   function setStep(step) {
     if (step < 1 || step > totalSteps) return;
     currentStep = step;
+    if (reviewConfirmed) {
+      reviewConfirmed.checked = false;
+      reviewConfirmed.required = step === totalSteps;
+    }
 
     stepPanels.forEach(panel => {
       const panelStep = parseInt(panel.dataset.step, 10);
@@ -702,6 +707,16 @@
     if (sumDateTime) sumDateTime.textContent = (datetimeHidden?.value || '').replace('T', ' at ');
     if (sumMetrics) sumMetrics.textContent = `${journeyDistanceMiles.toFixed(1)} miles • approx. ${journeyDurationMinutes} mins`;
     if (sumParty) sumParty.textContent = `${passCount} Passenger${passCount > 1 ? 's' : ''} • ${luggageCount} Luggage / Suitcase${luggageCount > 1 ? 's' : ''}`;
+    const reviewDetails = {
+      service: isHourly ? `${form.elements.serviceType.value} · ${Math.max(4, Number(quoteSpec().hours) || 0)} hours` : form.elements.serviceType?.value,
+      contact: ['name', 'email', 'phone'].map(name => form.elements[name]?.value?.trim()).filter(Boolean).join(' · '),
+      flight: form.querySelector('#booking-flight')?.value?.trim() || 'None provided',
+      requests: bookingRequests() || 'None'
+    };
+    for (const [key, value] of Object.entries(reviewDetails)) {
+      const summary = document.getElementById(`review-summary-${key}`);
+      if (summary) summary.textContent = value || '';
+    }
 
     updateCorporateUI();
     if (submitBtn) {
@@ -914,13 +929,21 @@
 
   form.addEventListener('change',event=>{if(serverQuotes && ['vehicle','serviceType','hours'].includes(event.target.name))updateRouteAndMetrics();});
 
+  function bookingRequests() {
+    const selection = form.elements.specialRequests?.value;
+    return [
+      selection === 'No special requests' ? '' : selection,
+      form.elements.notes?.value?.trim()
+    ].filter(Boolean).join(' · ');
+  }
+
   // Form Submission (Step 4 Pre-Authorisation)
   let sending = false;
   let requestId = crypto.randomUUID();
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (sending) return;
+    if (sending || currentStep !== totalSteps) return;
 
     if (!form.reportValidity()) return;
     if (!checkCapacity()) {
@@ -1008,7 +1031,7 @@
       large_cases: largeCases,
       medium_cases: mediumCases,
       hand_luggage: 0,
-      special_requests: data.specialRequests,
+      special_requests: bookingRequests(),
       notes: fullNotes,
       flight_number: flightNo,
       payment_method: isCorp ? 'CORPORATE_INVOICE' : 'CREDIT_CARD',

@@ -11,7 +11,7 @@ import uuid
 import os
 from datetime import datetime, timedelta
 
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dispatch.db")
+DB_FILE = os.environ.get("DISPATCH_DB_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "dispatch.db")
 
 def get_connection():
     conn = sqlite3.connect(DB_FILE)
@@ -73,6 +73,11 @@ def init_db():
             "UPDATE chauffeurs SET driver_pin = ?, driver_token = ?, pco_license = ?, docs_verified = COALESCE(docs_verified, 1) WHERE id = ?",
             (pin, tok, pco, cid)
         )
+
+    cursor.execute("""
+        UPDATE chauffeurs SET license_plate = 'UKZ 454'
+        WHERE id = 'GA-CHF-03' AND REPLACE(license_plate, ' ', '') = 'UKZ545'
+    """)
 
     # Live Two-Way Chauffeur <-> Dispatch Messages Table
     cursor.execute("""
@@ -164,15 +169,6 @@ def init_db():
         if col_name not in existing_cols:
             cursor.execute(f"ALTER TABLE bookings ADD COLUMN {col_name} {col_def}")
 
-    # Enforce Mercedes-Benz S-Class luggage capacity (max 1 large case, 0 medium, 1 hand luggage) on existing S-Class bookings (e.g. GA-2WV8V / Cooney)
-    cursor.execute("""
-        UPDATE bookings
-        SET large_cases = CASE WHEN large_cases > 1 THEN 1 ELSE large_cases END,
-            medium_cases = 0,
-            hand_luggage = CASE WHEN hand_luggage > 1 THEN 1 ELSE hand_luggage END,
-            luggage_count = CASE WHEN large_cases > 0 THEN 1 ELSE 1 END
-        WHERE LOWER(vehicle_class) LIKE '%s_class%' OR LOWER(vehicle_class) LIKE '%s-class%'
-    """)
     cursor.execute("""
         UPDATE chauffeurs
         SET luggage_capacity = 1
@@ -250,13 +246,17 @@ def seed_data(force=False):
         conn.commit()
         init_db()
 
-    # Remove legacy demo/test bookings if present
-    demo_ids = ("BK-5001", "BK-5002", "BK-5003", "BK-8595")
-    demo_codes = ("GA-84920", "GA-84921", "GA-84922", "GA-F5MTE")
-    cursor.execute("DELETE FROM confirmations WHERE booking_id IN (?, ?, ?, ?)", demo_ids)
-    cursor.execute("DELETE FROM action_logs WHERE booking_id IN (?, ?, ?, ?)", demo_ids)
-    cursor.execute("DELETE FROM bookings WHERE id IN (?, ?, ?, ?) OR confirmation_code IN (?, ?, ?, ?)", demo_ids + demo_codes)
-    cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE active_booking_id IN (?, ?, ?, ?)", demo_ids)
+    # The bundled development database contains these exact sample bookings.
+    demo_rows = [
+        ("BK-5001", "GA-84920"), ("BK-5002", "GA-84921"),
+        ("BK-5003", "GA-84922"), ("BK-8595", "GA-F5MTE")
+    ]
+    for booking_id, reference in demo_rows:
+        if cursor.execute("SELECT 1 FROM bookings WHERE id = ? AND confirmation_code = ?", (booking_id, reference)).fetchone():
+            cursor.execute("DELETE FROM confirmations WHERE booking_id = ?", (booking_id,))
+            cursor.execute("DELETE FROM action_logs WHERE booking_id = ?", (booking_id,))
+            cursor.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
+            cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE active_booking_id = ?", (booking_id,))
     conn.commit()
 
     cursor.execute("SELECT COUNT(*) as count FROM chauffeurs")
@@ -269,7 +269,7 @@ def seed_data(force=False):
     # EXACT 3 VEHICLES AS OPERATED BY GA CHAUFFEUR SERVICES LIMITED
     # 1. Mercedes-Benz S-Class Saloon (Up to 4 Pax, 2 Bags) - HN76GYG
     # 2. Mercedes-Benz V-Class MPV (Up to 6 Pax, 6 Bags) - LR74EOG
-    # 3. Range Rover Autobiography Long Wheelbase (Up to 4 Pax, 3 Bags) - UKZ 545
+    # 3. Range Rover Autobiography Long Wheelbase (Up to 4 Pax, 3 Bags) - UKZ 454
     chauffeurs = [
         (
             "GA-CHF-01", "David Richardson", "+44 7886 622082", "DR", 4.99, 1420,
@@ -283,7 +283,7 @@ def seed_data(force=False):
         ),
         (
             "GA-CHF-03", "Arthur Pendelton", "+44 7886 622082", "AP", 4.99, 1640,
-            "Range Rover Autobiography Long Wheelbase (LWB)", "range_rover_autobiography", "UKZ 545",
+            "Range Rover Autobiography Long Wheelbase (LWB)", "range_rover_autobiography", "UKZ 454",
             4, 3, "AVAILABLE", 51.6150, -0.3080, "Stanmore / North London Base", None
         )
     ]
@@ -298,5 +298,5 @@ def seed_data(force=False):
 
 if __name__ == "__main__":
     init_db()
-    seed_data(force=True)
+    seed_data()
     print("GA Chauffeur Services Limited 3-car fleet database initialized successfully.")

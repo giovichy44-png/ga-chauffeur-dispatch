@@ -12,6 +12,7 @@ const App = {
   activeCommsChauffeurId: '',
   knownDriverMsgIds: new Set(),
   activeFilter: 'ACTIVE',
+  jobSort: 'pickup',
   viewMode: 'GRID',
   allocatingJobId: null,
   activeDriverCarId: 'GA-CHF-01',
@@ -467,6 +468,10 @@ async function toggleCarStatus(carId) {
 
 // Search and Filter Handling
 function initSearch() {
+  document.getElementById('jobs-sort').addEventListener('change', event => {
+    App.jobSort = event.target.value;
+    renderJobsList();
+  });
   document.querySelectorAll('.pill-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
@@ -480,6 +485,39 @@ function initSearch() {
   if (searchInput) {
     searchInput.addEventListener('input', renderJobsList);
   }
+}
+
+const pickupMonthFormat = new Intl.DateTimeFormat('en-GB', { month: 'long' });
+const pickupShortMonthFormat = new Intl.DateTimeFormat('en-GB', { month: 'short' });
+
+function matchesPickupDate(pickup, query) {
+  const date = parsePickupDate(pickup);
+  if (!date || !/\d/.test(query)) return false;
+
+  const day = date.getDate();
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  const twoDigits = number => String(number).padStart(2, '0');
+  const numeric = query.match(/^(\d{1,4})[/.-](\d{1,2})(?:[/.-](\d{1,4}))?$/);
+  if (numeric) {
+    const [, first, second, third] = numeric;
+    if (first.length === 4) {
+      return year === Number(first) && month === Number(second) &&
+        (!third || day === Number(third));
+    }
+    const queryYear = third?.length === 2 ? year % 100 : year;
+    return day === Number(first) && month === Number(second) &&
+      (!third || queryYear === Number(third));
+  }
+  if (/^\d{4}$/.test(query)) return year === Number(query);
+
+  const normalized = query.replace(/\s+/g, ' ');
+  return [pickupMonthFormat, pickupShortMonthFormat].some(formatter => {
+    const monthName = formatter.format(date).toLowerCase().replace(/\.$/, '');
+    return [day, twoDigits(day)].some(value =>
+      [`${value} ${monthName}`, `${value} ${monthName} ${year}`].includes(normalized)
+    );
+  });
 }
 
 // Render Jobs List (Both CDS Simple Columns Table & Mobile Cards)
@@ -497,6 +535,7 @@ function renderJobsList() {
       const idClean = (b.id || '').toLowerCase().replace(/[\s\-]/g, '');
       return refClean.includes(queryClean) ||
              idClean.includes(queryClean) ||
+             matchesPickupDate(b.pickup_datetime, query) ||
              (b.customer_name || '').toLowerCase().includes(query) ||
              (b.customer_phone || '').toLowerCase().includes(query) ||
              (b.customer_email || '').toLowerCase().includes(query) ||
@@ -511,6 +550,8 @@ function renderJobsList() {
       if (b.status === 'COMPLETED' || b.status === 'CANCELLED') return false;
     } else if (App.activeFilter === 'PENDING') {
       if (!isBookingUnallocated(b)) return false;
+    } else if (App.activeFilter === 'ALLOCATED') {
+      if (!b.chauffeur_id || ['COMPLETED', 'CANCELLED'].includes(b.status)) return false;
     } else if (App.activeFilter === 'URGENT') {
       if (!getBookingUrgency(b)) return false;
     } else if (App.activeFilter === 'COMPLETED') {
@@ -518,6 +559,17 @@ function renderJobsList() {
     }
 
     return true;
+  });
+
+  filtered.sort((a, b) => {
+    const reference = String(a.confirmation_code || '').localeCompare(String(b.confirmation_code || ''));
+    const first = parsePickupDate(a.pickup_datetime)?.getTime() ?? Infinity;
+    const second = parsePickupDate(b.pickup_datetime)?.getTime() ?? Infinity;
+    const date = (first - second) || reference;
+    if (App.jobSort === 'reference') return reference || date;
+    if (App.jobSort === 'name') return String(a.customer_name || '').localeCompare(String(b.customer_name || ''), 'en-GB', { sensitivity: 'base' }) || date;
+    if (App.jobSort === 'allocation') return Number(Boolean(b.chauffeur_id)) - Number(Boolean(a.chauffeur_id)) || date;
+    return date;
   });
 
   // Update badge count
@@ -646,7 +698,6 @@ function renderJobsList() {
             <button class="btn btn-secondary" onclick="openInvoiceModal('${b.id}')" style="border-color: var(--gold-accent); color: var(--gold-accent); font-weight: 600;" title="Create &amp; Email Tax Invoice">📄 Invoice</button>
             ${b.payment_status === 'PRE_AUTHORIZED' ? `<button class="btn btn-secondary" onclick="captureBookingPayment('${b.id}', ${b.total_fare})" style="border-color: #4ade80; color: #4ade80; font-weight: 600;" title="Capture pre-authorised hold">💳 Capture £${parseFloat(b.total_fare).toFixed(2)}</button>` : ''}
             ${actionBtnHtml}
-            <button class="btn btn-secondary" onclick="deleteBooking('${b.id}', '${b.confirmation_code}')" style="border-color: rgba(239,68,68,0.4); color: #f87171;" title="Delete booking">🗑️ Delete</button>
           </div>
         </div>
       </div>
@@ -684,11 +735,30 @@ function toggleExpandBookingRow(bookingId, evt) {
   renderJobsList();
 }
 
+function runDispatchJobAction(bookingId, select) {
+  const action = select.value;
+  select.value = '';
+  const actions = {
+    allocate: openAllocateModal,
+    edit: openEditBookingModal,
+    email: sendBookingConfirmationEmail,
+    invoice: openInvoiceModal,
+    voucher: viewVoucher,
+    amend: id => resolveCustomerAmendment(id, 'APPROVE')
+  };
+  if (action.startsWith('status:')) {
+    inlineChangeStatus(bookingId, action.slice(7));
+  } else if (Object.hasOwn(actions, action)) {
+    actions[action](bookingId);
+  }
+}
+
 function renderCdsDispatchTable(filtered) {
   const tbody = document.getElementById('cds-table-body');
   if (!tbody) return;
 
   if (filtered.length === 0) {
+    App.renderedJobRows = '';
     tbody.innerHTML = `
       <tr>
         <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
@@ -699,7 +769,7 @@ function renderCdsDispatchTable(filtered) {
     return;
   }
 
-  tbody.innerHTML = filtered.map(b => {
+  const rows = filtered.map(b => {
     const { time, date } = formatCdsPickupTime(b.pickup_datetime);
     const urg = getBookingUrgency(b);
     const mins = getMinutesUntilPickup(b.pickup_datetime);
@@ -707,12 +777,10 @@ function renderCdsDispatchTable(filtered) {
 
     let rowClass = 'excel-thin-row';
     if (isExpanded) rowClass += ' expanded';
-    if (b.status === 'ON_BOARD') rowClass += ' cds-row-pob';
-    else if (b.status === 'EN_ROUTE' || b.status === 'NEXT_STOP') rowClass += ' cds-row-enroute';
-    else if (b.status === 'ARRIVED') rowClass += ' cds-row-arrived';
-    else if (urg === 'CRITICAL_1H') rowClass += ' cds-row-urgent-1h';
+    if (urg === 'CRITICAL_1H') rowClass += ' cds-row-urgent-1h';
     else if (urg === 'WARNING_2H') rowClass += ' cds-row-urgent-2h';
     else if (b.status === 'COMPLETED' || b.status === 'CANCELLED') rowClass += ' cds-row-completed';
+    else if (b.chauffeur_id) rowClass += ' dispatch-row-allocated';
 
     let urgencyDot = '';
     if (urg === 'CRITICAL_1H') {
@@ -726,13 +794,6 @@ function renderCdsDispatchTable(filtered) {
 
     const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
 
-    const allocOptions = [
-      `<option value="UNALLOCATE" ${!b.chauffeur_id ? 'selected' : ''}>⚠️ Unallocated</option>`,
-      ...App.chauffeurs.map(ch =>
-        `<option value="${escapeHtml(ch.id)}" ${b.chauffeur_id === ch.id ? 'selected' : ''}>${escapeHtml(ch.name)} [${escapeHtml(ch.license_plate)}]</option>`
-      )
-    ].join('');
-
     const statusChoices = [
       { status: 'PENDING', action: 'UNALLOCATE', label: '🔴 Pending' },
       { status: 'ASSIGNED', action: 'CONFIRMED', label: '🔵 Allocated' },
@@ -745,20 +806,15 @@ function renderCdsDispatchTable(filtered) {
       { status: 'CANCELLED', action: 'CANCEL', label: '✖️ Cancelled' }
     ];
 
-    const normalizedStatus = (b.status === 'CONFIRMED' || b.status === 'ACCEPTED') ? 'ASSIGNED' : b.status;
-    const statusOptionsHtml = statusChoices.map(sc =>
-      `<option value="${sc.action}" ${normalizedStatus === sc.status ? 'selected' : ''}>${sc.label}</option>`
-    ).join('');
-
-    const fareVal = parseFloat(b.total_fare || b.fare_amount || 0).toFixed(2);
-    let payShort = '';
-    if (b.payment_status === 'PRE_AUTHORIZED') payShort = `<span style="color:#4ade80;font-size:10px;font-weight:700;margin-left:4px;">HOLD</span>`;
-    else if (b.payment_status === 'CORPORATE_INVOICE') payShort = `<span style="color:var(--gold);font-size:10px;font-weight:700;margin-left:4px;">ACCT</span>`;
-    else if (b.payment_status === 'PAID') payShort = `<span style="color:#34d399;font-size:10px;font-weight:700;margin-left:4px;">PAID</span>`;
+    const normalizedStatus = b.status === 'ACCEPTED' || (b.status === 'CONFIRMED' && b.chauffeur_id) ? 'ASSIGNED' : b.status;
+    const statusLabel = statusChoices.find(choice => choice.status === normalizedStatus)?.label.split(' ').slice(1).join(' ') || (b.chauffeur_id ? 'Confirmed' : 'Unallocated');
+    const hours = Number(b.hours_booked) || 0;
+    const serviceLabel = hours > 0 ? `${hours} ${hours === 1 ? 'hour' : 'hours'}` : b.service_type || 'Transfer';
+    const fareVal = parseFloat(b.total_fare ?? b.fare_amount ?? 0).toFixed(2);
 
     const shortPu = (b.pickup_address || '').split(',')[0];
     const shortDo = (b.dropoff_address || '').split(',')[0];
-    const flightTag = b.flight_number ? ` <span style="background:rgba(56,189,248,0.16);color:#38bdf8;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;">✈️${escapeHtml(b.flight_number)}</span>` : '';
+    const flightTag = b.flight_number ? ` <span class="dispatch-flight">${escapeHtml(b.flight_number)}</span>` : '';
 
     let pendingAmendObj = null;
     if (b.pending_amendment) {
@@ -774,71 +830,40 @@ function renderCdsDispatchTable(filtered) {
       <tr class="${rowClass}" onclick="toggleExpandBookingRow('${b.id}', event)" title="Click row to expand full booking details">
         <!-- 1. Expand & Ref (+ Mobile Inline Summary: Date/Time, Customer, Vehicle) -->
         <td>
-          <div class="excel-first-col-inner">
+          <button type="button" class="excel-first-col-inner dispatch-expand-button" aria-expanded="${isExpanded}" onclick="toggleExpandBookingRow('${b.id}')">
             <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
             <span style="font-family:monospace;color:var(--gold);font-weight:700;font-size:11.5px;">${escapeHtml(b.confirmation_code)}</span>${amendBadge}
             <span class="mobile-thin-summary">
-              <strong style="color:#fff;">${escapeHtml(date)} ${escapeHtml(time)}</strong>
+              <strong>${escapeHtml(date)} ${escapeHtml(time)}</strong>
               <span style="color:var(--text-muted);">•</span>
-              <strong style="color:#fff;">${escapeHtml(b.customer_name)}</strong>
+              <strong>${escapeHtml(b.customer_name)}</strong>
               <span style="color:var(--text-muted);">•</span>
-              <span style="color:var(--gold);font-weight:600;">${escapeHtml(formatVehTierLabel(b.vehicle_class))}</span>
+              <span>${escapeHtml(formatVehTierLabel(b.vehicle_class))}</span>
+              <span>${escapeHtml(serviceLabel)}</span>
             </span>
-          </div>
+          </button>
         </td>
 
-        <!-- 2. Date & Time -->
-        <td>
-          <strong style="color:#fff;font-size:12.5px;">${escapeHtml(date)} ${escapeHtml(time)}</strong>${urgencyDot}
-        </td>
-
-        <!-- 3. Customer -->
-        <td>
-          <span class="excel-cell-truncate" style="max-width:155px;font-weight:600;color:#fff;">${escapeHtml(b.customer_name)}</span>
-        </td>
-
-        <!-- 4. Pickup -> Destination / Flight -->
-        <td>
-          <span class="excel-cell-truncate" style="max-width:310px;color:#cbd5e1;">
-            <strong style="color:#4ade80;">${escapeHtml(shortPu)}</strong> &rarr; <strong style="color:#93c5fd;">${escapeHtml(shortDo)}</strong>
-          </span>${flightTag}
-        </td>
-
-        <!-- 5. Vehicle & Pax -->
-        <td>
-          <span style="color:var(--gold);font-weight:600;">${escapeHtml(formatVehTierLabel(b.vehicle_class))}</span>
-          <span style="color:var(--text-muted);font-size:11px;margin-left:4px;">(${b.passenger_count || 1}P/${b.luggage_count || 0}B)</span>
-        </td>
-
-        <!-- 6. Allocate Driver & Car -->
-        <td onclick="event.stopPropagation()">
-          <select class="cds-inline-select ${b.chauffeur_id ? 'allocated' : 'unallocated'}" onchange="inlineAllocateVehicle('${b.id}', this.value)">
-            ${allocOptions}
+        <td><strong>${escapeHtml(date)} ${escapeHtml(time)}</strong>${urgencyDot}</td>
+        <td><span class="excel-cell-truncate">${escapeHtml(b.customer_name)}</span></td>
+        <td><span class="excel-cell-truncate">${escapeHtml(shortPu)} &rarr; ${escapeHtml(shortDo)}</span>${flightTag}</td>
+        <td>${escapeHtml(formatVehTierLabel(b.vehicle_class))}</td>
+        <td>${escapeHtml(serviceLabel)}</td>
+        <td>${escapeHtml(b.chauffeur_id ? (b.chauffeur_name || 'Allocated') : 'Unallocated')}</td>
+        <td class="dispatch-status-cell"><span class="dispatch-status-dot" role="img" aria-label="${escapeHtml(statusLabel)}" title="${escapeHtml(statusLabel)}"></span></td>
+        <td class="dispatch-action-cell">
+          <select class="dispatch-job-action" aria-label="Actions for ${escapeHtml(b.confirmation_code)}" onchange="runDispatchJobAction('${b.id}', this)">
+            <option value="">Actions</option>
+            <option value="allocate">Allocate driver and vehicle</option>
+            <option value="edit">Edit booking</option>
+            <option value="email">Send confirmation email</option>
+            <option value="invoice">View tax invoice</option>
+            <option value="voucher">View voucher</option>
+            ${pendingAmendObj ? '<option value="amend">Approve customer amendment</option>' : ''}
+            <optgroup label="Update status">
+              ${statusChoices.map(choice => `<option value="status:${choice.action}">${escapeHtml(choice.label.split(' ').slice(1).join(' '))}</option>`).join('')}
+            </optgroup>
           </select>
-        </td>
-
-        <!-- 7. Live Status -->
-        <td onclick="event.stopPropagation()">
-          <select class="cds-status-select st-${b.status}" onchange="inlineChangeStatus('${b.id}', this.value)">
-            ${statusOptionsHtml}
-          </select>
-        </td>
-
-        <!-- 8. Fare -->
-        <td>
-          <strong style="color:#fff;">£${fareVal}</strong>${payShort}
-        </td>
-
-        <!-- 9. Right-Hand Actions (Allocate / Send Email / Edit / Inv / Del) -->
-        <td style="text-align:right;" onclick="event.stopPropagation()">
-          <div style="display:inline-flex;gap:4px;align-items:center;justify-content:flex-end;">
-            ${pendingAmendObj ? `<button type="button" class="excel-act-btn" style="background:#f59e0b;color:#121715;border-color:#f59e0b;font-weight:800;" onclick="resolveCustomerAmendment('${b.id}', 'APPROVE')" title="Approve Customer Amendment &amp; Send Confirmation">✓ Approve Edit</button>` : ''}
-            <button type="button" class="excel-act-btn gold" onclick="openAllocateModal('${b.id}')" title="Allocate Driver &amp; Vehicle">🚘 Alloc</button>
-            <button type="button" class="excel-act-btn" onclick="sendBookingConfirmationEmail('${b.id}')" title="Send Booking Confirmation Email to Customer">✉️ Email</button>
-            <button type="button" class="excel-act-btn" onclick="openEditBookingModal('${b.id}')" title="Edit Booking Details">✏️ Edit</button>
-            <button type="button" class="excel-act-btn" onclick="openInvoiceModal('${b.id}')" title="Tax Invoice">📄 Inv</button>
-            <button type="button" class="excel-act-btn danger" onclick="deleteBooking('${b.id}', '${b.confirmation_code}')" title="Delete Booking">🗑️</button>
-          </div>
         </td>
       </tr>
     `;
@@ -881,6 +906,7 @@ function renderCdsDispatchTable(filtered) {
               <div style="margin-bottom:6px;"><strong style="color:#4ade80;">Pickup (${escapeHtml(b.pickup_datetime)}):</strong><br><span style="color:#fff;">${escapeHtml(b.pickup_address)}</span></div>
               <div style="margin-bottom:6px;"><strong style="color:#38bdf8;">Destination:</strong><br><span style="color:#fff;">${escapeHtml(b.dropoff_address)}</span></div>
               ${b.flight_number ? `<div style="margin-top:6px;color:#38bdf8;">✈️ <strong>Flight Number:</strong> ${escapeHtml(b.flight_number)} (45m free wait)</div>` : ''}
+              ${b.service_type ? `<div style="margin-top:6px;"><strong>Service:</strong> ${escapeHtml(b.service_type)}${hours > 0 ? ` · ${hours} hours booked` : ''}</div>` : ''}
               ${b.special_requests ? `<div style="margin-top:6px;color:#fde68a;">📝 <strong>Special Requests:</strong> ${escapeHtml(b.special_requests)}</div>` : '<div style="margin-top:4px;color:var(--text-muted);font-size:11.5px;">No special requests noted.</div>'}
             </div>
 
@@ -914,7 +940,6 @@ function renderCdsDispatchTable(filtered) {
               <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
                 <button type="button" class="excel-act-btn gold" onclick="openEditBookingModal('${b.id}')">✏️ Edit Booking</button>
                 <button type="button" class="excel-act-btn" onclick="sendBookingConfirmationEmail('${b.id}')">✉️ Send Confirmation</button>
-                <button type="button" class="excel-act-btn" onclick="copyDriverJobSheet('${b.id}')">📋 Copy Driver Sheet</button>
                 <button type="button" class="excel-act-btn" onclick="viewVoucher('${b.id}')">Voucher</button>
                 <button type="button" class="excel-act-btn" onclick="openInvoiceModal('${b.id}')">📄 Tax Invoice</button>
                 ${b.payment_status === 'PRE_AUTHORIZED' ? `<button type="button" class="excel-act-btn" style="border-color:#4ade80;color:#4ade80;" onclick="captureBookingPayment('${b.id}', ${b.total_fare || b.fare_amount})">💳 Capture £${fareVal}</button>` : ''}
@@ -927,6 +952,10 @@ function renderCdsDispatchTable(filtered) {
 
     return mainRowHtml + expandRowHtml;
   }).join('');
+  if (rows !== App.renderedJobRows) {
+    tbody.innerHTML = rows;
+    App.renderedJobRows = rows;
+  }
 }
 
 async function sendBookingConfirmationEmail(bookingId) {
@@ -1178,24 +1207,6 @@ async function inlineChangeStatus(bookingId, action) {
   await triggerAction(bookingId, action);
 }
 
-function copyDriverJobSheet(bookingId) {
-  const b = App.bookings.find(x => x.id === bookingId);
-  if (!b) return;
-  const lines = [
-    `🚘 *GA CHAUFFEUR SERVICES — JOB SHEET (${b.confirmation_code})*`,
-    `📅 *Pickup Time:* ${b.pickup_datetime}`,
-    `👤 *Passenger:* ${b.customer_name} (${b.customer_phone})`,
-    `👥 *Pax / Bags:* ${b.passenger_count || 1} Pax, ${b.luggage_count || 0} Bags`,
-    `🟢 *Pickup:* ${b.pickup_address}`,
-    `🏁 *Destination:* ${b.dropoff_address}`,
-    b.flight_number ? `✈️ *Flight:* ${b.flight_number}` : null,
-    b.special_requests ? `📝 *Notes:* ${b.special_requests}` : null,
-    b.chauffeur_name ? `🚗 *Assigned:* ${b.chauffeur_name} — ${b.vehicle_model} [${b.license_plate}]` : null
-  ].filter(Boolean).join('\n');
-  navigator.clipboard?.writeText(lines);
-  showToast('📋 Driver Run Sheet copied for WhatsApp / SMS!');
-}
-
 function openModal(modalId) {
   const el = document.getElementById(modalId);
   if (el) el.style.display = 'flex';
@@ -1224,6 +1235,7 @@ function editFleetChauffeur(chId) {
   document.getElementById('fm-phone').value = ch.phone || '';
   document.getElementById('fm-model').value = ch.vehicle_model || '';
   document.getElementById('fm-plate').value = ch.license_plate || '';
+  document.getElementById('fm-bag-capacity').value = ch.luggage_capacity ?? '';
   document.getElementById('fm-class').value = ch.vehicle_class || 'mercedes_s_class';
   const pcoEl = document.getElementById('fm-pco');
   if (pcoEl) pcoEl.value = ch.pco_license || '';
@@ -1260,8 +1272,14 @@ function renderFleetManageList() {
 
 async function saveFleetChauffeur(e) {
   e.preventDefault();
+  const id = document.getElementById('fm-id').value;
+  const existing = App.chauffeurs.find(ch => ch.id === id);
+  const luggageCapacity = document.getElementById('fm-bag-capacity').valueAsNumber;
   const payload = {
-    id: document.getElementById('fm-id').value,
+    id,
+    email: existing?.email,
+    passenger_capacity: existing?.passenger_capacity,
+    luggage_capacity: Number.isNaN(luggageCapacity) ? existing?.luggage_capacity : luggageCapacity,
     name: document.getElementById('fm-name').value,
     phone: document.getElementById('fm-phone').value,
     vehicle_model: document.getElementById('fm-model').value,
@@ -1494,38 +1512,6 @@ async function triggerAction(bookingId, action) {
     }
   } catch (err) {
     showToast('Action failed');
-  }
-}
-
-async function deleteBooking(bookingId, code) {
-  if (!confirm(`Delete booking ${code || bookingId}?`)) return;
-  try {
-    const res = await fetch(`/api/bookings/${bookingId}/delete`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      showToast(`Booking ${code || bookingId} deleted.`);
-      loadData();
-    } else {
-      alert(data.error || 'Could not delete booking');
-    }
-  } catch (err) {
-    alert('Failed to delete booking');
-  }
-}
-
-async function clearAllBookings() {
-  if (!confirm('Delete all bookings from the Dispatch Console so your job board is completely clean?')) return;
-  try {
-    const res = await fetch('/api/bookings/clear-all', { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      showToast('All bookings cleared from Dispatch Console.');
-      loadData();
-    } else {
-      alert(data.error || 'Could not clear bookings');
-    }
-  } catch (err) {
-    alert('Failed to clear bookings');
   }
 }
 

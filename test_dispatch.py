@@ -36,8 +36,8 @@ def run_tests():
     assert chauffeurs[0]["license_plate"] == "HN76GYG", f"Expected HN76GYG, got {chauffeurs[0]['license_plate']}"
     assert chauffeurs[1]["license_plate"] == "LR74EOG", f"Expected LR74EOG, got {chauffeurs[1]['license_plate']}"
     assert chauffeurs[1]["passenger_capacity"] == 6, f"Expected 6-seater, got {chauffeurs[1]['passenger_capacity']}"
-    assert chauffeurs[2]["license_plate"] == "UKZ 545", f"Expected UKZ 545, got {chauffeurs[2]['license_plate']}"
-    print(f"  ✓ Seeded {len(chauffeurs)} exclusive vehicles with custom registrations: HN76GYG (S-Class), LR74EOG (V-Class 6-Seater), and UKZ 545 (Range Rover LWB)")
+    assert chauffeurs[2]["license_plate"] == "UKZ 454", f"Expected UKZ 454, got {chauffeurs[2]['license_plate']}"
+    print(f"  ✓ Seeded {len(chauffeurs)} exclusive vehicles with custom registrations: HN76GYG (S-Class), LR74EOG (V-Class 6-Seater), and UKZ 454 (Range Rover LWB)")
 
     c.execute("SELECT COUNT(*) as count FROM bookings")
     b_count = c.fetchone()["count"]
