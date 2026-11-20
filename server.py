@@ -1844,7 +1844,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 pass
 
     def serve_website_file(self, path):
-        if path in ("/assets/chauffeur-arrival.mp4", "/assets/chauffeur-arrival-ga.mp4", "/assets/vclass-arrival.mp4"):
+        if path in ("/assets/chauffeur-arrival.mp4", "/assets/chauffeur-arrival-ga.mp4", "/assets/vclass-arrival.mp4", "/assets/chauffeur-arrival-original.mp4"):
             self.serve_arrival_video(path)
             return
         rel_path = path.lstrip("/")
