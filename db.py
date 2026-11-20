@@ -22,7 +22,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Chauffeurs & Vehicles Table (3 Exclusive Vehicles)
+    # Chauffeurs & Vehicles Table (3 Exclusive Vehicles + Verified Chauffeur Credentials)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS chauffeurs (
         id TEXT PRIMARY KEY,
@@ -40,7 +40,52 @@ def init_db():
         lat REAL NOT NULL,
         lng REAL NOT NULL,
         current_zone TEXT NOT NULL,
-        active_booking_id TEXT
+        active_booking_id TEXT,
+        email TEXT DEFAULT '',
+        pco_license TEXT DEFAULT '',
+        docs_verified INTEGER DEFAULT 1,
+        driver_pin TEXT DEFAULT '1234',
+        driver_token TEXT DEFAULT ''
+    )
+    """)
+
+    cursor.execute("PRAGMA table_info(chauffeurs)")
+    existing_ch_cols = [row["name"] for row in cursor.fetchall()]
+    ch_cols_to_add = [
+        ("email", "TEXT DEFAULT ''"),
+        ("pco_license", "TEXT DEFAULT ''"),
+        ("docs_verified", "INTEGER DEFAULT 1"),
+        ("driver_pin", "TEXT DEFAULT '1234'"),
+        ("driver_token", "TEXT DEFAULT ''")
+    ]
+    for col_name, col_def in ch_cols_to_add:
+        if col_name not in existing_ch_cols:
+            cursor.execute(f"ALTER TABLE chauffeurs ADD COLUMN {col_name} {col_def}")
+
+    # Ensure every existing chauffeur has a unique driver_token and driver_pin
+    cursor.execute("SELECT id, driver_pin, driver_token, pco_license FROM chauffeurs")
+    for ch_row in cursor.fetchall():
+        cid = ch_row["id"]
+        pin = ch_row["driver_pin"] or ("1001" if cid == "GA-CHF-01" else ("1002" if cid == "GA-CHF-02" else ("1003" if cid == "GA-CHF-03" else "1234")))
+        tok = ch_row["driver_token"] or f"drv_{cid.lower().replace('-', '')}_{uuid.uuid4().hex[:10]}"
+        pco = ch_row["pco_license"] or ("TFL-PCO-948210" if cid == "GA-CHF-01" else ("TFL-PCO-883419" if cid == "GA-CHF-02" else "TFL-PCO-774102"))
+        cursor.execute(
+            "UPDATE chauffeurs SET driver_pin = ?, driver_token = ?, pco_license = ?, docs_verified = COALESCE(docs_verified, 1) WHERE id = ?",
+            (pin, tok, pco, cid)
+        )
+
+    # Live Two-Way Chauffeur <-> Dispatch Messages Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS driver_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chauffeur_id TEXT NOT NULL,
+        booking_id TEXT,
+        sender_role TEXT NOT NULL,
+        sender_name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (chauffeur_id) REFERENCES chauffeurs(id)
     )
     """)
 

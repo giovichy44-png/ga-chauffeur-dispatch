@@ -8,6 +8,9 @@ const App = {
   bookings: [],
   chauffeurs: [],
   confirmations: [],
+  driverMessages: [],
+  activeCommsChauffeurId: '',
+  knownDriverMsgIds: new Set(),
   activeFilter: 'ACTIVE',
   viewMode: 'GRID',
   allocatingJobId: null,
@@ -383,6 +386,7 @@ async function loadData() {
       App.bookings = data.bookings || [];
       App.chauffeurs = data.chauffeurs || [];
       App.confirmations = data.confirmations || [];
+      App.driverMessages = data.driver_messages || [];
     } else {
       const [bRes, cRes, confRes] = await Promise.all([
         fetch('/api/bookings?status=ALL'),
@@ -399,12 +403,16 @@ async function loadData() {
 
     saveToLocalCache();
     checkLiveNotificationsAndUrgency(App.bookings);
+    checkIncomingDriverMessages(App.driverMessages);
     updateTopCarCards();
     populateDriverSelectDropdown();
     renderJobsList();
     renderFleetThinTable();
     renderOutboxTable();
     renderDriverView();
+    if (document.getElementById('modal-driver-comms')?.style.display === 'flex') {
+      renderDriverCommsModal();
+    }
   } catch (err) {
     console.warn('Sync note:', err);
   }
@@ -732,6 +740,7 @@ function renderCdsDispatchTable(filtered) {
       { status: 'ARRIVED', action: 'ARRIVED', label: '📍 At Pickup' },
       { status: 'ON_BOARD', action: 'ON_BOARD', label: '🟢 On Board (POB)' },
       { status: 'NEXT_STOP', action: 'NEXT_STOP', label: '➡️ Next Stop' },
+      { status: 'DROPPED_OFF', action: 'DROPPED_OFF', label: '🛬 Dropped Off' },
       { status: 'COMPLETED', action: 'COMPLETED', label: '🏁 Completed' },
       { status: 'CANCELLED', action: 'CANCEL', label: '✖️ Cancelled' }
     ];
@@ -1081,7 +1090,9 @@ function renderFleetThinTable() {
           </span>
         </td>
         <td style="text-align:right;" onclick="event.stopPropagation()">
-          <div style="display:inline-flex;gap:4px;justify-content:flex-end;">
+          <div style="display:inline-flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;">
+            <button type="button" class="excel-act-btn gold" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')" title="Send Chauffeur App to Driver's Phone via WhatsApp / Copy Link">📲 Send App</button>
+            <button type="button" class="excel-act-btn" onclick="openDriverCommsModal('${escapeHtml(ch.id)}')" title="Direct Live Chat with Chauffeur">💬 Chat</button>
             <button type="button" class="excel-act-btn" onclick="toggleCarStatus('${escapeHtml(ch.id)}')">${isAvail ? 'Mark On Trip' : 'Mark Available'}</button>
             <button type="button" class="excel-act-btn gold" onclick="openFleetManageModal(); editFleetChauffeur('${escapeHtml(ch.id)}')">✏️ Edit</button>
             <button type="button" class="excel-act-btn danger" onclick="deleteFleetChauffeur('${escapeHtml(ch.id)}')">🗑️</button>
@@ -1092,21 +1103,27 @@ function renderFleetThinTable() {
 
     if (!isExpanded) return mainRow;
 
+    const driverAppUrl = `${window.location.origin}/driver?token=${encodeURIComponent(ch.driver_token || ch.id)}`;
     const expandRow = `
       <tr class="excel-expand-row">
         <td colspan="8">
           <div class="excel-expand-drawer">
             <div class="excel-drawer-box">
-              <div class="excel-drawer-title">🚘 Vehicle Specifications</div>
+              <div class="excel-drawer-title">🚘 Vehicle &amp; Verification</div>
               <div><strong>Model:</strong> <span style="color:#fff;">${escapeHtml(ch.vehicle_model)}</span></div>
               <div style="margin-top:4px;"><strong>Registration Plate:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.license_plate)}</span></div>
-              <div style="margin-top:4px;"><strong>Class &amp; Capacity:</strong> ${escapeHtml(formatVehTierLabel(ch.vehicle_class))} (${ch.passenger_capacity || 4} Passengers, ${ch.luggage_capacity || 2} Suitcases)</div>
+              <div style="margin-top:4px;"><strong>PCO / Licence Ref:</strong> <span style="color:#34d399;">${escapeHtml(ch.pco_license || 'Verified On File')}</span></div>
+              <div style="margin-top:4px;"><strong>Driver App PIN:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.driver_pin || '1234')}</span></div>
             </div>
             <div class="excel-drawer-box">
-              <div class="excel-drawer-title">👤 Chauffeur Profile</div>
+              <div class="excel-drawer-title">👤 Chauffeur Profile &amp; App Link</div>
               <div><strong>Chauffeur:</strong> <span style="color:#fff;">${escapeHtml(ch.name)}</span> (${ch.rating || '5.0'}★ • ${ch.trips_count || 0} Trips)</div>
               <div style="margin-top:4px;"><strong>Direct Mobile:</strong> <a href="tel:${escapeHtml(ch.phone)}" style="color:var(--gold);">${escapeHtml(ch.phone)}</a></div>
-              <div style="margin-top:4px;"><strong>Base / Current Zone:</strong> ${escapeHtml(ch.current_zone || 'London')}</div>
+              <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+                <button type="button" class="excel-act-btn gold" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')">📲 Send App via WhatsApp</button>
+                <button type="button" class="excel-act-btn" onclick="copyDriverAppLink('${escapeHtml(ch.id)}')">🔗 Copy App Link</button>
+                <a href="${driverAppUrl}" target="_blank" class="excel-act-btn" style="text-decoration:none;">↗ Open Driver App</a>
+              </div>
             </div>
             <div class="excel-drawer-box">
               <div class="excel-drawer-title">📋 Active Assigned Runs (${assignedJobs.length})</div>
@@ -1114,9 +1131,9 @@ function renderFleetThinTable() {
                 ? `<div style="color:var(--text-muted);">No active runs assigned right now.</div>`
                 : assignedJobs.map(j => `<div style="margin-bottom:4px;"><strong style="color:var(--gold);">${escapeHtml(j.confirmation_code)}</strong> (${escapeHtml(j.pickup_datetime)}): ${escapeHtml(j.customer_name)}</div>`).join('')
               }
-              <div style="margin-top:10px;display:flex;gap:6px;">
-                <button type="button" class="excel-act-btn gold" onclick="openFleetManageModal(); editFleetChauffeur('${escapeHtml(ch.id)}')">✏️ Edit Vehicle / Chauffeur</button>
-                <button type="button" class="excel-act-btn" onclick="toggleCarStatus('${escapeHtml(ch.id)}')">Toggle Status</button>
+              <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
+                <button type="button" class="excel-act-btn gold" onclick="openDriverCommsModal('${escapeHtml(ch.id)}')">💬 Message Driver</button>
+                <button type="button" class="excel-act-btn" onclick="openFleetManageModal(); editFleetChauffeur('${escapeHtml(ch.id)}')">✏️ Edit Vehicle / Chauffeur</button>
               </div>
             </div>
           </div>
@@ -1208,6 +1225,12 @@ function editFleetChauffeur(chId) {
   document.getElementById('fm-model').value = ch.vehicle_model || '';
   document.getElementById('fm-plate').value = ch.license_plate || '';
   document.getElementById('fm-class').value = ch.vehicle_class || 'mercedes_s_class';
+  const pcoEl = document.getElementById('fm-pco');
+  if (pcoEl) pcoEl.value = ch.pco_license || '';
+  const pinEl = document.getElementById('fm-pin');
+  if (pinEl) pinEl.value = ch.driver_pin || '1234';
+  const verEl = document.getElementById('fm-verified');
+  if (verEl) verEl.checked = Number(ch.docs_verified) !== 0;
   const titleEl = document.getElementById('fleet-form-title');
   if (titleEl) titleEl.textContent = `✏️ Editing ${ch.name} [${ch.license_plate}]`;
 }
@@ -1216,12 +1239,18 @@ function renderFleetManageList() {
   const container = document.getElementById('fleet-manage-list');
   if (!container) return;
   container.innerHTML = App.chauffeurs.map(ch => `
-    <div style="background:#141b18;border:1px solid var(--border);border-radius:6px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+    <div style="background:#141b18;border:1px solid var(--border);border-radius:6px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <div>
-        <div style="font-weight:700;color:#fff;font-size:13.5px;">👤 ${escapeHtml(ch.name)} <span style="color:var(--gold);font-family:monospace;">[${escapeHtml(ch.license_plate)}]</span></div>
-        <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(ch.vehicle_model)} • 📞 ${escapeHtml(ch.phone)}</div>
+        <div style="font-weight:700;color:#fff;font-size:13.5px;">
+          👤 ${escapeHtml(ch.name)}
+          <span style="color:var(--gold);font-family:monospace;">[${escapeHtml(ch.license_plate)}]</span>
+          <span style="color:#34d399;font-size:11px;margin-left:6px;">✓ Verified (PIN: ${escapeHtml(ch.driver_pin || '1234')})</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(ch.vehicle_model)} • 📞 ${escapeHtml(ch.phone)} ${ch.pco_license ? '• PCO: ' + escapeHtml(ch.pco_license) : ''}</div>
       </div>
-      <div style="display:flex;gap:6px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-gold" style="padding:5px 10px;font-size:11.5px;" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')">📲 Send App to Phone</button>
+        <button type="button" class="btn btn-secondary" style="padding:5px 10px;font-size:11.5px;" onclick="copyDriverAppLink('${escapeHtml(ch.id)}')">🔗 Copy Link</button>
         <button type="button" class="btn btn-secondary" style="padding:5px 10px;font-size:11.5px;" onclick="editFleetChauffeur('${escapeHtml(ch.id)}')">✏️ Edit</button>
         <button type="button" class="btn btn-secondary" style="padding:5px 10px;font-size:11.5px;border-color:rgba(239,68,68,0.4);color:#f87171;" onclick="deleteFleetChauffeur('${escapeHtml(ch.id)}')">🗑️</button>
       </div>
@@ -1237,7 +1266,10 @@ async function saveFleetChauffeur(e) {
     phone: document.getElementById('fm-phone').value,
     vehicle_model: document.getElementById('fm-model').value,
     license_plate: document.getElementById('fm-plate').value,
-    vehicle_class: document.getElementById('fm-class').value
+    vehicle_class: document.getElementById('fm-class').value,
+    pco_license: document.getElementById('fm-pco')?.value || '',
+    driver_pin: document.getElementById('fm-pin')?.value || '1234',
+    docs_verified: document.getElementById('fm-verified')?.checked ?? true
   };
   try {
     const res = await fetch('/api/chauffeurs/save', {
@@ -1247,7 +1279,7 @@ async function saveFleetChauffeur(e) {
     });
     const data = await res.json();
     if (data.success) {
-      showToast('🚘 Fleet vehicle & chauffeur saved!');
+      showToast('🚘 Verified chauffeur & vehicle saved! Tap "📲 Send App to Phone" to share their app.');
       resetFleetForm();
       await loadData();
       renderFleetManageList();
@@ -1256,6 +1288,177 @@ async function saveFleetChauffeur(e) {
     }
   } catch (err) {
     alert('Failed to save vehicle & driver');
+  }
+}
+
+function getDriverAppInstallUrl(ch) {
+  const token = ch.driver_token || ch.id;
+  return `${window.location.origin}/driver?token=${encodeURIComponent(token)}`;
+}
+
+function copyDriverAppLink(chId) {
+  const ch = App.chauffeurs.find(c => c.id === chId);
+  if (!ch) return;
+  const url = getDriverAppInstallUrl(ch);
+  navigator.clipboard?.writeText(url);
+  showToast(`🔗 Driver App link copied for ${ch.name}!`);
+}
+
+function sendDriverAppInvite(chId) {
+  const ch = App.chauffeurs.find(c => c.id === chId);
+  if (!ch) return;
+  const url = getDriverAppInstallUrl(ch);
+  const cleanPhone = (ch.phone || '').replace(/[^0-9]/g, '');
+  const msg = [
+    `🚘 *GA Chauffeur Services — Verified Driver App*`,
+    `Hello ${ch.name}, your chauffeur profile & vehicle (${ch.vehicle_model} — *${ch.license_plate}*) have been verified on GA Dispatch.`,
+    ``,
+    `📲 *Install Your Personal Chauffeur App:*`,
+    url,
+    ``,
+    `🔑 *Your 4-Digit Driver PIN:* ${ch.driver_pin || '1234'}`,
+    `(Open the link in Safari on your iPhone -> tap Share -> "Add to Home Screen". Allocated jobs & live Dispatch chat will appear there automatically.)`
+  ].join('\n');
+  navigator.clipboard?.writeText(url);
+  const waUrl = cleanPhone
+    ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+  showToast(`📲 Opening WhatsApp to send ${ch.name}'s Driver App link!`);
+}
+
+function checkIncomingDriverMessages(messages) {
+  if (!Array.isArray(messages)) return;
+  const unreadDriverMsgs = messages.filter(m => m.sender_role === 'DRIVER' && Number(m.is_read) === 0);
+
+  ['badge-driver-msgs', 'tab-badge-driver-msgs', 'm-driver-msg-badge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (unreadDriverMsgs.length > 0) {
+      el.style.display = 'inline-block';
+      el.textContent = unreadDriverMsgs.length;
+    } else {
+      el.style.display = 'none';
+    }
+  });
+
+  if (App.initialLoadDone) {
+    messages.forEach(m => {
+      if (!App.knownDriverMsgIds.has(m.id) && m.sender_role === 'DRIVER') {
+        playNewBookingSound();
+        showToast(`💬 ${m.chauffeur_name || m.sender_name} [${m.license_plate || ''}]: "${m.message}"`);
+      }
+    });
+  }
+  App.knownDriverMsgIds = new Set(messages.map(m => m.id));
+}
+
+function openDriverCommsModal(chauffeurId) {
+  if (chauffeurId) {
+    App.activeCommsChauffeurId = chauffeurId;
+  } else if (!App.activeCommsChauffeurId && App.chauffeurs.length > 0) {
+    const unread = (App.driverMessages || []).find(m => m.sender_role === 'DRIVER' && Number(m.is_read) === 0);
+    App.activeCommsChauffeurId = unread ? unread.chauffeur_id : App.chauffeurs[0].id;
+  }
+  renderDriverCommsModal();
+  openModal('modal-driver-comms');
+  markDriverMessagesRead(App.activeCommsChauffeurId);
+}
+
+function selectCommsChauffeur(chId) {
+  App.activeCommsChauffeurId = chId;
+  renderDriverCommsModal();
+  markDriverMessagesRead(chId);
+}
+
+async function markDriverMessagesRead(chId) {
+  if (!chId) return;
+  try {
+    await fetch('/api/driver-messages/mark-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chauffeur_id: chId })
+    });
+    (App.driverMessages || []).forEach(m => {
+      if (m.chauffeur_id === chId && m.sender_role === 'DRIVER') m.is_read = 1;
+    });
+    checkIncomingDriverMessages(App.driverMessages);
+  } catch (_) {}
+}
+
+function renderDriverCommsModal() {
+  const sel = document.getElementById('comms-driver-select');
+  const banner = document.getElementById('comms-install-banner');
+  const chatBox = document.getElementById('comms-chat-history');
+  if (!sel || !chatBox) return;
+
+  if (!App.activeCommsChauffeurId && App.chauffeurs.length > 0) {
+    App.activeCommsChauffeurId = App.chauffeurs[0].id;
+  }
+
+  sel.innerHTML = App.chauffeurs.map(ch => {
+    const unreadCnt = (App.driverMessages || []).filter(m => m.chauffeur_id === ch.id && m.sender_role === 'DRIVER' && Number(m.is_read) === 0).length;
+    return `<option value="${escapeHtml(ch.id)}" ${ch.id === App.activeCommsChauffeurId ? 'selected' : ''}>${escapeHtml(ch.name)} • ${escapeHtml(ch.vehicle_model)} [${escapeHtml(ch.license_plate)}]${unreadCnt > 0 ? ` (${unreadCnt} new)` : ''}</option>`;
+  }).join('');
+
+  const ch = App.chauffeurs.find(c => c.id === App.activeCommsChauffeurId);
+  if (ch && banner) {
+    const appUrl = getDriverAppInstallUrl(ch);
+    banner.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:12px;">
+          <strong style="color:var(--gold);">📲 ${escapeHtml(ch.name)}'s Personal Chauffeur App:</strong>
+          <div style="color:var(--text-muted);margin-top:2px;">Reg: <strong style="color:#fff;">${escapeHtml(ch.license_plate)}</strong> • PIN: <strong style="color:var(--gold);">${escapeHtml(ch.driver_pin || '1234')}</strong></div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="excel-act-btn gold" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')">📲 Send via WhatsApp</button>
+          <button type="button" class="excel-act-btn" onclick="copyDriverAppLink('${escapeHtml(ch.id)}')">🔗 Copy Link</button>
+          <a href="${appUrl}" target="_blank" class="excel-act-btn" style="text-decoration:none;">↗ Open Driver App</a>
+        </div>
+      </div>
+    `;
+  }
+
+  const msgs = (App.driverMessages || []).filter(m => m.chauffeur_id === App.activeCommsChauffeurId);
+  if (msgs.length === 0) {
+    chatBox.innerHTML = `<div style="margin:auto;text-align:center;color:var(--text-muted);font-size:12.5px;">No messages with ${ch ? escapeHtml(ch.name) : 'this chauffeur'} yet. Messages sent from the Driver App appear here and play an alert chime immediately.</div>`;
+  } else {
+    chatBox.innerHTML = msgs.map(m => {
+      const isDriver = m.sender_role === 'DRIVER';
+      return `
+        <div style="align-self:${isDriver ? 'flex-start' : 'flex-end'};max-width:82%;background:${isDriver ? '#1f2b25' : 'var(--gold)'};color:${isDriver ? '#fff' : '#121715'};border:1px solid ${isDriver ? 'var(--gold)' : 'var(--gold)'};padding:8px 12px;border-radius:10px;font-size:13px;">
+          <div style="font-weight:${isDriver ? '500' : '700'};">${escapeHtml(m.message)}</div>
+          <div style="font-size:10px;opacity:0.75;margin-top:3px;">${isDriver ? '🚘 ' + escapeHtml(m.sender_name) : '🛡️ Dispatch Control'} • ${escapeHtml((m.created_at || '').slice(11, 16))}</div>
+        </div>
+      `;
+    }).join('');
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+}
+
+async function submitDispatchReplyToDriver(e) {
+  e.preventDefault();
+  const inp = document.getElementById('comms-reply-input');
+  const text = inp ? inp.value.trim() : '';
+  if (!text || !App.activeCommsChauffeurId) return;
+  inp.value = '';
+  try {
+    const res = await fetch('/api/driver-messages/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chauffeur_id: App.activeCommsChauffeurId,
+        message: text
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      playStatusBlipSound();
+      await loadData();
+      renderDriverCommsModal();
+    }
+  } catch (err) {
+    showToast('Could not send message');
   }
 }
 
@@ -1417,10 +1620,25 @@ function renderDriverView() {
   if (!ch) return;
 
   const assignedJobs = App.bookings.filter(b => b.chauffeur_id === ch.id && b.status !== 'COMPLETED' && b.status !== 'CANCELLED');
+  const appUrl = getDriverAppInstallUrl(ch);
+
+  const installCardHtml = `
+    <div style="background:#141b18;border:1px solid var(--gold-border);border-radius:10px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.08em;">📲 Standalone Chauffeur Phone App</div>
+        <div style="font-size:13px;color:#fff;margin-top:3px;"><strong>${escapeHtml(ch.name)}</strong> • ${escapeHtml(ch.vehicle_model)} [${escapeHtml(ch.license_plate)}] • PIN: <strong style="color:var(--gold);">${escapeHtml(ch.driver_pin || '1234')}</strong></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-gold" style="padding:7px 12px;font-size:12px;" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')">📲 Send App to Driver's Phone</button>
+        <button type="button" class="btn btn-secondary" style="padding:7px 12px;font-size:12px;" onclick="openDriverCommsModal('${escapeHtml(ch.id)}')">💬 Live Driver Chat</button>
+        <a href="${appUrl}" target="_blank" class="btn btn-secondary" style="padding:7px 12px;font-size:12px;text-decoration:none;">↗ Open Driver App</a>
+      </div>
+    </div>
+  `;
 
   if (assignedJobs.length === 0) {
-    container.innerHTML = `
-      <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+    container.innerHTML = installCardHtml + `
+      <div style="text-align: center; padding: 36px 20px; color: var(--text-muted);">
         <div style="font-size: 36px; margin-bottom: 10px;">🟢</div>
         <h3 style="color: #fff; margin-bottom: 6px;">${escapeHtml(ch.name)} • ${escapeHtml(ch.vehicle_model)} [${escapeHtml(ch.license_plate)}]</h3>
         <p style="font-size: 13px;">Currently Available &amp; Ready for Assigned Runs</p>
@@ -1431,14 +1649,15 @@ function renderDriverView() {
 
   const driverStages = [
     { action: 'CONFIRMED', match: ['PENDING', 'ASSIGNED', 'CONFIRMED', 'ACCEPTED'], label: '1. ✓ Confirmed' },
-    { action: 'EN_ROUTE_PICKUP', match: ['EN_ROUTE'], label: '2. 🚗 En Route to Pickup' },
-    { action: 'ARRIVED', match: ['ARRIVED'], label: '3. 📍 At Pickup (Nameboard Active)' },
-    { action: 'ON_BOARD', match: ['ON_BOARD'], label: '4. 🟢 Passenger On Board' },
-    { action: 'NEXT_STOP', match: ['NEXT_STOP'], label: '5. ➡️ Proceeding to Next Stop' },
-    { action: 'COMPLETED', match: ['COMPLETED'], label: '6. 🏁 Job Finished & Complete' }
+    { action: 'EN_ROUTE_PICKUP', match: ['EN_ROUTE'], label: '2. 🚗 En Route' },
+    { action: 'ARRIVED', match: ['ARRIVED'], label: '3. 📍 Arrived' },
+    { action: 'ON_BOARD', match: ['ON_BOARD'], label: '4. 🟢 POB (Passenger On Board)' },
+    { action: 'NEXT_STOP', match: ['NEXT_STOP'], label: '5. ➡️ Next Stop' },
+    { action: 'DROPPED_OFF', match: ['DROPPED_OFF'], label: '6. 🛬 Dropped Off' },
+    { action: 'COMPLETED', match: ['COMPLETED'], label: '7. 🏁 Job is Complete' }
   ];
 
-  container.innerHTML = assignedJobs.map(b => {
+  container.innerHTML = installCardHtml + assignedJobs.map(b => {
     const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
     const mapsPu = `https://maps.apple.com/?q=${encodeURIComponent(b.pickup_address || '')}`;
     const mapsDo = `https://maps.apple.com/?q=${encodeURIComponent(b.dropoff_address || '')}`;

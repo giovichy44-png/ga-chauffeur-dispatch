@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="style.css?v=20261120a2">
+  <link rel="stylesheet" href="style.css?v=20261120a3">
 </head>
 <body>
 
@@ -41,6 +41,9 @@
         </button>
         <button type="button" class="btn btn-secondary" onclick="switchTab('fleet')" style="font-size: 12px; padding: 7px 11px;">
           🚘 Fleet &amp; Drivers
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="openDriverCommsModal()" style="font-size: 12px; padding: 7px 11px; position: relative;" title="Live Chauffeur Messages">
+          💬 Driver Messages <span id="badge-driver-msgs" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:10px;margin-left:4px;">0</span>
         </button>
         <a href="/widget-demo.html" target="_blank" class="btn btn-secondary" style="font-size: 12px; padding: 7px 11px;">
           Booking Widget ↗
@@ -91,7 +94,8 @@
 
       <button class="simple-tab-btn" data-tab="driver-mode">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-        Driver Mobile Mode
+        Driver App &amp; Messages
+        <span class="tab-count-badge" id="tab-badge-driver-msgs" style="display:none;background:#ef4444;color:#fff;">0</span>
       </button>
 
       <button class="simple-tab-btn" data-tab="outbox">
@@ -481,6 +485,7 @@
     <button class="m-btn" data-tab="driver-mode">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
       <span>Driver</span>
+      <span class="m-badge" id="m-driver-msg-badge" style="display:none;background:#ef4444;color:#fff;">0</span>
     </button>
     <button class="m-btn" data-tab="outbox">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -678,33 +683,39 @@
 
   <!-- MODAL: MANAGE FLEET VEHICLES & CHAUFFEURS -->
   <div class="modal-backdrop" id="modal-fleet-manage" style="display: none;" onclick="if(event.target===this)closeModal('modal-fleet-manage')">
-    <div class="modal-box" style="max-width: 640px;">
+    <div class="modal-box" style="max-width: 680px;">
       <div class="modal-head">
-        <h3>🚘 Fleet Vehicles &amp; Drivers</h3>
+        <h3>🚘 Onboard Verified Chauffeur &amp; Vehicle</h3>
         <button type="button" class="modal-x" onclick="closeModal('modal-fleet-manage')">← Back</button>
       </div>
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
         <form id="fleet-manage-form" onsubmit="saveFleetChauffeur(event)" style="background: #141b18; border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
-          <div style="font-size: 12px; font-weight: 700; color: var(--gold); text-transform: uppercase;" id="fleet-form-title">+ Add or Edit Chauffeur &amp; Vehicle</div>
+          <div style="font-size: 12px; font-weight: 700; color: var(--gold); text-transform: uppercase;" id="fleet-form-title">+ Verify &amp; Add Chauffeur + Vehicle</div>
           <input type="hidden" id="fm-id" value="">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <input type="text" id="fm-name" placeholder="Chauffeur Full Name *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
-            <input type="tel" id="fm-phone" placeholder="Mobile Phone (e.g. +44 7886 622082) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+            <input type="tel" id="fm-phone" placeholder="Mobile Phone (for WhatsApp App Link) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
             <input type="text" id="fm-model" placeholder="Vehicle Model (e.g. Mercedes-Benz S-Class) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
             <input type="text" id="fm-plate" placeholder="Reg Plate (e.g. HN76GYG) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+            <input type="text" id="fm-pco" placeholder="PCO Licence / Badge Ref (e.g. TFL-PCO-948210)" style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+            <input type="text" id="fm-pin" placeholder="4-Digit Driver App PIN (e.g. 1234)" maxlength="8" style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
           </div>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #34d399; font-weight: 600; cursor: pointer;">
+            <input type="checkbox" id="fm-verified" checked style="width: 16px; height: 16px; accent-color: #10b981;">
+            <span>✓ Driving Licence, PCO Badge, Insurance &amp; Vehicle Documents Verified</span>
+          </label>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <select id="fm-class" style="flex: 1; min-width: 180px; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
-              <option value="mercedes_s_class">Mercedes-Benz S-Class (Executive Saloon • 4 Pax)</option>
-              <option value="mercedes_v_class">Mercedes-Benz V-Class (Luxury MPV • 6 Pax)</option>
-              <option value="range_rover_autobiography">Range Rover Autobiography (SUV • 4 Pax)</option>
+              <option value="mercedes_s_class">Mercedes-Benz S-Class (Executive Saloon • 3 Pax • 1 Large &amp; 1 Hand)</option>
+              <option value="mercedes_v_class">Mercedes-Benz V-Class (Luxury MPV • 6 Pax • 6 Large Cases)</option>
+              <option value="range_rover_autobiography">Range Rover Autobiography (SUV • 4 Pax • 2 Large Cases)</option>
             </select>
-            <button type="submit" class="btn btn-gold" style="padding: 8px 14px; font-size: 12px;">Save Vehicle &amp; Driver</button>
+            <button type="submit" class="btn btn-gold" style="padding: 8px 14px; font-size: 12px;">Save &amp; Generate Driver App Link</button>
             <button type="button" class="btn btn-secondary" style="padding: 8px 10px; font-size: 12px;" onclick="resetFleetForm()">Clear</button>
           </div>
         </form>
 
-        <div id="fleet-manage-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
+        <div id="fleet-manage-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto;">
           <!-- Populated by app.js -->
         </div>
       </div>
@@ -714,9 +725,37 @@
     </div>
   </div>
 
+  <!-- MODAL: LIVE CHAUFFEUR <-> DISPATCH MESSAGING & APP INSTALL LINK -->
+  <div class="modal-backdrop" id="modal-driver-comms" style="display: none;" onclick="if(event.target===this)closeModal('modal-driver-comms')">
+    <div class="modal-box" style="max-width: 640px;">
+      <div class="modal-head">
+        <h3 id="driver-comms-title">💬 Chauffeur Direct Messages &amp; Driver App</h3>
+        <button type="button" class="modal-x" onclick="closeModal('modal-driver-comms')">← Back</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <label style="font-size: 11px; color: var(--gold); font-weight: 700; text-transform: uppercase;">Select Chauffeur:</label>
+          <select id="comms-driver-select" onchange="selectCommsChauffeur(this.value)" style="flex: 1; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 6px; font-size: 13px;"></select>
+        </div>
+
+        <div id="comms-install-banner" style="background: #141b18; border: 1px solid var(--gold-border); border-radius: 8px; padding: 12px;"></div>
+
+        <div id="comms-chat-history" style="background: #0d1210; border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+
+        <form onsubmit="submitDispatchReplyToDriver(event)" style="display: flex; gap: 8px;">
+          <input type="text" id="comms-reply-input" placeholder="Type message to chauffeur's phone app..." style="flex: 1; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 10px 12px; border-radius: 6px; font-size: 13.5px;">
+          <button type="submit" class="btn btn-gold" style="padding: 10px 16px;">Send to Driver ↗</button>
+        </form>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary btn-block" onclick="closeModal('modal-driver-comms')">← Back to Dispatch</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=20261120a2"></script>
+  <script src="app.js?v=20261120a3"></script>
 </body>
 </html>

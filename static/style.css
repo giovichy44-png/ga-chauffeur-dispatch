@@ -1490,7 +1490,8 @@ button, input, textarea, select {
   border-color: rgba(168, 85, 247, 0.55);
 }
 
-.cds-status-select.st-ON_BOARD {
+.cds-status-select.st-ON_BOARD,
+.cds-status-select.st-DROPPED_OFF {
   background: rgba(16, 185, 129, 0.22);
   color: #6ee7b7;
   border-color: #10b981;

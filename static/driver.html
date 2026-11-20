@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>GA Chauffeur App | Driver Portal</title>
+  <meta name="application-name" content="GA Driver">
+  <meta name="apple-mobile-web-app-title" content="GA Driver">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#121715">
+  <link rel="manifest" href="/driver-manifest.json">
+  <style>
+    :root {
+      --bg-page: #121715;
+      --bg-card: #171f1b;
+      --bg-inner: #0d1210;
+      --border: #2c3831;
+      --gold: #c9b894;
+      --gold-bright: #dfd0af;
+      --text: #edf0ea;
+      --muted: #93a198;
+      --green: #10b981;
+      --cyan: #38bdf8;
+      --purple: #a855f7;
+      --amber: #f59e0b;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg-page);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "DM Sans", "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      width: 100%;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    .driver-header {
+      background: #171f1b;
+      border-bottom: 1px solid var(--border);
+      padding: max(48px, calc(14px + env(safe-area-inset-top, 44px))) 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .monogram {
+      font-family: Georgia, serif;
+      font-size: 28px;
+      letter-spacing: -2px;
+      color: var(--gold);
+      font-weight: 600;
+    }
+    .brand-sub {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: #d0d8d1;
+      border-left: 1px solid var(--border);
+      padding-left: 10px;
+      line-height: 1.3;
+    }
+    .driver-main {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 14px 14px calc(90px + env(safe-area-inset-bottom, 16px));
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.4);
+    }
+    .eyebrow {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--gold);
+      margin-bottom: 6px;
+    }
+    .profile-banner {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .driver-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .vehicle-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      background: rgba(201, 184, 148, 0.12);
+      border: 1px solid rgba(201, 184, 148, 0.35);
+      color: var(--gold);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+    .plate-badge {
+      background: #facc15;
+      color: #111;
+      font-family: monospace;
+      font-weight: 900;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+    .verified-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 9px;
+      border-radius: 20px;
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+    .profile-meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .meta-box {
+      background: var(--bg-inner);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .meta-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+    .meta-val {
+      color: #fff;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    /* Job Card */
+    .job-card {
+      background: var(--bg-card);
+      border: 1.5px solid var(--gold);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 14px 34px rgba(0,0,0,0.5);
+    }
+    .job-card.pob {
+      border-color: var(--green);
+      box-shadow: 0 0 22px rgba(16, 185, 129, 0.2);
+    }
+    .job-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+    .ref-pill {
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--gold);
+      background: rgba(201, 184, 148, 0.16);
+      padding: 4px 9px;
+      border-radius: 5px;
+    }
+    .status-pill {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.06em;
+      background: rgba(56, 189, 248, 0.18);
+      color: #7dd3fc;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+    }
+    .route-box {
+      background: var(--bg-inner);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .route-point {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .route-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .nav-link {
+      color: #38bdf8;
+      text-decoration: none;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .act-btn {
+      background: #141c18;
+      border: 1.5px solid var(--border);
+      color: #fff;
+      padding: 13px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .act-btn:active {
+      transform: scale(0.98);
+    }
+    .act-btn.active-stage {
+      background: var(--green);
+      color: #042f1a;
+      border-color: var(--green);
+      font-weight: 900;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+    }
+    .act-btn.complete-btn {
+      grid-column: 1 / -1;
+      background: var(--gold);
+      color: #121715;
+      border-color: var(--gold);
+      font-size: 14px;
+      font-weight: 800;
+      padding: 14px;
+    }
+    /* Chat Box */
+    .chat-messages {
+      background: var(--bg-inner);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      max-height: 290px;
+      min-height: 160px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .msg-bubble {
+      max-width: 84%;
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .msg-driver {
+      align-self: flex-end;
+      background: var(--gold);
+      color: #121715;
+      font-weight: 600;
+      border-bottom-right-radius: 2px;
+    }
+    .msg-dispatch {
+      align-self: flex-start;
+      background: #1f2b25;
+      border: 1px solid var(--gold);
+      color: #fff;
+      border-bottom-left-radius: 2px;
+    }
+    .msg-meta {
+      font-size: 10px;
+      opacity: 0.75;
+      margin-top: 3px;
+    }
+    .quick-msg-bar {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 8px 0 4px;
+    }
+    .quick-chip {
+      background: #141c18;
+      border: 1px solid var(--border);
+      color: var(--gold);
+      padding: 6px 10px;
+      border-radius: 16px;
+      font-size: 11.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .chat-input-row input {
+      flex: 1;
+      background: var(--bg-inner);
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .btn-send {
+      background: var(--gold);
+      color: #121715;
+      border: none;
+      border-radius: 8px;
+      padding: 0 18px;
+      font-weight: 800;
+      font-size: 13.5px;
+      cursor: pointer;
+    }
+    /* Bottom Nav */
+    .driver-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #171f1b;
+      border-top: 1px solid var(--border);
+      padding: 8px 16px max(12px, env(safe-area-inset-bottom, 12px));
+      display: flex;
+      justify-content: space-around;
+      z-index: 200;
+    }
+    .d-tab {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 11.5px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+      position: relative;
+    }
+    .d-tab.active {
+      color: var(--gold);
+    }
+    .d-badge {
+      position: absolute;
+      top: -4px;
+      right: -8px;
+      background: var(--red);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+    /* Login Screen */
+    .login-wrap {
+      max-width: 420px;
+      margin: 40px auto;
+      padding: 0 16px;
+    }
+    .input-field {
+      margin-bottom: 14px;
+    }
+    .input-field label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .input-field input {
+      width: 100%;
+      background: var(--bg-inner);
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 13px 14px;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+    .toast-banner {
+      position: fixed;
+      bottom: calc(82px + env(safe-area-inset-bottom, 12px));
+      left: 16px;
+      right: 16px;
+      background: #171f1b;
+      border: 1.5px solid var(--gold);
+      color: #fff;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.8);
+      z-index: 1000;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="driver-header">
+    <div class="brand-row">
+      <span class="monogram">GA</span>
+      <span class="brand-sub">Chauffeur<br>Driver App</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button type="button" id="btn-duty-toggle" onclick="toggleDriverDuty()" style="background:rgba(16,185,129,0.16);border:1px solid #10b981;color:#34d399;padding:6px 11px;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;display:none;">
+        🟢 Available
+      </button>
+      <button type="button" id="btn-driver-logout" onclick="driverLogout()" style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;display:none;">
+        Sign Out
+      </button>
+    </div>
+  </header>
+
+  <!-- LOGIN VIEW (IF NO MAGIC TOKEN OR SAVED SESSION) -->
+  <div id="driver-login-view" class="login-wrap" style="display:none;">
+    <div class="card">
+      <div class="eyebrow">Verified Chauffeur Portal</div>
+      <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:22px;color:#fff;margin-bottom:8px;">Chauffeur Sign In</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.45;">
+        Enter your vehicle registration plate (or mobile number) and your 4-digit Driver PIN provided by GA Dispatch.
+      </p>
+      <div id="driver-login-err" style="display:none;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;padding:10px;border-radius:6px;font-size:12.5px;margin-bottom:14px;"></div>
+      <form onsubmit="submitDriverLogin(event)">
+        <div class="input-field">
+          <label>Vehicle Registration Plate or Mobile Phone</label>
+          <input type="text" id="dl-identifier" placeholder="e.g. HN76GYG or +44 7886 622082" required autocomplete="username">
+        </div>
+        <div class="input-field">
+          <label>4-Digit Chauffeur PIN</label>
+          <input type="password" id="dl-pin" placeholder="••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" style="width:100%;background:var(--gold);color:#121715;border:none;padding:14px;border-radius:6px;font-weight:800;font-size:14px;cursor:pointer;">
+          Sign In &amp; Save on This Phone
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- AUTHENTICATED CHAUFFEUR PORTAL -->
+  <main id="driver-portal-view" class="driver-main" style="display:none;">
+
+    <!-- 1. CHAUFFEUR & VERIFIED VEHICLE DETAILS CARD -->
+    <section class="card" id="sec-profile">
+      <div class="profile-banner">
+        <div>
+          <div class="eyebrow">Verified GA Chauffeur</div>
+          <div class="driver-name" id="dp-name">—</div>
+          <div class="vehicle-pill">
+            <span id="dp-vehicle">—</span>
+            <span class="plate-badge" id="dp-plate">—</span>
+          </div>
+        </div>
+        <span class="verified-badge" id="dp-verified">✓ Docs &amp; PCO Verified</span>
+      </div>
+      <div class="profile-meta-grid">
+        <div class="meta-box">
+          <div class="meta-label">Direct Mobile</div>
+          <div class="meta-val" id="dp-phone">—</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-label">PCO / Licence Ref</div>
+          <div class="meta-val" id="dp-pco">—</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-label">Capacity</div>
+          <div class="meta-val" id="dp-cap">—</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-label">Driver Rating</div>
+          <div class="meta-val" id="dp-rating">5.0 ★</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. ALLOCATED LIVE JOBS SECTION -->
+    <section id="sec-jobs">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="eyebrow" style="margin:0;">Allocated Dispatch Jobs (<span id="dp-job-count">0</span>)</div>
+        <span style="font-size:11px;color:var(--muted);" id="dp-sync-indicator">Live Sync Active</span>
+      </div>
+      <div id="dp-jobs-list" style="display:flex;flex-direction:column;gap:14px;">
+        <!-- Populated dynamically -->
+      </div>
+    </section>
+
+    <!-- 3. INSTANT MESSAGE DISPATCH SECTION -->
+    <section class="card" id="sec-chat">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div>
+          <div class="eyebrow" style="margin:0;">Direct Dispatch Comms</div>
+          <h3 style="font-size:15px;color:#fff;">💬 Message Dispatch Control</h3>
+        </div>
+        <a href="tel:+447886622082" style="background:rgba(201,184,148,0.15);border:1px solid var(--gold);color:var(--gold);text-decoration:none;padding:6px 10px;border-radius:6px;font-size:11.5px;font-weight:700;">
+          📞 Call Control
+        </a>
+      </div>
+
+      <div class="chat-messages" id="dp-chat-box">
+        <div style="text-align:center;color:var(--muted);font-size:12px;margin:auto;">No messages yet. Tap a quick message or type below to alert Dispatch immediately.</div>
+      </div>
+
+      <div class="quick-msg-bar">
+        <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Arrived at pickup location — nameboard active.')">📍 At Pickup</button>
+        <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Passenger on board (POB), departing now.')">🟢 POB Departing</button>
+        <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Heavy traffic en route — keeping passenger updated.')">🚦 Heavy Traffic</button>
+        <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Waiting at terminal arrivals meeting point.')">✈️ At Terminal</button>
+        <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Passenger dropped off safely. Ready for next job.')">🏁 Dropped Off</button>
+      </div>
+
+      <form class="chat-input-row" onsubmit="submitDriverMessage(event)">
+        <input type="text" id="dp-msg-input" placeholder="Message Dispatch immediately..." autocomplete="off">
+        <button type="submit" class="btn-send">Send ↗</button>
+      </form>
+    </section>
+
+  </main>
+
+  <nav class="driver-nav" id="driver-bottom-nav" style="display:none;">
+    <button type="button" class="d-tab active" onclick="scrollToSection('sec-jobs', this)">
+      <span style="font-size:18px;">🚘</span>
+      <span>My Jobs</span>
+      <span class="d-badge" id="nav-job-badge" style="display:none;">0</span>
+    </button>
+    <button type="button" class="d-tab" onclick="scrollToSection('sec-chat', this)">
+      <span style="font-size:18px;">💬</span>
+      <span>Message Dispatch</span>
+      <span class="d-badge" id="nav-msg-badge" style="display:none;">0</span>
+    </button>
+    <button type="button" class="d-tab" onclick="scrollToSection('sec-profile', this)">
+      <span style="font-size:18px;">🪪</span>
+      <span>My Details</span>
+    </button>
+  </nav>
+
+  <div class="toast-banner" id="driver-toast"></div>
+
+  <script>
+    const DriverApp = {
+      token: '',
+      chauffeur: null,
+      jobs: [],
+      messages: [],
+      knownJobIds: new Set(),
+      knownMsgIds: new Set(),
+      initialLoaded: false,
+      audioCtx: null
+    };
+
+    function getDriverAudioCtx() {
+      if (!DriverApp.audioCtx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) DriverApp.audioCtx = new Ctx();
+      }
+      if (DriverApp.audioCtx && DriverApp.audioCtx.state === 'suspended') {
+        DriverApp.audioCtx.resume().catch(() => {});
+      }
+      return DriverApp.audioCtx;
+    }
+    window.addEventListener('click', () => getDriverAudioCtx(), { once: true });
+
+    function playDriverChime() {
+      const ctx = getDriverAudioCtx();
+      if (!ctx) return;
+      [587.33, 880.0].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = ctx.currentTime + idx * 0.16;
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.38);
+      });
+    }
+
+    function showDriverToast(msg) {
+      const el = document.getElementById('driver-toast');
+      if (!el) return;
+      el.textContent = msg;
+      el.style.display = 'block';
+      clearTimeout(DriverApp._toastTimer);
+      DriverApp._toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
+
+    function esc(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function scrollToSection(id, btn) {
+      document.querySelectorAll('.d-tab').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    (function initDriverApp() {
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('token');
+      if (urlToken) {
+        DriverApp.token = urlToken;
+        localStorage.setItem('ga_driver_app_token', urlToken);
+      } else {
+        DriverApp.token = localStorage.getItem('ga_driver_app_token') || '';
+      }
+
+      if (DriverApp.token) {
+        loadDriverPortal();
+      } else {
+        document.getElementById('driver-login-view').style.display = 'block';
+      }
+
+      setInterval(() => {
+        if (DriverApp.token) loadDriverPortal(true);
+      }, 3500);
+    })();
+
+    async function submitDriverLogin(e) {
+      e.preventDefault();
+      const errEl = document.getElementById('driver-login-err');
+      errEl.style.display = 'none';
+      const identifier = document.getElementById('dl-identifier').value.trim();
+      const pin = document.getElementById('dl-pin').value.trim();
+      try {
+        const res = await fetch('/api/driver/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, pin })
+        });
+        const data = await res.json();
+        if (data.success && data.driver_token) {
+          DriverApp.token = data.driver_token;
+          localStorage.setItem('ga_driver_app_token', data.driver_token);
+          document.getElementById('driver-login-view').style.display = 'none';
+          loadDriverPortal();
+        } else {
+          errEl.textContent = data.error || 'Invalid registration plate/phone or PIN.';
+          errEl.style.display = 'block';
+        }
+      } catch (err) {
+        errEl.textContent = 'Connection error. Please try again.';
+        errEl.style.display = 'block';
+      }
+    }
+
+    function driverLogout() {
+      if (!confirm('Sign out of your Chauffeur App on this phone?')) return;
+      localStorage.removeItem('ga_driver_app_token');
+      DriverApp.token = '';
+      window.location.href = '/driver';
+    }
+
+    async function loadDriverPortal(silent = false) {
+      try {
+        const res = await fetch(`/api/driver/me?token=${encodeURIComponent(DriverApp.token)}`);
+        if (res.status === 401 || res.status === 404) {
+          localStorage.removeItem('ga_driver_app_token');
+          DriverApp.token = '';
+          document.getElementById('driver-portal-view').style.display = 'none';
+          document.getElementById('driver-bottom-nav').style.display = 'none';
+          document.getElementById('driver-login-view').style.display = 'block';
+          return;
+        }
+        const data = await res.json();
+        if (!data.chauffeur) return;
+
+        DriverApp.chauffeur = data.chauffeur;
+        DriverApp.jobs = data.jobs || [];
+        DriverApp.messages = data.messages || [];
+
+        document.getElementById('driver-login-view').style.display = 'none';
+        document.getElementById('driver-portal-view').style.display = 'flex';
+        document.getElementById('driver-bottom-nav').style.display = 'flex';
+        document.getElementById('btn-duty-toggle').style.display = 'inline-block';
+        document.getElementById('btn-driver-logout').style.display = 'inline-block';
+
+        // Check for newly allocated job or new message from Dispatch
+        if (DriverApp.initialLoaded) {
+          DriverApp.jobs.forEach(j => {
+            if (!DriverApp.knownJobIds.has(j.id)) {
+              playDriverChime();
+              showDriverToast(`🚨 New Job Allocated: ${j.confirmation_code} (${j.customer_name})`);
+            }
+          });
+          DriverApp.messages.forEach(m => {
+            if (!DriverApp.knownMsgIds.has(m.id) && m.sender_role === 'DISPATCH') {
+              playDriverChime();
+              showDriverToast(`💬 Dispatch: ${m.message}`);
+            }
+          });
+        }
+        DriverApp.knownJobIds = new Set(DriverApp.jobs.map(j => j.id));
+        DriverApp.knownMsgIds = new Set(DriverApp.messages.map(m => m.id));
+        DriverApp.initialLoaded = true;
+
+        renderDriverProfile();
+        renderDriverJobs();
+        renderDriverChat();
+      } catch (err) {}
+    }
+
+    function renderDriverProfile() {
+      const ch = DriverApp.chauffeur;
+      if (!ch) return;
+      document.getElementById('dp-name').textContent = ch.name;
+      document.getElementById('dp-vehicle').textContent = ch.vehicle_model;
+      document.getElementById('dp-plate').textContent = ch.license_plate;
+      document.getElementById('dp-phone').textContent = ch.phone || '—';
+      document.getElementById('dp-pco').textContent = ch.pco_license || 'Verified On File';
+      document.getElementById('dp-cap').textContent = `${ch.passenger_capacity || 4} Pax • ${ch.luggage_capacity || 2} Bags`;
+      document.getElementById('dp-rating').textContent = `${ch.rating || '5.0'} ★ (${ch.trips_count || 0} Runs)`;
+
+      const verEl = document.getElementById('dp-verified');
+      if (Number(ch.docs_verified) !== 0) {
+        verEl.textContent = '✓ Docs & PCO Verified';
+        verEl.style.background = 'rgba(16, 185, 129, 0.16)';
+        verEl.style.color = '#34d399';
+      } else {
+        verEl.textContent = '⏳ Pending Verification';
+        verEl.style.background = 'rgba(245, 158, 11, 0.16)';
+        verEl.style.color = '#fbbf24';
+      }
+
+      const dutyBtn = document.getElementById('btn-duty-toggle');
+      const isAvail = ch.status === 'AVAILABLE';
+      dutyBtn.textContent = isAvail ? '🟢 Available' : '🚗 On Trip';
+      dutyBtn.style.borderColor = isAvail ? '#10b981' : '#f59e0b';
+      dutyBtn.style.color = isAvail ? '#34d399' : '#fbbf24';
+    }
+
+    async function toggleDriverDuty() {
+      if (!DriverApp.chauffeur) return;
+      const nextStatus = DriverApp.chauffeur.status === 'AVAILABLE' ? 'ON_TRIP' : 'AVAILABLE';
+      try {
+        await fetch('/api/driver/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: DriverApp.token, status: nextStatus })
+        });
+        showDriverToast(`Status updated to ${nextStatus === 'AVAILABLE' ? 'Available' : 'On Trip'}`);
+        loadDriverPortal(true);
+      } catch (e) {}
+    }
+
+    function renderDriverJobs() {
+      const list = document.getElementById('dp-jobs-list');
+      const countEl = document.getElementById('dp-job-count');
+      const navBadge = document.getElementById('nav-job-badge');
+      const activeJobs = DriverApp.jobs.filter(j => j.status !== 'COMPLETED' && j.status !== 'CANCELLED');
+      countEl.textContent = activeJobs.length;
+      if (activeJobs.length > 0) {
+        navBadge.style.display = 'inline-block';
+        navBadge.textContent = activeJobs.length;
+      } else {
+        navBadge.style.display = 'none';
+      }
+
+      if (activeJobs.length === 0) {
+        list.innerHTML = `
+          <div class="card" style="text-align:center;padding:30px 18px;color:var(--muted);">
+            <div style="font-size:32px;margin-bottom:8px;">🟢</div>
+            <div style="color:#fff;font-weight:700;font-size:15px;margin-bottom:4px;">Standby — Ready for Dispatch</div>
+            <div style="font-size:12.5px;">As soon as Dispatch allocates a booking to you, it will appear here automatically with an audio chime.</div>
+          </div>
+        `;
+        return;
+      }
+
+      const stageButtons = [
+        { action: 'EN_ROUTE_PICKUP', match: ['EN_ROUTE'], label: '🚗 En Route' },
+        { action: 'ARRIVED', match: ['ARRIVED'], label: '📍 Arrived' },
+        { action: 'ON_BOARD', match: ['ON_BOARD'], label: '🟢 POB (On Board)' },
+        { action: 'NEXT_STOP', match: ['NEXT_STOP'], label: '➡️ Next Stop' },
+        { action: 'DROPPED_OFF', match: ['DROPPED_OFF'], label: '🛬 Dropped Off' },
+        { action: 'COMPLETED', match: ['COMPLETED'], label: '🏁 Job is Complete', fullWidth: true }
+      ];
+
+      list.innerHTML = activeJobs.map(b => {
+        const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
+        const mapsPu = `https://maps.apple.com/?daddr=${encodeURIComponent(b.pickup_address || '')}`;
+        const mapsDo = `https://maps.apple.com/?daddr=${encodeURIComponent(b.dropoff_address || '')}`;
+
+        const btnsHtml = stageButtons.map(st => {
+          const isCurrent = st.match.includes(b.status);
+          const cls = `act-btn ${isCurrent ? 'active-stage' : ''} ${st.fullWidth ? 'complete-btn' : ''}`;
+          return `<button type="button" class="${cls}" onclick="triggerDriverStage('${esc(b.id)}', '${st.action}', '${esc(st.label)}')">${st.label}${isCurrent ? ' ✓' : ''}</button>`;
+        }).join('');
+
+        return `
+          <div class="job-card ${b.status === 'ON_BOARD' ? 'pob' : ''}">
+            <div class="job-top">
+              <div>
+                <span class="ref-pill">${esc(b.confirmation_code)}</span>
+                <span style="font-size:13px;font-weight:700;color:#fff;margin-left:8px;">📅 ${esc(b.pickup_datetime)}</span>
+              </div>
+              <span class="status-pill">${esc(b.status.replace('_', ' '))}</span>
+            </div>
+
+            <div>
+              <div style="font-size:18px;font-weight:700;color:#fff;">👤 ${esc(b.customer_name)}</div>
+              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:13px;">
+                <a href="tel:${cleanPhone}" style="color:var(--gold);text-decoration:none;font-weight:700;">📞 ${esc(b.customer_phone)}</a>
+                <a href="https://wa.me/${cleanPhone.replace('+','')}" target="_blank" style="color:#4ade80;text-decoration:none;font-weight:700;">💬 WhatsApp Passenger</a>
+                <span style="color:var(--muted);">👥 ${b.passenger_count || 1} Pax • 🧳 ${b.luggage_count || 0} Bags</span>
+              </div>
+            </div>
+
+            <div class="route-box">
+              <div class="route-point">
+                <div class="route-head">
+                  <span style="color:#4ade80;">🟢 Collection Point</span>
+                  <a href="${mapsPu}" target="_blank" class="nav-link">Navigate ↗</a>
+                </div>
+                <div style="font-size:13.5px;color:#fff;font-weight:500;">${esc(b.pickup_address)}</div>
+              </div>
+              <div style="border-top:1px solid var(--border);"></div>
+              <div class="route-point">
+                <div class="route-head">
+                  <span style="color:#93c5fd;">🏁 Destination</span>
+                  <a href="${mapsDo}" target="_blank" class="nav-link">Navigate ↗</a>
+                </div>
+                <div style="font-size:13.5px;color:#fff;font-weight:500;">${esc(b.dropoff_address)}</div>
+              </div>
+              ${b.flight_number ? `<div style="font-size:12.5px;color:#38bdf8;font-weight:700;">✈️ Flight: ${esc(b.flight_number)}</div>` : ''}
+              ${b.special_requests ? `<div style="font-size:12.5px;color:#fde68a;">📝 Notes: ${esc(b.special_requests)}</div>` : ''}
+            </div>
+
+            <div>
+              <div class="eyebrow" style="margin-bottom:6px;">Tap Live Status (Updates Dispatch Screen Instantly)</div>
+              <div class="action-grid">
+                ${btnsHtml}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function triggerDriverStage(bookingId, action, labelText) {
+      if (action === 'COMPLETED' && !confirm('Confirm passenger is dropped off and mark this job as COMPLETE?')) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/driver/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: DriverApp.token,
+            booking_id: bookingId,
+            action: action
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          playDriverChime();
+          showDriverToast(`✓ Live Status Sent to Dispatch: ${labelText}`);
+          loadDriverPortal(true);
+        } else {
+          alert(data.error || 'Could not update status.');
+        }
+      } catch (err) {
+        alert('Network error updating status.');
+      }
+    }
+
+    function renderDriverChat() {
+      const box = document.getElementById('dp-chat-box');
+      if (!box) return;
+      if (!DriverApp.messages || DriverApp.messages.length === 0) {
+        box.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;margin:auto;">No messages yet. Tap a quick message or type below to alert Dispatch immediately.</div>`;
+        return;
+      }
+      box.innerHTML = DriverApp.messages.map(m => {
+        const isDriver = m.sender_role === 'DRIVER';
+        return `
+          <div class="msg-bubble ${isDriver ? 'msg-driver' : 'msg-dispatch'}">
+            <div>${esc(m.message)}</div>
+            <div class="msg-meta">${isDriver ? 'You' : '🛡️ Dispatch Control'} • ${esc((m.created_at || '').slice(11, 16))}</div>
+          </div>
+        `;
+      }).join('');
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function sendQuickDriverMessage(text) {
+      const activeJob = DriverApp.jobs.find(j => j.status !== 'COMPLETED' && j.status !== 'CANCELLED');
+      try {
+        const res = await fetch('/api/driver/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: DriverApp.token,
+            booking_id: activeJob ? activeJob.id : null,
+            message: text
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showDriverToast('💬 Message delivered to Dispatch!');
+          loadDriverPortal(true);
+        }
+      } catch (e) {}
+    }
+
+    async function submitDriverMessage(e) {
+      e.preventDefault();
+      const inp = document.getElementById('dp-msg-input');
+      const text = inp.value.trim();
+      if (!text) return;
+      inp.value = '';
+      await sendQuickDriverMessage(text);
+    }
+  </script>
+</body>
+</html>
