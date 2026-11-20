@@ -2858,13 +2858,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         large_cases = int(payload.get("large_cases", 1) if "large_cases" in payload else 1)
         medium_cases = int(payload.get("medium_cases", 0) or 0)
         hand_luggage = int(payload.get("hand_luggage", 1) if "hand_luggage" in payload else 1)
-        if norm_veh == "mercedes_s_class":
+        if normalized_vehicle == "mercedes_s_class":
             large_cases = min(large_cases, 1)
             medium_cases = 0
             hand_luggage = min(hand_luggage, 1)
         passenger_count = int(payload.get("passenger_count", payload.get("passengers", 1)) or 1)
         luggage_count = int(payload.get("luggage_count", large_cases + medium_cases) if "luggage_count" in payload else (large_cases + medium_cases))
-        if norm_veh == "mercedes_s_class":
+        if normalized_vehicle == "mercedes_s_class":
             luggage_count = min(max(luggage_count, large_cases), 1)
 
         cursor.execute("""
