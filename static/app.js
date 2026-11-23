@@ -708,7 +708,9 @@ function runDispatchJobAction(bookingId, select) {
   select.value = '';
   const actions = {
     allocate: openAllocateModal,
-    unallocate: id => inlineAllocateVehicle(id, 'UNALLOCATE'),
+    unallocate: id => {
+      if (confirm('Remove the driver and leave this booking unallocated?')) inlineAllocateVehicle(id, 'UNALLOCATE');
+    },
     edit: openEditBookingModal,
     email: sendBookingConfirmationEmail,
     invoice: requestTaxInvoice,
@@ -827,7 +829,7 @@ function renderCdsDispatchTable(filtered) {
           <select class="dispatch-job-action" aria-label="Actions for ${escapeHtml(b.confirmation_code)}" onchange="runDispatchJobAction('${b.id}', this)">
             <option value="">Actions</option>
             <option value="allocate">Allocate driver and vehicle</option>
-            ${b.chauffeur_id ? '<option value="unallocate">Remove driver from booking</option>' : ''}
+            ${b.chauffeur_id ? '<option value="unallocate">Remove driver (leave unallocated)</option>' : ''}
             <option value="edit">Edit booking</option>
             <option value="email">Send confirmation email</option>
             <option value="invoice">Request tax invoice</option>
@@ -2075,7 +2077,7 @@ function renderOutboxTable() {
 
   tbody.innerHTML = App.confirmations.map(c => {
     const isFailed = String(c.status || '').toUpperCase().includes('FAIL');
-    const statusLabel = isFailed ? 'Failed' : 'Delivered';
+    const statusLabel = isFailed ? 'Failed' : (c.status === 'PENDING' ? 'Sending' : 'Delivered');
     const statusColor = isFailed ? 'var(--status-red, #ef4444)' : 'var(--status-green)';
     return `
     <tr>
@@ -2393,12 +2395,18 @@ function updateDispatchAlarm() {
   const driverMessages = (App.driverMessages || []).filter(message => message.sender_role === 'DRIVER' && !Number(message.is_read)).length;
   const customers = App.customerUnread || 0;
   banner.hidden = !(updates.length || driverMessages || customers);
-  document.getElementById('dispatch-alert-text').textContent = [
-    updates.length ? `Booking updates: ${updates.map(alert => [alert.confirmation_code, alert.details].filter(Boolean).join(' · ')).join(' • ')}` : '',
-    driverMessages ? `${driverMessages} driver message(s)` : '',
-    customers ? `${customers} customer message(s)` : ''
-  ].filter(Boolean).join(' · ');
-  document.getElementById('dispatch-alert-ack').hidden = updates.length === 0;
+  const latest = updates[0];
+  const messageCount = driverMessages + customers;
+  const title = messageCount && !latest
+    ? `${messageCount} new ${messageCount === 1 ? 'message' : 'messages'}`
+    : `${updates.length} booking ${updates.length === 1 ? 'update' : 'updates'}`;
+  const line = latest ? `${latest.confirmation_code} · ${shortBookingAlert(latest)}` : '';
+  const heading = document.getElementById('dispatch-alert-heading');
+  const description = document.getElementById('dispatch-alert-text');
+  if (heading.textContent !== title) heading.textContent = title;
+  if (description.textContent !== line) description.textContent = line;
+  document.getElementById('dispatch-alert-ack').hidden = !latest;
+  document.getElementById('dispatch-alert-ack-all').hidden = updates.length < 2;
   document.getElementById('dispatch-alert-drivers').hidden = driverMessages === 0;
   document.getElementById('dispatch-alert-customers').hidden = customers === 0;
   const shouldRing = App.audioEnabled && (!banner.hidden || App.urgentBookings.length > 0);
@@ -2412,8 +2420,19 @@ function updateDispatchAlarm() {
   }
 }
 
-async function acknowledgeDispatchAlerts() {
-  const keys = App.pendingAlerts.map(alert => alert.key);
+function shortBookingAlert(alert) {
+  const labels = {
+    BOOKING_CREATED: 'New booking',
+    AMENDMENT_REQUESTED_2H: 'Amendment needs approval',
+    CUSTOMER_AMENDMENT_APPROVED: 'Amendment approved'
+  };
+  if (labels[alert.action]) return labels[alert.action];
+  const details = String(alert.details || '');
+  return details.startsWith('Updated ') && details.length <= 100 ? details : 'Booking details changed';
+}
+
+async function acknowledgeDispatchAlerts(all = false) {
+  const keys = (all ? App.pendingAlerts : App.pendingAlerts.slice(0, 1)).map(alert => alert.key);
   try {
     const response = await fetch('/api/dispatch/ack-alerts', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({keys})

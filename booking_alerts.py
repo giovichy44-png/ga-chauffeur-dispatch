@@ -22,7 +22,7 @@ def pending(conn, chauffeur_id=None):
               {where_driver}
             GROUP BY b.id
         )
-        SELECT 'booking:' || alert_id AS key, confirmation_code, 'Booking update' AS label, action_logs.details
+        SELECT 'booking:' || alert_id AS key, confirmation_code, 'Booking update' AS label, action_logs.action, action_logs.details
         FROM latest JOIN action_logs ON action_logs.id = latest.alert_id
         WHERE NOT EXISTS (
             SELECT 1 FROM alert_receipts r WHERE r.scope = ? AND r.alert_key = 'booking:' || latest.alert_id
@@ -39,6 +39,7 @@ def pending(conn, chauffeur_id=None):
               )
         """, (chauffeur_id, scope)).fetchall()
         output.extend(dict(row) for row in messages)
+    output.sort(key=lambda alert: int(alert["key"].split(":")[1]), reverse=True)
     return output
 
 

@@ -397,7 +397,9 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Private Dispatch Portal | GA Chauffeur Services</title>
+  <title>Private Dispatch Portal | GA Chauffeurs</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#121715">
@@ -1172,11 +1174,11 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
         driver_details = f"""
           <h2 style="margin:0 0 10px;color:#c9b894;font-size:17px;">Chauffeur and vehicle details</h2>
           <p style="margin:0 0 5px;font-size:18px;"><strong>{esc(chauffeur_first_name(chauffeur))}</strong></p>
-          <p style="margin:0 0 12px;">{esc(display_vehicle["name"])}</p>
+          <p style="margin:0 0 8px;"><a href="tel:{esc(dial)}" style="color:#e2ce9f;">{esc(phone)}</a></p>
+          <p style="margin:0 0 7px;">{esc(display_vehicle["name"])}</p>
           <p style="margin:0 0 2px;color:#cfd6d1;">Registration</p>
-          <div style="display:inline-block;padding:5px 10px;margin-bottom:10px;background:#f2dfae;color:#141a17;
-                      font:700 28px/1.15 Arial,sans-serif;letter-spacing:1.5px;border-radius:4px;">{esc(chauffeur.get("license_plate"))}</div>
-          <p style="margin:0;">Chauffeur phone <a href="tel:{esc(dial)}" style="color:#e2ce9f;">{esc(phone)}</a></p>
+          <div style="display:inline-block;padding:4px 8px;background:#f2dfae;color:#141a17;
+                      font:700 23px/1.15 Arial,sans-serif;letter-spacing:1.5px;border-radius:4px;">{esc(chauffeur.get("license_plate"))}</div>
         """
     else:
         driver_details = f'<p style="margin:0;"><strong>{esc(vehicle["name"])}</strong><br>Your chauffeur details will follow.</p>'
@@ -1202,7 +1204,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     </td></tr>
     <tr><td style="padding:18px 16px;">
       <p style="margin:0 0 14px;">Dear {esc(customer_name)},</p>
-      <p style="margin:0 0 16px;">Thank you for booking with GA Chauffeur Services Limited.</p>
+      <p style="margin:0 0 16px;">Thank you for booking with GA Chauffeurs.</p>
       <div style="margin:0 0 14px;padding:10px;background:#fff;border:1px solid #c9b894;border-radius:6px;text-align:center;">
         <img src="{esc(display_vehicle.get("image_url"))}" alt="" width="240" style="display:block;width:100%;max-width:240px;height:auto;margin:auto;">
       </div>
@@ -1232,12 +1234,12 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
 def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_addr, pickup_dt, vehicle_name, net_fare, vat_amt, total_fare, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, flight=None, special_requests="", parking_fee=0.0, dropoff_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, duration_min=0, hours_booked=0, distance_mi=0.0, chauffeur=None, customer_email=""):
     pickup_time, _ = format_pickup_and_dropoff_times(pickup_dt)
     lines = [f"Booking confirmation · {booking_ref}", "", f"Dear {customer_name},", "",
-             "Thank you for booking with GA Chauffeur Services Limited.", ""]
+             "Thank you for booking with GA Chauffeurs.", ""]
     if chauffeur:
         vehicle_tier = normalize_vehicle_tier(chauffeur.get("vehicle_class") or vehicle_name)
         lines.extend(["Chauffeur and vehicle details", chauffeur_first_name(chauffeur),
-                      VEHICLE_CONFIGS[vehicle_tier]["name"], f"Registration: {chauffeur.get('license_plate', '')}",
-                      f"Chauffeur phone: {chauffeur.get('phone', '')}", ""])
+                      f"Chauffeur phone: {chauffeur.get('phone', '')}", VEHICLE_CONFIGS[vehicle_tier]["name"],
+                      f"Registration: {chauffeur.get('license_plate', '')}", ""])
     else:
         lines.extend([vehicle_name, "Your chauffeur details will follow.", ""])
     lines.extend([f"Pickup: {confirmation_pickup(pickup_addr)}", pickup_time, f"Destination: {dropoff_addr}"])
@@ -1250,6 +1252,60 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
     )), "", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
     "GA Chauffeur Services Limited", COMPANY_PHONE, FROM_EMAIL, COMPANY_WEBSITE])
     return "\n".join(lines)
+
+
+def build_arrival_email(booking, chauffeur):
+    def esc(value):
+        return html.escape(str(value or ""), quote=True)
+
+    vehicle = VEHICLE_CONFIGS[normalize_vehicle_tier(chauffeur.get("vehicle_class") or booking["vehicle_class"])]
+    pickup_time, _ = format_pickup_and_dropoff_times(booking["pickup_datetime"])
+    phone = str(chauffeur.get("phone") or "").strip()
+    dial = re.sub(r"[^+0-9]", "", phone)
+    if dial.startswith("0"):
+        dial = "+44" + dial[1:]
+    wa_phone = dial.lstrip("+")
+    actions = []
+    if wa_phone.isdigit():
+        actions = [("Call", f"tel:{dial}"), ("Text", f"sms:{dial}"), ("WhatsApp", f"https://wa.me/{wa_phone}")]
+    buttons = "".join(
+        f'<a href="{esc(href)}" style="display:inline-block;margin:4px 4px 0 0;background:#c9b894;'
+        f'color:#121715;padding:9px 13px;border-radius:4px;text-decoration:none;font-weight:700;">{label}</a>'
+        for label, href in actions
+    )
+    customer = booking.get("customer_name") or "Passenger"
+    service = booking.get("service_type") or "Chauffeur service"
+    pickup = confirmation_pickup(booking["pickup_address"])
+    destination = booking["dropoff_address"]
+    subject = f"Your chauffeur has arrived · {booking['confirmation_code']}"
+    text = (f"Dear {customer},\n\nYour chauffeur has arrived.\n\nPickup: {pickup}\n"
+            f"Scheduled pickup: {pickup_time}\nDestination: {destination}\nService: {service}\n"
+            f"{vehicle['name']} · {chauffeur_first_name(chauffeur)}\n"
+            + (f"Chauffeur phone: {phone}\n" if phone else "")
+            + "".join(f"{label}: {href}\n" for label, href in actions))
+    markup = f"""
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your chauffeur has arrived</title></head>
+<body style="margin:0;padding:12px;background:#121715;color:#f1f3ee;font:15px/1.45 Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:auto;background:#171f1b;border:1px solid #49564d;border-radius:8px;">
+    <tr><td style="padding:16px;text-align:center;color:#c9b894;font:23px Georgia,serif;border-bottom:1px solid #49564d;">GA Chauffeurs</td></tr>
+    <tr><td style="padding:16px;">
+      <p style="margin:0 0 8px;">Dear {esc(customer)},</p>
+      <h1 style="font-size:20px;margin:0 0 14px;">Your chauffeur has arrived</h1>
+      <p style="margin:4px 0;"><strong>Pickup</strong> · {esc(pickup)}</p>
+      <p style="margin:4px 0;">{esc(pickup_time)}</p>
+      <p style="margin:4px 0;"><strong>Destination</strong> · {esc(destination)}</p>
+      <p style="margin:4px 0 12px;"><strong>Service</strong> · {esc(service)}</p>
+      <div style="padding:8px;background:#fff;border-radius:5px;text-align:center;">
+        <img src="{esc(vehicle.get('image_url'))}" alt="{esc(vehicle['name'])}" width="200" style="display:block;width:100%;max-width:200px;height:auto;margin:auto;">
+      </div>
+      <p style="margin:10px 0 2px;">{esc(vehicle['name'])} · {esc(chauffeur_first_name(chauffeur))}</p>
+      <p style="margin:0 0 4px;">{esc(phone)}</p>
+      {buttons}
+    </td></tr>
+  </table>
+</body></html>"""
+    return subject, markup, text
 
 
 def build_owner_booking_alert_html(booking_ref, customer_name, customer_phone, customer_email, pickup_addr, dropoff_addr, pickup_dt, vehicle_tier, net_fare, vat_amt, total_fare, service_type="Airport Transfer", passengers=1, large_cases=0, medium_cases=0, hand_luggage=0, flight=None, special_requests="", parking_fee=0.0, dropoff_fee=0.0, congestion_charge=0.0, card_brand=None, card_last4=None, card_auth_code=None, payment_status="PRE_AUTHORIZED", source="WEBSITE_GACHAUFFEURS", duration_min=0, hours_booked=0, distance_mi=0.0):
@@ -1513,7 +1569,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         raw_path = (self.path or "")
         path_only = raw_path.split("?")[0].lower()
-        if ("?v=" in raw_path and path_only.endswith((".js", ".css"))) or path_only.endswith((".png", ".jpg", ".webp", ".svg", ".ico")):
+        if path_only in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+            self.send_header("Cache-Control", "public, max-age=3600")
+        elif ("?v=" in raw_path and path_only.endswith((".js", ".css"))) or path_only.endswith((".png", ".jpg", ".webp", ".svg", ".ico")):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         elif path_only.endswith((".html", ".js", ".css", "/")) or path_only in ("", "/"):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -1631,6 +1689,22 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(f"Error serving file: {e}".encode("utf-8"))
 
+    def serve_apple_touch_icon(self, *, head_only=False):
+        with open(os.path.join(STATIC_DIR, "driver-icon-180.png"), "rb") as image:
+            body = image.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(body)
+
+    def do_HEAD(self):
+        if urlparse(self.path).path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+            self.serve_apple_touch_icon(head_only=True)
+            return
+        super().do_HEAD()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -1643,6 +1717,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             or host in ("localhost", "127.0.0.1")
             or host.startswith("192.168.")
         )
+
+        if path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+            self.serve_apple_touch_icon()
+            return
 
         # Public Customer Self-Service Edit Booking Page (available on both website and dispatch domain)
         if path.rstrip("/") == "/manage-booking":
@@ -1754,6 +1832,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     table: [dict(row) for row in conn.execute(f"SELECT * FROM {table}")]
                     for table in dispatch_restore.TABLES
                 }
+                snapshot["fleet_profiles"] = [dict(row) for row in conn.execute(
+                    "SELECT " + ", ".join(dispatch_restore.FLEET_FIELDS) + " FROM chauffeurs"
+                )]
                 snapshot["fleet_assignments"] = [dict(row) for row in conn.execute(
                     "SELECT id, status, active_booking_id FROM chauffeurs"
                 )]
@@ -3711,11 +3792,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
   <div class="card">
     <div class="brand">
       <span class="brand-ga">GA</span>
-      <div style="font-size:11px;color:#c9b894;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">GA Chauffeur Services Limited</div>
+      <div style="font-size:11px;color:#c9b894;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">GA Chauffeurs</div>
     </div>
 
     <h1>Edit or Amend Your Booking</h1>
-    <p style="font-size:13px;color:#aab5ae;margin-top:0;">Enter your Booking Reference and Email to view or amend your reservation.</p>
 
     <div class="grid2">
       <div>
@@ -3990,7 +4070,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         conn = db.get_connection()
         cursor = conn.cursor()
-        if acting_driver_id:
+        if acting_driver_id or action == "ARRIVED":
             cursor.execute("BEGIN IMMEDIATE")
 
         cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
@@ -4037,6 +4117,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         new_booking_status = booking["status"]
         sms_alert = None
+        arrival_email = None
         actor = "Driver · " + chauffeur["name"] if acting_driver_id and chauffeur else "Dispatch account"
 
         if action in ("ACCEPT", "CONFIRMED"):
@@ -4055,6 +4136,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                                (booking["pickup_lat"], booking["pickup_lng"], "At Pickup Location", chauffeur_id))
             details = f"Chauffeur arrived at {booking['pickup_address']}. Meet-and-greet nameboard active."
             sms_alert = f"GA Chauffeurs: Chauffeur {chauffeur['name'] if chauffeur else ''} has arrived at {booking['pickup_address']}. Vehicle: {chauffeur['vehicle_model'] if chauffeur else ''} [{chauffeur['license_plate'] if chauffeur else ''}]."
+            recipient = str(booking.get("customer_email") or "").strip()
+            if chauffeur and "@" in recipient:
+                arrival_id = "ARRIVAL-" + booking_id
+                subject, markup, text = build_arrival_email(booking, chauffeur)
+                cursor.execute("""
+                    INSERT OR IGNORE INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
+                    VALUES (?, ?, 'EMAIL', ?, ?, ?, 'PENDING', ?)
+                """, (arrival_id, booking_id, recipient, subject, text, now_str))
+                if cursor.rowcount:
+                    arrival_email = (arrival_id, recipient, subject, markup, text)
+
 
         elif action == "ON_BOARD":
             new_booking_status = "ON_BOARD"
@@ -4182,6 +4274,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.close()
 
         result = {"success": True, "action": action, "booking_status": new_booking_status, "details": details}
+        if arrival_email:
+            arrival_id, recipient, subject, markup, text = arrival_email
+            delivered, _ = send_smtp_email(recipient, subject, markup, text)
+            with db.get_connection() as receipt_conn:
+                receipt_conn.execute("UPDATE confirmations SET status = ? WHERE id = ?",
+                                     ("DELIVERED" if delivered else "FAILED", arrival_id))
+            result["arrival_email_sent"] = delivered
         if action == "ACCEPT" and acting_driver_id:
             _, delivery_status = self._send_booking_confirmation(booking_id, {}, accepted_driver=True)
             result["confirmation_sent"] = delivery_status == 200
@@ -4863,37 +4962,41 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 ch_row = None
                 if booking.get("chauffeur_id"):
                     ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (booking["chauffeur_id"],)).fetchone()
-                html_body = build_luxury_email_html(
-                    booking_ref=booking["confirmation_code"],
-                    customer_name=booking["customer_name"],
-                    pickup_addr=booking["pickup_address"],
-                    dropoff_addr=booking["dropoff_address"],
-                    pickup_dt=booking["pickup_datetime"],
-                    vehicle_tier=booking["vehicle_class"],
-                    net_fare=booking.get("fare_amount", 165.0),
-                    vat_amt=booking.get("vat_amount"),
-                    total_fare=booking.get("total_fare"),
-                    service_type=booking.get("service_type", "Airport Transfer"),
-                    passengers=booking.get("passenger_count", 1),
-                    large_cases=booking.get("large_cases", 0),
-                    medium_cases=booking.get("medium_cases", 0),
-                    hand_luggage=booking.get("hand_luggage", 0),
-                    chauffeur=dict(ch_row) if ch_row else None,
-                    flight=booking.get("flight_number"),
-                    parking_fee=booking.get("parking_fee", 0),
-                    dropoff_fee=booking.get("dropoff_fee", 0),
-                    congestion_charge=booking.get("congestion_charge", 0),
-                    card_brand=booking.get("card_brand"),
-                    card_last4=booking.get("card_last4"),
-                    card_auth_code=booking.get("card_auth_code"),
-                    duration_min=booking.get("estimated_duration_min", 0),
-                    hours_booked=booking.get("hours_booked", 0),
-                    distance_mi=booking.get("estimated_distance_mi", 0.0),
-                    special_requests=booking.get("special_requests", ""),
-                    customer_phone=booking.get("customer_phone", ""),
-                    customer_email=booking.get("customer_email", ""),
-                    payment_status=booking.get("payment_status", "PRE_AUTHORIZED")
-                )
+                if conf["subject"].startswith("Your chauffeur has arrived") and ch_row:
+                    _, html_body, conf["content"] = build_arrival_email(booking, dict(ch_row))
+                else:
+                    html_body = build_luxury_email_html(
+                        booking_ref=booking["confirmation_code"],
+                        customer_name=booking["customer_name"],
+                        pickup_addr=booking["pickup_address"],
+                        dropoff_addr=booking["dropoff_address"],
+                        pickup_dt=booking["pickup_datetime"],
+                        vehicle_tier=booking["vehicle_class"],
+                        net_fare=booking.get("fare_amount", 165.0),
+                        vat_amt=booking.get("vat_amount"),
+                        total_fare=booking.get("total_fare"),
+                        service_type=booking.get("service_type", "Airport Transfer"),
+                        passengers=booking.get("passenger_count", 1),
+                        large_cases=booking.get("large_cases", 0),
+                        medium_cases=booking.get("medium_cases", 0),
+                        hand_luggage=booking.get("hand_luggage", 0),
+                        chauffeur=dict(ch_row) if ch_row else None,
+                        flight=booking.get("flight_number"),
+                        parking_fee=booking.get("parking_fee", 0),
+                        dropoff_fee=booking.get("dropoff_fee", 0),
+                        congestion_charge=booking.get("congestion_charge", 0),
+                        card_brand=booking.get("card_brand"),
+                        card_last4=booking.get("card_last4"),
+                        card_auth_code=booking.get("card_auth_code"),
+                        duration_min=booking.get("estimated_duration_min", 0),
+                        hours_booked=booking.get("hours_booked", 0),
+                        distance_mi=booking.get("estimated_distance_mi", 0.0),
+                        special_requests=booking.get("special_requests", ""),
+                        customer_phone=booking.get("customer_phone", ""),
+                        customer_email=booking.get("customer_email", ""),
+                        payment_status=booking.get("payment_status", "PRE_AUTHORIZED")
+                    )
+
             ok, delivery_note = send_smtp_email(conf["recipient"], resent_subject, html_body, conf["content"])
             send_status = "DELIVERED" if ok else "FAILED"
 

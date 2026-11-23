@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#121715">
   <link rel="manifest" href="/driver-manifest.json">
-  <link rel="apple-touch-icon" sizes="180x180" href="/driver-icon-180.png?v=20261123">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <style>
     :root {
       --bg-page: #121715;
@@ -752,10 +752,15 @@
       const alerts = DriverApp.pendingAlerts;
       const banner = document.getElementById('driver-persistent-alert');
       banner.hidden = !(hasAllocation || alerts.length);
-      document.getElementById('driver-persistent-text').textContent = [
-        hasAllocation ? 'Review and accept your allocated booking below.' : '',
-        ...alerts.map(alert => [alert.label, alert.confirmation_code, alert.details].filter(Boolean).join(' · '))
-      ].join(' • ');
+      const newest = alerts[0];
+      document.getElementById('driver-persistent-text').textContent = hasAllocation ? 'Accept your allocated booking.'
+        : newest ? [
+            newest.confirmation_code,
+            newest.key.startsWith('message:') ? 'New message from Dispatch' :
+              String(newest.details || '').startsWith('Updated ') && newest.details.length <= 100
+                ? newest.details : 'Booking details changed',
+            alerts.length > 1 ? `+${alerts.length - 1} more` : ''
+          ].filter(Boolean).join(' · ') : '';
       document.getElementById('driver-ack-alerts').hidden = !alerts.length;
       document.getElementById('driver-view-messages').hidden = !alerts.some(alert => alert.key.startsWith('message:'));
       if (!banner.hidden && DriverApp.alertTimer === null) {

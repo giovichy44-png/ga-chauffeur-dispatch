@@ -16,8 +16,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="style.css?v=dispatch-persistent-corner">
-  <link rel="apple-touch-icon" sizes="180x180" href="/driver-icon-180.png?v=20261123">
+  <link rel="stylesheet" href="style.css?v=dispatch-compact-alerts">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 </head>
 <body>
 
@@ -78,11 +78,12 @@
   </div>
 
   <section id="dispatch-persistent-alerts" class="persistent-alert" hidden aria-label="Unacknowledged updates">
-    <strong>Attention required</strong>
+    <strong id="dispatch-alert-heading">Updates</strong>
     <span id="dispatch-alert-text"></span>
-    <button type="button" class="btn btn-gold" id="dispatch-alert-ack" onclick="acknowledgeDispatchAlerts()">Mark booking updates seen</button>
-    <button type="button" class="btn btn-secondary" id="dispatch-alert-drivers" onclick="openDriverCommsModal()">View driver messages</button>
-    <button type="button" class="btn btn-secondary" id="dispatch-alert-customers" onclick="openCustomerChat()">View customer messages</button>
+    <button type="button" class="btn btn-gold" id="dispatch-alert-ack" onclick="acknowledgeDispatchAlerts()">Mark seen</button>
+    <button type="button" class="btn btn-secondary" id="dispatch-alert-ack-all" onclick="acknowledgeDispatchAlerts(true)">Mark all seen</button>
+    <button type="button" class="btn btn-secondary" id="dispatch-alert-drivers" onclick="openDriverCommsModal()">Driver messages</button>
+    <button type="button" class="btn btn-secondary" id="dispatch-alert-customers" onclick="openCustomerChat()">Customer messages</button>
   </section>
   <!-- Clean Tab Navigation (No Vehicles Clutter on Main Page) -->
   <nav class="simple-tabs-nav">
@@ -812,6 +813,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=dispatch-persistent-corner"></script>
+  <script src="app.js?v=dispatch-compact-alerts"></script>
 </body>
 </html>
