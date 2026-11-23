@@ -337,6 +337,15 @@
   let pickupMarker = null;
   let dropoffMarker = null;
   let routeLines = [];
+
+  function drawBookingRoute(path) {
+    const shared = {map: gMap, path, strokeOpacity: 1, clickable: false};
+    routeLines = [
+      new google.maps.Polyline({...shared, strokeColor: '#ffffff', strokeWeight: 10, zIndex: 100}),
+      new google.maps.Polyline({...shared, strokeColor: '#1768ff', strokeWeight: 6, zIndex: 101})
+    ];
+  }
+
   let routeRequestId = 0;
   let leafletMap = null;
 
@@ -504,7 +513,7 @@
         journeyDistanceMiles=q.distance_miles;journeyDurationMinutes=Math.round(q.duration_minutes);
         if(gMap && q.path.length){
           const path=q.path.map(([lng,lat])=>({lat,lng}));
-          const line=new google.maps.Polyline({map:gMap,path,strokeColor:'#34d399',strokeWeight:6});routeLines=[line];
+          drawBookingRoute(path);
           const bounds=new google.maps.LatLngBounds();path.forEach(p=>bounds.extend(p));
           updatePins(q.pickup_location,q.dropoff_location,bounds);gMap.fitBounds(bounds,40);
         }
@@ -560,13 +569,7 @@
         const route = routes?.[0];
         if (!route?.path?.length) throw new Error('No driving route found');
 
-        // Route Polyline with high-contrast glowing emerald & gold styling for Satellite mode
-        routeLines = route.createPolylines({ polylineOptions: {
-          strokeColor: '#34d399',
-          strokeWeight: 6,
-          strokeOpacity: 0.95
-        }});
-        routeLines.forEach(line => line.setMap(gMap));
+        drawBookingRoute(route.path);
 
         const bounds = new google.maps.LatLngBounds();
         route.path.forEach(point => bounds.extend(point));

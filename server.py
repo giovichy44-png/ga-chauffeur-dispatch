@@ -23,17 +23,20 @@ import ssl
 import base64
 import hashlib
 import html
+import ipaddress
 import urllib.request
 import urllib.parse
 import urllib.error
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, parse_qs
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 import db
 import customer_chat
+import booking_alerts
+import dispatch_restore
 import quote_service
 import flight_monitor
 from prepared_pricing.zone_quote import QuoteUnavailable
@@ -330,6 +333,7 @@ PUBLIC_PATHS = {
     "/driver/",
     "/driver.html",
     "/driver-manifest.json",
+    "/driver-icon-180.png",
     "/api/driver/me",
     "/api/driver/login",
     "/api/driver/action",
@@ -1502,178 +1506,6 @@ def send_invoice2go_webhook(booking, invoice_number, net_fare, parking_fee, drop
         return False, f"Webhook error: {e}"
 
 
-def build_tax_invoice_html(booking, invoice_number, net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare, notes=""):
-    tier_key = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
-    vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
-    vehicle_img_url = vehicle_info.get("image_url", "https://gachauffeurs.co.uk/assets/fleet/sclass-front.png")
-    issue_date = datetime.now().strftime("%d %B %Y")
-    p_stat = str(booking.get("payment_status") or "CORPORATE_INVOICE").upper()
-    status_badge = "PAID" if p_stat == "PAID" else ("CORPORATE INVOICE — DUE ON RECEIPT" if "CORPORATE" in p_stat or "INVOICE" in p_stat else p_stat.replace("_", " "))
-
-    extra_rows = ""
-    if float(parking_fee or 0) > 0:
-        extra_rows += f"""
-        <tr>
-          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">Airport Parking</td>
-          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(parking_fee):.2f} GBP</td>
-        </tr>
-        """
-    if float(dropoff_fee or 0) > 0:
-        extra_rows += f"""
-        <tr>
-          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">Airport Parking</td>
-          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(dropoff_fee):.2f} GBP</td>
-        </tr>
-        """
-    if float(congestion_charge or 0) > 0:
-        extra_rows += f"""
-        <tr>
-          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">London Congestion Charge (No VAT)</td>
-          <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(congestion_charge):.2f} GBP</td>
-        </tr>
-        """
-
-    notes_block = ""
-    if notes:
-        notes_block = f"""
-        <div style="background: rgba(201,184,148,0.08); border-left: 3px solid #c9b894; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #edf0ea;">
-          <strong style="color: #c9b894;">Invoice Notes / Additional Journey Details:</strong><br>{notes}
-        </div>
-        """
-
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Tax Invoice {invoice_number} - GA Chauffeur Services Limited</title>
-    </head>
-    <body style="font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: #121715; color: #edf0ea; margin: 0; padding: 20px;">
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 640px; margin: 0 auto; background-color: #171f1b; border: 1px solid #2e3b33; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-        <tr>
-          <td style="background-color: #121715; padding: 26px 36px; border-bottom: 2px solid #c9b894;">
-            <table width="100%">
-              <tr>
-                <td>
-                  <span style="font-family: Georgia, serif; font-size: 34px; letter-spacing: -4px; color: #c9b894; line-height: 1;">GA</span>
-                  <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #3e4e44; padding-left: 14px; margin-left: 10px; color: #d0d8d1; line-height: 1.4; display: inline-block; vertical-align: middle;">Chauffeur<br>Services</span>
-                </td>
-                <td style="text-align: right;">
-                  <div style="font-family: Georgia, serif; font-size: 22px; color: #ffffff; letter-spacing: .06em; text-transform: uppercase;">Tax Invoice</div>
-                  <div style="color: #c9b894; font-size: 13px; font-family: monospace; margin-top: 4px;">{invoice_number}</div>
-                  <div style="color: #94a3b8; font-size: 11px; margin-top: 2px;">Issued: {issue_date}</div>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding: 30px 36px;">
-            <table width="100%" style="margin-bottom: 20px;">
-              <tr>
-                <td style="vertical-align: top;">
-                  <div style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Billed To</div>
-                  <div style="color: #ffffff; font-size: 16px; font-weight: bold; margin-top: 4px;">{booking.get('customer_name')}</div>
-                  <div style="color: #aab5ae; font-size: 13px; margin-top: 2px;">{booking.get('customer_email')}</div>
-                  <div style="color: #aab5ae; font-size: 13px; margin-top: 2px;">{booking.get('customer_phone')}</div>
-                </td>
-                <td style="vertical-align: top; text-align: right;">
-                  <div style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em;">Booking Ref</div>
-                  <div style="color: #ffffff; font-size: 15px; font-family: monospace; font-weight: bold; margin-top: 4px;">{booking.get('confirmation_code')}</div>
-                  <div style="display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 4px; background: rgba(201,184,148,0.15); border: 1px solid #c9b894; color: #c9b894; font-size: 10px; font-weight: 700; letter-spacing: .08em;">
-                    {status_badge}
-                  </div>
-                </td>
-              </tr>
-            </table>
-
-            <!-- Vehicle Photo Card -->
-            <div style="background-color: #ffffff; border: 2px solid #c9b894; border-radius: 8px; padding: 14px 18px; margin: 16px 0; text-align: center;">
-              <img src="{vehicle_img_url}" alt="{vehicle_info['name']}" style="max-width: 240px; width: 100%; height: auto; display: block; margin: 0 auto 8px auto;">
-              <div style="font-family: Georgia, serif; font-size: 18px; color: #171c1c; font-weight: bold;">{vehicle_info['name']}</div>
-              <div style="font-size: 12px; color: #475569; margin-top: 2px;">{booking.get('service_type', 'Executive Chauffeur Service')} • Pickup: {booking.get('pickup_datetime')}</div>
-            </div>
-
-            <!-- Route Details -->
-            <div style="background-color: #121715; border-left: 3px solid #c9b894; padding: 14px 18px; margin: 16px 0; border-radius: 0 6px 6px 0; border-top: 1px solid #2e3b33; border-right: 1px solid #2e3b33; border-bottom: 1px solid #2e3b33;">
-              <div style="margin-bottom: 8px;">
-                <span style="color: #c9b894; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em;">Collection Point</span>
-                <div style="color: #ffffff; font-size: 14px; font-weight: 600; margin-top: 2px;">{booking.get('pickup_address')}</div>
-              </div>
-              <div style="border-top: 1px dashed #2e3b33; padding-top: 8px;">
-                <span style="color: #38bdf8; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em;">Destination</span>
-                <div style="color: #ffffff; font-size: 14px; font-weight: 600; margin-top: 2px;">{booking.get('dropoff_address')}</div>
-              </div>
-            </div>
-
-            {notes_block}
-
-            <!-- Invoice Line Items Table -->
-            <table width="100%" cellspacing="0" cellpadding="0" style="background-color: #121715; border-radius: 6px; padding: 16px 18px; margin: 18px 0; border: 1px solid #2e3b33;">
-              <tr>
-                <th style="text-align: left; color: #c9b894; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; padding-bottom: 10px; border-bottom: 1px solid #2e3b33;">Description</th>
-                <th style="text-align: right; color: #c9b894; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; padding-bottom: 10px; border-bottom: 1px solid #2e3b33;">Amount</th>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; color: #edf0ea; font-size: 13px;">
-                  <strong>Executive Chauffeur Service ({vehicle_info['name']})</strong><br>
-                  <span style="color: #94a3b8; font-size: 12px;">{booking.get('service_type')} • {booking.get('pickup_datetime')}</span>
-                </td>
-                <td style="padding: 10px 0; border-bottom: 1px solid #2e3b33; text-align: right; color: #ffffff; font-size: 14px;">£{float(net_fare):.2f} GBP</td>
-              </tr>
-              {extra_rows}
-              <tr>
-                <td style="padding: 10px 0 6px 0; color: #aab5ae; font-size: 13px;">UK VAT (20%)</td>
-                <td style="padding: 10px 0 6px 0; text-align: right; color: #ffffff; font-size: 14px;">£{float(vat_amount):.2f} GBP</td>
-              </tr>
-              <tr>
-                <td style="padding-top: 12px; color: #c9b894; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;">Total Invoice Amount</td>
-                <td style="padding-top: 12px; text-align: right; color: #c9b894; font-size: 22px; font-weight: bold; font-family: Georgia, serif;">£{float(total_fare):.2f} GBP</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color: #121715; padding: 20px 36px; text-align: center; border-top: 1px solid #2e3b33; color: #aab5ae; font-size: 12px; line-height: 1.7;">
-            <strong style="color: #edf0ea; font-size: 13px;">GA Chauffeur Services Limited</strong> (Company No. 11136878)<br>
-            Direct Line: <a href="tel:{COMPANY_PHONE}" style="color: #c9b894; text-decoration: none;">{COMPANY_PHONE}</a> • Email: <a href="mailto:{FROM_EMAIL}" style="color: #c9b894; text-decoration: none;">{FROM_EMAIL}</a><br>
-            Website: <a href="{COMPANY_WEBSITE}" style="color: #c9b894; text-decoration: none;">gachauffeurs.co.uk</a>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-    """
-
-
-def build_tax_invoice_text(booking, invoice_number, net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare, notes=""):
-    tier_key = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
-    vehicle_info = VEHICLE_CONFIGS.get(tier_key, VEHICLE_CONFIGS["mercedes_s_class"])
-    issue_date = datetime.now().strftime("%d %B %Y")
-    return (
-        f"GA CHAUFFEUR SERVICES LIMITED — TAX INVOICE\n"
-        f"Invoice Number: {invoice_number}\n"
-        f"Booking Reference: {booking.get('confirmation_code')}\n"
-        f"Issue Date: {issue_date}\n\n"
-        f"Billed To: {booking.get('customer_name')} ({booking.get('customer_email')})\n"
-        f"Vehicle: {vehicle_info['name']}\n"
-        f"Pickup Date & Time: {booking.get('pickup_datetime')}\n"
-        f"Collection Point: {booking.get('pickup_address')}\n"
-        f"Destination: {booking.get('dropoff_address')}\n"
-        + (f"Notes: {notes}\n" if notes else "")
-        + f"\nBase Journey Fare: £{float(net_fare):.2f} GBP\n"
-        + (f"Airport Parking: £{float(parking_fee):.2f} GBP\n" if float(parking_fee or 0) > 0 else "")
-        + (f"Airport Parking: £{float(dropoff_fee):.2f} GBP\n" if float(dropoff_fee or 0) > 0 else "")
-        + (f"London Congestion Charge: £{float(congestion_charge):.2f} GBP\n" if float(congestion_charge or 0) > 0 else "")
-        + f"UK VAT (20%): £{float(vat_amount):.2f} GBP\n"
-        + f"TOTAL INVOICE AMOUNT: £{float(total_fare):.2f} GBP\n\n"
-        f"GA Chauffeur Services Limited (Company No. 11136878)\n"
-        f"Direct Line: {COMPANY_PHONE}\n"
-        f"Email: {FROM_EMAIL}\n"
-        f"Website: {COMPANY_WEBSITE}"
-    )
-
-
 class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
@@ -1914,6 +1746,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/bookings":
             self.handle_get_bookings(query)
+            return
+
+        if path == "/api/dispatch/backup":
+            with db.get_connection() as conn:
+                snapshot = {
+                    table: [dict(row) for row in conn.execute(f"SELECT * FROM {table}")]
+                    for table in dispatch_restore.TABLES
+                }
+                snapshot["fleet_assignments"] = [dict(row) for row in conn.execute(
+                    "SELECT id, status, active_booking_id FROM chauffeurs"
+                )]
+            self.send_json(snapshot)
             return
 
         if path == "/api/bootstrap":
@@ -2320,6 +2164,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_driver_status(payload)
             return
 
+        if path == "/api/driver/ack-alerts":
+            response, status = booking_alerts.acknowledge(payload.get("keys"), token=str(payload.get("token") or ""))
+            self.send_json(response, status)
+            return
+
         if path == "/api/driver/message":
             self.handle_driver_message(payload)
             return
@@ -2329,6 +2178,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if not check_auth(self.headers):
                 self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                 return
+
+        if path == "/api/dispatch/restore":
+            if len(post_data) > 8_000_000:
+                self.send_json({"error": "This Dispatch backup is too large."}, 413)
+                return
+            result, status = dispatch_restore.restore(payload)
+            self.send_json(result, status)
+            return
+
+        if path == "/api/dispatch/ack-alerts":
+            response, status = booking_alerts.acknowledge(payload.get("keys"))
+            self.send_json(response, status)
+            return
 
         if path == "/api/customer-chat":
             if len(post_data) > 8192:
@@ -2369,10 +2231,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"success": True, "webhook_url": get_invoice2go_webhook_url()})
             return
 
-        if path.endswith("/send-invoice"):
-            parts = path.split("/")
-            booking_id = parts[3]
-            self.handle_send_invoice(booking_id, payload)
+        invoice_request = re.fullmatch(r"/api/bookings/([^/]+)/request-invoice", path)
+        if invoice_request:
+            self.handle_request_tax_invoice(invoice_request.group(1))
+            return
+
+        if re.fullmatch(r"/api/bookings/[^/]+/send-invoice", path):
+            self.send_json({"error": "Use Request tax invoice to notify Dispatch."}, 410)
             return
 
         if path.endswith("/allocate"):
@@ -2584,12 +2449,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         """)
         driver_messages = [dict(r) for r in cursor.fetchall()]
 
+        pending_alerts = booking_alerts.pending(conn)
         conn.close()
         self.send_json({
             "bookings": bookings,
             "chauffeurs": chauffeurs,
             "confirmations": confirmations,
             "driver_messages": driver_messages,
+            "pending_alerts": pending_alerts,
             "unread_customer_messages": customer_chat.unread_count()
         })
 
@@ -3027,14 +2894,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             f"GA Chauffeurs Booking {code}", sms_content, "DELIVERED", now_str
         ))
 
-        cursor.execute("""
-        INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            booking_id, None, "BOOKING_CREATED", f"{'Website (gachauffeurs.co.uk)' if source == 'WEBSITE_GACHAUFFEURS' else 'Dispatch Console'}",
-            f"Booking {code} received for {payload['customer_name']}. Confirmation email ({payload['customer_email']}) & SMS dispatched.",
-            now_str
-        ))
+        self.log_booking_action(conn, booking_id, None, "BOOKING_CREATED",
+                                "Customer · " + payload["customer_name"] if source == "WEBSITE_GACHAUFFEURS" else "Dispatch account",
+                                "Booking created and confirmation email processed.")
 
         conn.commit()
         conn.close()
@@ -3117,8 +2979,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if chauffeur_id == "UNALLOCATE":
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             if booking.get("chauffeur_id"):
-                cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ?", (booking["chauffeur_id"],))
+                cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ? AND active_booking_id = ?", (booking["chauffeur_id"], booking_id))
             cursor.execute("UPDATE bookings SET chauffeur_id = NULL, status = 'PENDING', updated_at = ? WHERE id = ?", (now_str, booking_id))
+            self.log_booking_action(conn, booking_id, booking.get("chauffeur_id"), "CHAUFFEUR_REMOVED",
+                                    "Dispatch account", "Chauffeur removed from booking.")
             conn.commit()
             conn.close()
             self.send_json({"success": True, "booking_id": booking_id, "chauffeur": None, "status": "PENDING"})
@@ -3234,14 +3098,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             f"Chauffeur Assigned {booking['confirmation_code']}", sms_content, "DELIVERED", now_str
         ))
 
-        cursor.execute("""
-        INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            booking_id, chauffeur_id, "CHAUFFEUR_ALLOCATED", "Dispatch Control",
-            f"Chauffeur {chauffeur['name']} ({chauffeur['vehicle_model']}) allocated to booking {booking['confirmation_code']}. Notifications dispatched to customer.",
-            now_str
-        ))
+        self.log_booking_action(conn, booking_id, chauffeur_id, "CHAUFFEUR_ALLOCATED", "Dispatch account",
+                                "Chauffeur allocated: " + chauffeur["name"])
 
         conn.commit()
         conn.close()
@@ -3259,6 +3117,23 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "chauffeur": chauffeur,
             "status": "ASSIGNED"
         })
+
+    def log_booking_action(self, conn, booking_id, chauffeur_id, action, actor, details):
+        connection_ip = getattr(self, "client_address", ("",))[0]
+        headers = getattr(self, "headers", {})
+        trace = str(headers.get("Rndr-Id") or headers.get("CF-Ray") or "")[:100]
+        forwarded = str(headers.get("X-Forwarded-For") or "").split(",")[-1].strip()
+        try:
+            # Record the socket peer where there is no hosting trace. The UI labels proxy IPs as observed.
+            observed_ip = str(ipaddress.ip_address(forwarded if trace and forwarded else connection_ip))
+        except ValueError:
+            observed_ip = None
+        conn.execute("""
+            INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp,
+                                     request_ip, network_trace)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (booking_id, chauffeur_id, action, actor, details,
+              datetime.now(timezone.utc).isoformat(timespec="seconds"), observed_ip, trace or None))
 
     def handle_edit_booking(self, booking_id, payload):
         conn = db.get_connection()
@@ -3333,6 +3208,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare,
             now_str, real_id
         ))
+        changes = dict(customer_name=customer_name, customer_phone=customer_phone, customer_email=customer_email,
+                       pickup_datetime=pickup_datetime, pickup_address=pickup_address, dropoff_address=dropoff_address,
+                       flight_number=flight_number, vehicle_class=vehicle_class, passenger_count=passenger_count,
+                       large_cases=large_cases, medium_cases=medium_cases, hand_luggage=hand_luggage,
+                       special_requests=special_requests, total_fare=total_fare)
+        self.log_booking_action(conn, real_id, booking.get("chauffeur_id"), "DISPATCH_AMENDED_BOOKING",
+                                "Dispatch account", booking_alerts.describe_changes(booking, changes))
         conn.commit()
         conn.close()
         broadcast_event("booking_updated", {"booking_id": real_id})
@@ -3594,10 +3476,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 "special_requests": req_notes
             }
             cursor.execute("UPDATE bookings SET pending_amendment = ?, updated_at = ? WHERE id = ?", (json.dumps(amend_obj), now_str, real_id))
-            cursor.execute("""
-                INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
-                VALUES (?, ?, 'AMENDMENT_REQUESTED_2H', 'Customer Online', ?, ?)
-            """, (real_id, booking.get("chauffeur_id"), f"Customer requested <3h amendment for {code}: PU {req_dt} | {req_pu} -> {req_do}", now_str))
+            self.log_booking_action(conn, real_id, booking.get("chauffeur_id"), "AMENDMENT_REQUESTED_2H",
+                                    "Customer · " + booking["customer_name"],
+                                    booking_alerts.describe_changes(booking, amend_obj))
             conn.commit()
             conn.close()
 
@@ -3647,10 +3528,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             req_dt, req_pu, req_do, req_phone, req_flight or None,
             req_pax, lug_cnt, req_lg, req_md, req_hd, req_notes, now_str, real_id
         ))
-        cursor.execute("""
-            INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
-            VALUES (?, ?, 'CUSTOMER_AMENDED_BOOKING', 'Customer Online', ?, ?)
-        """, (real_id, booking.get("chauffeur_id"), f"Customer amended booking {code} (>2h prior to pickup).", now_str))
+        changes = dict(pickup_datetime=req_dt, pickup_address=req_pu, dropoff_address=req_do,
+                       customer_phone=req_phone, flight_number=req_flight, passenger_count=req_pax,
+                       large_cases=req_lg, medium_cases=req_md, hand_luggage=req_hd, special_requests=req_notes)
+        self.log_booking_action(conn, real_id, booking.get("chauffeur_id"), "CUSTOMER_AMENDED_BOOKING",
+                                "Customer · " + booking["customer_name"],
+                                booking_alerts.describe_changes(booking, changes))
         conn.commit()
         conn.close()
 
@@ -3718,6 +3601,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 amend.get("special_requests", booking.get("special_requests", "")),
                 now_str, real_id
             ))
+            self.log_booking_action(conn, real_id, booking.get("chauffeur_id"), "CUSTOMER_AMENDMENT_APPROVED",
+                                    "Dispatch account", booking_alerts.describe_changes(booking, amend))
             conn.commit()
             conn.close()
             # Automatically send updated confirmation email to the customer!
@@ -3725,6 +3610,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
         else:
             cursor.execute("UPDATE bookings SET pending_amendment = NULL, updated_at = ? WHERE id = ?", (now_str, real_id))
+            self.log_booking_action(conn, real_id, booking.get("chauffeur_id"), "CUSTOMER_AMENDMENT_DECLINED",
+                                    "Dispatch account", "Customer amendment declined.")
             conn.commit()
             conn.close()
             if booking.get("customer_email"):
@@ -3911,7 +3798,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     </form>
     <section id="mb-chat" hidden>
       <h2>Chat with Dispatch</h2>
-      <p>Monday to Friday, 08:00–19:00 UK time.</p>
+      <p>Available 24/7 while your booking is active.</p>
       <p id="mb-chat-status" role="status"></p>
       <ol id="mb-chat-history" class="chat-log" aria-label="Conversation"></ol>
       <form id="mb-chat-form" hidden>
@@ -4066,9 +3953,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             history.scrollTop = history.scrollHeight;
             lastTranscript = transcript;
           }
-          form.hidden = result.closed || !result.within_hours;
-          status.textContent = result.closed ? 'This booking’s chat is closed.'
-            : result.within_hours ? 'Chat is open.' : 'Chat is closed. Please message us during opening hours.';
+          form.hidden = result.closed;
+          status.textContent = result.closed ? 'This booking’s chat is closed.' : 'Chat is open.';
           if (result.closed && timer) clearInterval(timer);
           if (message) entry.value = '';
         } catch (error) {
@@ -4104,7 +3990,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         conn = db.get_connection()
         cursor = conn.cursor()
-        if action == "ACCEPT" and acting_driver_id:
+        if acting_driver_id:
             cursor.execute("BEGIN IMMEDIATE")
 
         cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
@@ -4131,6 +4017,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             else:
                 self.send_json({"error": "This booking is no longer awaiting acceptance."}, 409)
             return
+        if acting_driver_id and action != "ACCEPT":
+            transitions = {
+                "EN_ROUTE_PICKUP": ("ACCEPTED",), "ARRIVED": ("EN_ROUTE",),
+                "ON_BOARD": ("ARRIVED",), "NEXT_STOP": ("ON_BOARD",),
+                "DROPPED_OFF": ("ON_BOARD", "NEXT_STOP"), "COMPLETED": ("DROPPED_OFF",),
+            }
+            if booking["status"] not in transitions.get(action, ()):
+                conn.close()
+                self.send_json({"error": "This stage is no longer available. Refresh the booking."}, 409)
+                return
         chauffeur = None
         if chauffeur_id:
             cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (chauffeur_id,))
@@ -4141,7 +4037,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         new_booking_status = booking["status"]
         sms_alert = None
-        actor = payload.get("actor", "Chauffeur Mobile App")
+        actor = "Driver · " + chauffeur["name"] if acting_driver_id and chauffeur else "Dispatch account"
 
         if action in ("ACCEPT", "CONFIRMED"):
             new_booking_status = "CONFIRMED" if action == "CONFIRMED" else "ACCEPTED"
@@ -4280,10 +4176,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 f"Live Status Update: {action}", sms_alert, "DELIVERED", now_str
             ))
 
-        cursor.execute("""
-        INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (booking_id, chauffeur_id, action, actor, details, now_str))
+        self.log_booking_action(conn, booking_id, chauffeur_id, action, actor, details)
 
         conn.commit()
         conn.close()
@@ -4371,110 +4264,37 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         self.send_json(res)
 
-    def handle_send_invoice(self, booking_id, payload):
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM bookings WHERE id = ? OR confirmation_code = ?", (booking_id, booking_id))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            self.send_json({"error": "Booking not found"}, 404)
+    def handle_request_tax_invoice(self, booking_id):
+        with db.get_connection() as conn:
+            row = conn.execute("""
+                SELECT id, confirmation_code, customer_name, customer_email, pickup_datetime,
+                       pickup_address, dropoff_address
+                FROM bookings WHERE id = ?
+            """, (booking_id,)).fetchone()
+            if not row:
+                self.send_json({"error": "Booking not found."}, 404)
+                return
+            recipient = os.environ.get("TAX_INVOICE_REQUEST_EMAIL", "garaqishvili@gmail.com")
+            ref = row["confirmation_code"]
+            subject = f"Tax invoice requested · {ref}"
+            body = (
+                f"Prepare and send the tax invoice manually for booking {ref}.\n\n"
+                f"Customer: {row['customer_name']}\nCustomer email: {row['customer_email']}\n"
+                f"Pickup: {row['pickup_datetime']} · {row['pickup_address']}\n"
+                f"Destination: {row['dropoff_address']}\n"
+                "Review the fare and tax before sending the invoice."
+            )
+            sent, _ = send_smtp_email(recipient, subject, f"<pre>{html.escape(body)}</pre>", body)
+            if sent:
+                conn.execute("""
+                    INSERT INTO action_logs (booking_id, action, actor, details, timestamp)
+                    VALUES (?, 'TAX_INVOICE_REQUESTED', 'Dispatch', ?, ?)
+                """, (row["id"], f"Tax invoice requested for {ref}.", datetime.now().isoformat(timespec="seconds")))
+        if not sent:
+            self.send_json({"error": "The invoice request email could not be sent."}, 502)
             return
+        self.send_json({"success": True})
 
-        booking = dict(row)
-        real_id = booking["id"]
-        code = booking.get("confirmation_code", real_id)
-        invoice_number = f"INV-{code}"
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        net_fare = round(float(payload.get("net_fare", booking.get("fare_amount", 165.0))), 2)
-        parking_fee = round(float(payload.get("parking_fee", booking.get("parking_fee", 0.0))), 2)
-        dropoff_fee = round(float(payload.get("dropoff_fee", booking.get("dropoff_fee", 0.0))), 2)
-        congestion_charge = round(float(payload.get("congestion_charge", booking.get("congestion_charge", 0.0))), 2)
-        vat_amount = round((net_fare + parking_fee + dropoff_fee) * 0.20, 2)
-        total_fare = round(net_fare + parking_fee + dropoff_fee + vat_amount + congestion_charge, 2)
-        notes = str(payload.get("notes") if "notes" in payload else (booking.get("special_requests") or "")).strip()
-        recipient_email = str(payload.get("recipient_email") or booking.get("customer_email") or "").strip()
-
-        cursor.execute("""
-            UPDATE bookings
-            SET fare_amount = ?, parking_fee = ?, dropoff_fee = ?, congestion_charge = ?,
-                vat_amount = ?, total_fare = ?, updated_at = ?
-            WHERE id = ?
-        """, (net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare, now_str, real_id))
-
-        inv_subject = f"Tax Invoice {invoice_number} — GA Chauffeur Services Limited"
-        inv_html = build_tax_invoice_html(
-            booking=booking,
-            invoice_number=invoice_number,
-            net_fare=net_fare,
-            parking_fee=parking_fee,
-            dropoff_fee=dropoff_fee,
-            congestion_charge=congestion_charge,
-            vat_amount=vat_amount,
-            total_fare=total_fare,
-            notes=notes
-        )
-        inv_text = build_tax_invoice_text(
-            booking=booking,
-            invoice_number=invoice_number,
-            net_fare=net_fare,
-            parking_fee=parking_fee,
-            dropoff_fee=dropoff_fee,
-            congestion_charge=congestion_charge,
-            vat_amount=vat_amount,
-            total_fare=total_fare,
-            notes=notes
-        )
-
-        sent_ok, delivery_msg = send_smtp_email(recipient_email, inv_subject, inv_html, inv_text)
-        owner_inbox = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
-        if owner_inbox.lower() != recipient_email.lower():
-            send_smtp_email(owner_inbox, f"[Copy] {inv_subject} ({booking.get('customer_name')})", inv_html, inv_text, reply_to=recipient_email)
-
-        webhook_ok, webhook_msg = send_invoice2go_webhook(
-            booking=booking,
-            invoice_number=invoice_number,
-            net_fare=net_fare,
-            parking_fee=parking_fee,
-            dropoff_fee=dropoff_fee,
-            congestion_charge=congestion_charge,
-            vat_amount=vat_amount,
-            total_fare=total_fare,
-            notes=notes,
-            trigger_event="INVOICE_ISSUED"
-        )
-
-        cnf_id = f"CNF-{random.randint(1000, 9999)}"
-        cursor.execute("""
-            INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            cnf_id, real_id, "EMAIL", recipient_email,
-            inv_subject, inv_text, "DELIVERED" if sent_ok else "FAILED", now_str
-        ))
-
-        cursor.execute("""
-            INSERT INTO action_logs (booking_id, chauffeur_id, action, actor, details, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            real_id, booking.get("chauffeur_id"), "INVOICE_SENT", "Dispatch Control",
-            f"Tax Invoice {invoice_number} (£{total_fare:.2f}) emailed to {recipient_email}. {webhook_msg}", now_str
-        ))
-
-        conn.commit()
-        conn.close()
-
-        self.send_json({
-            "success": True,
-            "invoice_number": invoice_number,
-            "recipient": recipient_email,
-            "total_fare": total_fare,
-            "email_sent": sent_ok,
-            "webhook_synced": webhook_ok,
-            "webhook_note": webhook_msg,
-            "delivery_note": delivery_msg
-        })
 
     def handle_manual_card_auth(self, booking_id, payload):
         conn = db.get_connection()
@@ -4825,19 +4645,20 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             SELECT id, confirmation_code, customer_name, customer_phone,
                    pickup_address, pickup_unit, dropoff_address, dropoff_unit,
                    pickup_datetime, flight_number, passenger_count, luggage_count,
-                   special_requests, status
+                   special_requests, hours_booked, status
             FROM bookings
             WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED')
             ORDER BY pickup_datetime ASC
         """, (ch["id"],)).fetchall()]
-        messages = [dict(r) for r in cursor.execute("""
+        messages = [dict(r) for r in reversed(cursor.execute("""
             SELECT * FROM driver_messages
             WHERE chauffeur_id = ?
-            ORDER BY id ASC
+            ORDER BY id DESC
             LIMIT 80
-        """, (ch["id"],)).fetchall()]
+        """, (ch["id"],)).fetchall())]
+        alerts = booking_alerts.pending(conn, ch["id"])
         conn.close()
-        self.send_json({"chauffeur": ch, "jobs": jobs, "messages": messages})
+        self.send_json({"chauffeur": ch, "jobs": jobs, "messages": messages, "pending_alerts": alerts})
 
     def handle_driver_action(self, payload):
         token = str(payload.get("token") or "").strip()

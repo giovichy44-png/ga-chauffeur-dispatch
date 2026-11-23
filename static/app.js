@@ -24,10 +24,9 @@ const App = {
   knownBookingIds: new Set(),
   knownStatusMap: new Map(),
   knownBookingDetails: new Map(),
-  alerted2hIds: new Set(),
-  alerted1hIds: new Set(),
-  lastUrgentRepeatMs: 0,
-  snoozeUrgentUntilMs: 0
+  pendingAlerts: [],
+  urgentBookings: [],
+  alertTimer: null
 };
 
 // Persist login token across iPhone Home Screen launches so dispatch stays logged in
@@ -138,18 +137,14 @@ function toggleAudioAlerts() {
       showToast('🔇 Audio Alerts Muted');
     }
   }
-}
-
-function snoozeUrgentAudio() {
-  App.snoozeUrgentUntilMs = Date.now() + 5 * 60 * 1000;
-  showToast('🔕 Urgent unallocated alarm snoozed for 5 minutes.');
+  updateDispatchAlarm();
 }
 
 function filterJobsUrgent() {
   switchTab('jobs');
-  App.activeFilter = 'PENDING';
+  App.activeFilter = 'URGENT';
   document.querySelectorAll('.pill-btn').forEach(b => {
-    b.classList.toggle('active', b.getAttribute('data-filter') === 'PENDING');
+    b.classList.toggle('active', b.getAttribute('data-filter') === 'URGENT');
   });
   renderJobsList();
 }
@@ -166,19 +161,19 @@ function parsePickupDate(dtStr) {
 function getMinutesUntilPickup(dtStr) {
   const d = parsePickupDate(dtStr);
   if (!d) return null;
-  return Math.round((d.getTime() - Date.now()) / 60000);
+  return Math.ceil((d.getTime() - Date.now()) / 60000);
 }
 
 function isBookingUnallocated(b) {
   if (!b || b.status === 'COMPLETED' || b.status === 'CANCELLED') return false;
-  return !b.chauffeur_id || b.status === 'PENDING';
+  return !b.chauffeur_id;
 }
 
 function getBookingUrgency(b) {
   if (!isBookingUnallocated(b)) return null;
   const mins = getMinutesUntilPickup(b.pickup_datetime);
   if (mins === null) return null;
-  if (mins <= 60 && mins >= -180) return 'CRITICAL_1H';
+  if (mins <= 60) return 'CRITICAL_1H';
   if (mins > 60 && mins <= 120) return 'WARNING_2H';
   return null;
 }
@@ -194,8 +189,6 @@ function bookingDetailsSignature(booking) {
 }
 
 function checkLiveNotificationsAndUrgency(newBookings) {
-  const nowMs = Date.now();
-
   if (App.initialLoadDone) {
     for (const b of newBookings) {
       if (!App.knownBookingIds.has(b.id)) {
@@ -219,49 +212,19 @@ function checkLiveNotificationsAndUrgency(newBookings) {
   App.knownBookingDetails = new Map(newBookings.map(b => [b.id, bookingDetailsSignature(b)]));
   App.initialLoadDone = true;
 
-  const urgent1h = [];
-  const warning2h = [];
-
-  for (const b of newBookings) {
-    const urg = getBookingUrgency(b);
-    const mins = getMinutesUntilPickup(b.pickup_datetime);
-    if (urg === 'CRITICAL_1H') {
-      urgent1h.push({ b, mins });
-      if (!App.alerted1hIds.has(b.id)) {
-        App.alerted1hIds.add(b.id);
-        if (nowMs > App.snoozeUrgentUntilMs) {
-          playOneHourUrgentSound();
-          showToast(`🚨 CRITICAL (<1h): ${b.confirmation_code} (${b.customer_name}) is UNALLOCATED!`);
-        }
-      }
-    } else if (urg === 'WARNING_2H') {
-      warning2h.push({ b, mins });
-      if (!App.alerted2hIds.has(b.id)) {
-        App.alerted2hIds.add(b.id);
-        if (nowMs > App.snoozeUrgentUntilMs) {
-          playTwoHourWarningSound();
-          showToast(`⚠️ 2-Hour Warning: ${b.confirmation_code} (${b.customer_name}) needs vehicle & driver.`);
-        }
-      }
-    } else {
-      App.alerted1hIds.delete(b.id);
-      App.alerted2hIds.delete(b.id);
-    }
-  }
-
-  if (urgent1h.length > 0 && nowMs > App.snoozeUrgentUntilMs && nowMs - App.lastUrgentRepeatMs > 60000) {
-    App.lastUrgentRepeatMs = nowMs;
-    playOneHourUrgentSound();
-  }
+  const allUrgent = newBookings.filter(b => getBookingUrgency(b)).map(b => ({
+    b, mins: getMinutesUntilPickup(b.pickup_datetime)
+  }));
+  App.urgentBookings = allUrgent;
+  updateDispatchAlarm();
 
   const banner = document.getElementById('urgent-unallocated-banner');
   const titleEl = document.getElementById('urgent-banner-title');
   const detailsEl = document.getElementById('urgent-banner-details');
   if (banner && titleEl && detailsEl) {
-    const allUrgent = [...urgent1h, ...warning2h];
     if (allUrgent.length > 0) {
       banner.style.display = 'flex';
-      titleEl.textContent = `${allUrgent.length} UNALLOCATED BOOKING${allUrgent.length > 1 ? 'S' : ''} DUE WITHIN 2 HOURS`;
+      titleEl.textContent = `Urgent allocation required · ${allUrgent.length} ${allUrgent.length === 1 ? "booking" : "bookings"}`;
       detailsEl.textContent = allUrgent
         .map(x => `${x.b.confirmation_code} (${x.b.customer_name} • ${x.mins >= 0 ? 'in ' + x.mins + 'm' : Math.abs(x.mins) + 'm overdue'})`)
         .join('   •   ');
@@ -277,7 +240,7 @@ function checkLiveNotificationsAndUrgency(newBookings) {
     unallocCountEl.textContent = newBookings.filter(b => isBookingUnallocated(b)).length;
   }
   if (urgentCountEl) {
-    urgentCountEl.textContent = urgent1h.length + warning2h.length;
+    urgentCountEl.textContent = allUrgent.length;
   }
   if (historyCountEl) {
     historyCountEl.textContent = newBookings.filter(b => b.status === 'COMPLETED' || b.status === 'CANCELLED').length;
@@ -342,7 +305,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Auto-refresh every 4 seconds
-  setInterval(loadData, 4000);
+  setInterval(loadData, 1800);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadData(); });
 });
 
 // Tab Switching
@@ -388,6 +352,7 @@ async function loadData() {
       App.chauffeurs = data.chauffeurs || [];
       App.confirmations = data.confirmations || [];
       App.driverMessages = data.driver_messages || [];
+      App.pendingAlerts = data.pending_alerts || [];
       updateCustomerUnread(data.unread_customer_messages || 0);
     } else {
       const [bRes, cRes, confRes] = await Promise.all([
@@ -406,6 +371,7 @@ async function loadData() {
     saveToLocalCache();
     checkLiveNotificationsAndUrgency(App.bookings);
     checkIncomingDriverMessages(App.driverMessages);
+    updateDispatchAlarm();
     updateTopCarCards();
     populateDriverSelectDropdown();
     renderJobsList();
@@ -697,7 +663,7 @@ function renderJobsList() {
 
           <div class="action-btn-group">
             <button class="btn btn-secondary" onclick="viewVoucher('${b.id}')">Voucher</button>
-            <button class="btn btn-secondary" onclick="openInvoiceModal('${b.id}')" style="border-color: var(--gold-accent); color: var(--gold-accent); font-weight: 600;" title="Create &amp; Email Tax Invoice">📄 Invoice</button>
+            <button class="btn btn-secondary" onclick="requestTaxInvoice('${b.id}')" style="border-color: var(--gold-accent); color: var(--gold-accent); font-weight: 600;" >Request tax invoice</button>
             ${b.payment_status === 'PRE_AUTHORIZED' ? `<button class="btn btn-secondary" onclick="captureBookingPayment('${b.id}', ${b.total_fare})" style="border-color: #4ade80; color: #4ade80; font-weight: 600;" title="Capture pre-authorised hold">💳 Capture £${parseFloat(b.total_fare).toFixed(2)}</button>` : ''}
             ${actionBtnHtml}
           </div>
@@ -742,11 +708,13 @@ function runDispatchJobAction(bookingId, select) {
   select.value = '';
   const actions = {
     allocate: openAllocateModal,
+    unallocate: id => inlineAllocateVehicle(id, 'UNALLOCATE'),
     edit: openEditBookingModal,
     email: sendBookingConfirmationEmail,
-    invoice: openInvoiceModal,
+    invoice: requestTaxInvoice,
     voucher: viewVoucher,
     customerChat: id => openCustomerChat(App.bookings.find(b => b.id === id)?.confirmation_code),
+    audit: openBookingLog,
     amend: id => resolveCustomerAmendment(id, 'APPROVE')
   };
   if (action.startsWith('status:')) {
@@ -798,7 +766,6 @@ function renderCdsDispatchTable(filtered) {
     const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
 
     const statusChoices = [
-      { status: 'PENDING', action: 'UNALLOCATE', label: '🔴 Pending' },
       { status: 'ASSIGNED', action: 'CONFIRMED', label: '🔵 Allocated' },
       { status: 'EN_ROUTE', action: 'EN_ROUTE_PICKUP', label: '🚗 En Route' },
       { status: 'ARRIVED', action: 'ARRIVED', label: '📍 At Pickup' },
@@ -860,11 +827,13 @@ function renderCdsDispatchTable(filtered) {
           <select class="dispatch-job-action" aria-label="Actions for ${escapeHtml(b.confirmation_code)}" onchange="runDispatchJobAction('${b.id}', this)">
             <option value="">Actions</option>
             <option value="allocate">Allocate driver and vehicle</option>
+            ${b.chauffeur_id ? '<option value="unallocate">Remove driver from booking</option>' : ''}
             <option value="edit">Edit booking</option>
             <option value="email">Send confirmation email</option>
-            <option value="invoice">View tax invoice</option>
+            <option value="invoice">Request tax invoice</option>
             <option value="voucher">View voucher</option>
             <option value="customerChat">Customer messages</option>
+            <option value="audit">Booking log</option>
             ${pendingAmendObj ? '<option value="amend">Approve customer amendment</option>' : ''}
             <optgroup label="Update status">
               ${statusChoices.map(choice => `<option value="status:${choice.action}">${escapeHtml(choice.label.split(' ').slice(1).join(' '))}</option>`).join('')}
@@ -909,8 +878,8 @@ function renderCdsDispatchTable(filtered) {
             <!-- Box 1: Full Route, Flight & Notes -->
             <div class="excel-drawer-box">
               <div class="excel-drawer-title">📍 Full Itinerary &amp; Special Instructions</div>
-              <div style="margin-bottom:6px;"><strong style="color:#4ade80;">Pickup (${escapeHtml(b.pickup_datetime)}):</strong><br><span style="color:#fff;">${escapeHtml(b.pickup_address)}</span></div>
-              <div style="margin-bottom:6px;"><strong style="color:#38bdf8;">Destination:</strong><br><span style="color:#fff;">${escapeHtml(b.dropoff_address)}</span></div>
+              <div style="margin-bottom:6px;"><strong style="color:#4ade80;">Pickup (${escapeHtml(b.pickup_datetime)}):</strong><br><span style="color:#fff;">${escapeHtml(b.pickup_address)}</span> <a href="${googleDirections(b.pickup_address)}" target="_blank" rel="noopener noreferrer">Google Maps ↗</a></div>
+              <div style="margin-bottom:6px;"><strong style="color:#38bdf8;">Destination:</strong><br><span style="color:#fff;">${escapeHtml(b.dropoff_address)}</span> <a href="${googleDirections(b.dropoff_address)}" target="_blank" rel="noopener noreferrer">Google Maps ↗</a></div>
               ${b.flight_number ? `<div style="margin-top:6px;color:#38bdf8;">✈️ <strong>Flight Number:</strong> ${escapeHtml(b.flight_number)} (45m free wait)</div>` : ''}
               ${b.service_type ? `<div style="margin-top:6px;"><strong>Service:</strong> ${escapeHtml(b.service_type)}${hours > 0 ? ` · ${hours} hours booked` : ''}</div>` : ''}
               ${b.special_requests ? `<div style="margin-top:6px;color:#fde68a;">📝 <strong>Special Requests:</strong> ${escapeHtml(b.special_requests)}</div>` : '<div style="margin-top:4px;color:var(--text-muted);font-size:11.5px;">No special requests noted.</div>'}
@@ -947,7 +916,8 @@ function renderCdsDispatchTable(filtered) {
                 <button type="button" class="excel-act-btn gold" onclick="openEditBookingModal('${b.id}')">✏️ Edit Booking</button>
                 <button type="button" class="excel-act-btn" onclick="sendBookingConfirmationEmail('${b.id}')">✉️ Send Confirmation</button>
                 <button type="button" class="excel-act-btn" onclick="viewVoucher('${b.id}')">Voucher</button>
-                <button type="button" class="excel-act-btn" onclick="openInvoiceModal('${b.id}')">📄 Tax Invoice</button>
+                <button type="button" class="excel-act-btn" onclick="openBookingLog('${b.id}')">Booking log</button>
+                <button type="button" class="excel-act-btn" onclick="requestTaxInvoice('${b.id}')">Request tax invoice</button>
                 ${b.payment_status === 'PRE_AUTHORIZED' ? `<button type="button" class="excel-act-btn" style="border-color:#4ade80;color:#4ade80;" onclick="captureBookingPayment('${b.id}', ${b.total_fare || b.fare_amount})">💳 Capture £${fareVal}</button>` : ''}
               </div>
             </div>
@@ -1651,8 +1621,8 @@ function renderDriverView() {
 
   container.innerHTML = installCardHtml + assignedJobs.map(b => {
     const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
-    const mapsPu = `https://maps.apple.com/?q=${encodeURIComponent(b.pickup_address || '')}`;
-    const mapsDo = `https://maps.apple.com/?q=${encodeURIComponent(b.dropoff_address || '')}`;
+    const mapsPu = googleDirections(b.pickup_address);
+    const mapsDo = googleDirections(b.dropoff_address);
 
     const stageBtns = driverStages.map(st => {
       const isCurrent = st.match.includes(b.status);
@@ -1684,12 +1654,12 @@ function renderDriverView() {
         <div style="background: #09090c; border-radius: 8px; padding: 12px; font-size: 13px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="color: var(--gold-accent); font-weight: 700; font-size: 11px;">PICKUP:</span>
-            <a href="${mapsPu}" target="_blank" style="color: #38bdf8; font-size: 11.5px; text-decoration: none; font-weight: 700;">Navigate in Maps ↗</a>
+            <a href="${mapsPu}" target="_blank" style="color: #38bdf8; font-size: 11.5px; text-decoration: none; font-weight: 700;">Google Maps ↗</a>
           </div>
           <div style="color: #fff; margin: 3px 0 10px;">${escapeHtml(b.pickup_address)}</div>
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="color: #38bdf8; font-weight: 700; font-size: 11px;">DESTINATION:</span>
-            <a href="${mapsDo}" target="_blank" style="color: #38bdf8; font-size: 11.5px; text-decoration: none; font-weight: 700;">Navigate in Maps ↗</a>
+            <a href="${mapsDo}" target="_blank" style="color: #38bdf8; font-size: 11.5px; text-decoration: none; font-weight: 700;">Google Maps ↗</a>
           </div>
           <div style="color: #fff; margin-top: 3px;">${escapeHtml(b.dropoff_address)}</div>
           ${b.flight_number ? `<div style="margin-top: 8px; color: #38bdf8; font-weight: 700;">✈️ Flight: ${escapeHtml(b.flight_number)}</div>` : ''}
@@ -2219,141 +2189,15 @@ async function viewVoucher(bookingId) {
   } catch (err) {}
 }
 
-// Tax Invoice & Invoice2go Sync Modal
-let activeInvoiceBookingId = null;
-
-async function openInvoiceModal(bookingId) {
+async function requestTaxInvoice(bookingId) {
+  if (!confirm('Email Dispatch a request to prepare this tax invoice?')) return;
   try {
-    const res = await fetch(`/api/bookings/${bookingId}`);
-    const data = await res.json();
-    if (!data.booking) return;
-
-    const b = data.booking;
-    activeInvoiceBookingId = b.id;
-    const body = document.getElementById('invoice-modal-body');
-    if (!body) return;
-
-    const net = parseFloat(b.fare_amount || 165.0).toFixed(2);
-    const park = parseFloat(b.parking_fee || 0.0).toFixed(2);
-    const drop = parseFloat(b.dropoff_fee || 0.0).toFixed(2);
-    const cong = parseFloat(b.congestion_charge || 0.0).toFixed(2);
-    const vat = ((parseFloat(net) + parseFloat(park) + parseFloat(drop)) * 0.20).toFixed(2);
-    const tot = (parseFloat(net) + parseFloat(park) + parseFloat(drop) + parseFloat(vat) + parseFloat(cong)).toFixed(2);
-
-    body.innerHTML = `
-      <div style="background: #09090c; border: 1px solid var(--gold-border); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 12px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--gold-border); padding-bottom: 10px;">
-          <div>
-            <div style="font-family: var(--font-serif); font-size: 16px; color: #fff; font-weight: 700;">TAX INVOICE: INV-${escapeHtml(b.confirmation_code)}</div>
-            <div style="font-size: 12px; color: var(--gold-accent);">GA Chauffeur Services Limited (Company No. 11136878)</div>
-          </div>
-          <div id="inv-modal-total-top" style="text-align: right; font-size: 20px; font-weight: 700; color: var(--gold-accent); font-family: var(--font-mono);">
-            £${tot} GBP
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-          <div>
-            <label style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Billed To</label>
-            <div style="font-size: 14px; font-weight: 700; color: #fff;">${escapeHtml(b.customer_name)}</div>
-          </div>
-          <div>
-            <label style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Recipient Email</label>
-            <input type="email" id="inv-email" value="${escapeHtml(b.customer_email)}" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; margin-top: 2px;">
-          </div>
-        </div>
-
-        <div style="background: #141418; padding: 10px 12px; border-radius: 6px; font-size: 12px;">
-          <div style="color: var(--gold-accent); font-weight: 700;">JOURNEY (${escapeHtml(b.pickup_datetime)}):</div>
-          <div style="color: #fff; margin-top: 2px;">${escapeHtml(b.pickup_address)} &rarr; ${escapeHtml(b.dropoff_address)}</div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-          <div>
-            <label style="font-size: 11px; color: var(--text-muted);">Base Journey Fare (£)</label>
-            <input type="number" step="0.01" id="inv-net" value="${net}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
-          </div>
-          <div>
-            <label style="font-size: 11px; color: var(--text-muted);">Airport Parking (Pickup, £)</label>
-            <input type="number" step="0.01" id="inv-park" value="${park}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
-          </div>
-          <div>
-            <label style="font-size: 11px; color: var(--text-muted);">Airport Parking (Drop-off, £)</label>
-            <input type="number" step="0.01" id="inv-drop" value="${drop}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
-          </div>
-          <div>
-            <label style="font-size: 11px; color: var(--text-muted);">Congestion Charge (£, No VAT)</label>
-            <input type="number" step="0.01" id="inv-cong" value="${cong}" oninput="recalcInvoiceModal()" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 4px;">
-          </div>
-        </div>
-
-        <div>
-          <label style="font-size: 11px; color: var(--text-muted);">Invoice Notes / Extra Mileage or Waiting Time</label>
-          <input type="text" id="inv-notes" value="${escapeHtml(b.special_requests || '')}" placeholder="e.g. Corporate Account Invoice — Due on Receipt" style="width: 100%; background: #141418; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 12px; margin-top: 4px;">
-        </div>
-
-        <div style="background: #141418; padding: 10px 12px; border-radius: 6px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="color: var(--text-muted);">UK VAT (20%): <strong id="inv-vat-disp" style="color: #fff;">£${vat}</strong></span>
-          <span style="color: var(--gold-accent); font-weight: 700; font-size: 15px;">Total Invoice: <span id="inv-total-disp">£${tot} GBP</span></span>
-        </div>
-      </div>
-    `;
-
-    document.getElementById('modal-invoice').style.display = 'flex';
-  } catch (err) {}
-}
-
-function recalcInvoiceModal() {
-  const net = parseFloat(document.getElementById('inv-net')?.value || 0);
-  const park = parseFloat(document.getElementById('inv-park')?.value || 0);
-  const drop = parseFloat(document.getElementById('inv-drop')?.value || 0);
-  const cong = parseFloat(document.getElementById('inv-cong')?.value || 0);
-  const vat = (net + park + drop) * 0.20;
-  const tot = net + park + drop + vat + cong;
-  const vEl = document.getElementById('inv-vat-disp');
-  const tEl = document.getElementById('inv-total-disp');
-  const topEl = document.getElementById('inv-modal-total-top');
-  if (vEl) vEl.textContent = `£${vat.toFixed(2)}`;
-  if (tEl) tEl.textContent = `£${tot.toFixed(2)} GBP`;
-  if (topEl) topEl.textContent = `£${tot.toFixed(2)} GBP`;
-}
-
-async function submitSendInvoice() {
-  if (!activeInvoiceBookingId) return;
-  const btn = document.getElementById('btn-send-invoice-confirm');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Sending Invoice...';
-  }
-  try {
-    const payload = {
-      recipient_email: document.getElementById('inv-email')?.value || '',
-      net_fare: parseFloat(document.getElementById('inv-net')?.value || 0),
-      parking_fee: parseFloat(document.getElementById('inv-park')?.value || 0),
-      dropoff_fee: parseFloat(document.getElementById('inv-drop')?.value || 0),
-      congestion_charge: parseFloat(document.getElementById('inv-cong')?.value || 0),
-      notes: document.getElementById('inv-notes')?.value || ''
-    };
-    const res = await fetch(`/api/bookings/${activeInvoiceBookingId}/send-invoice`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (data.success) {
-      closeModal('modal-invoice');
-      showToast(`Invoice ${data.invoice_number} emailed to ${data.recipient}!`);
-      loadData();
-    } else {
-      alert(data.error || 'Could not send invoice.');
-    }
-  } catch (err) {
-    alert('Failed to send invoice.');
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '📧 Email Tax Invoice & Sync Invoice2go ↗';
-    }
+    const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/request-invoice`, {method: 'POST'});
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || 'Could not request the tax invoice.');
+    showToast('Tax invoice request emailed to Dispatch.');
+  } catch (error) {
+    alert(error.message);
   }
 }
 
@@ -2497,8 +2341,8 @@ async function refreshCustomerChat() {
       history.dataset.transcript = transcript;
     }
     status.textContent = conversation.closed ? 'Booking closed. Download the transcript to keep a copy.'
-      : conversation.within_hours ? 'Live chat is open.' : 'Live chat is available Monday to Friday, 08:00–19:00 UK time.';
-    form.hidden = conversation.closed || !conversation.within_hours;
+      : 'Live chat is open.';
+    form.hidden = conversation.closed;
     download.hidden = !conversation.closed || !conversation.messages.length;
   } catch (error) {
     if (select.value === reference) status.textContent = error.message;
@@ -2540,5 +2384,119 @@ async function downloadCustomerChat() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) {
     document.getElementById('customer-chat-status').textContent = error.message;
+  }
+}
+
+function updateDispatchAlarm() {
+  const banner = document.getElementById('dispatch-persistent-alerts');
+  const updates = App.pendingAlerts;
+  const driverMessages = (App.driverMessages || []).filter(message => message.sender_role === 'DRIVER' && !Number(message.is_read)).length;
+  const customers = App.customerUnread || 0;
+  banner.hidden = !(updates.length || driverMessages || customers);
+  document.getElementById('dispatch-alert-text').textContent = [
+    updates.length ? `Booking updates: ${updates.map(alert => [alert.confirmation_code, alert.details].filter(Boolean).join(' · ')).join(' • ')}` : '',
+    driverMessages ? `${driverMessages} driver message(s)` : '',
+    customers ? `${customers} customer message(s)` : ''
+  ].filter(Boolean).join(' · ');
+  document.getElementById('dispatch-alert-ack').hidden = updates.length === 0;
+  document.getElementById('dispatch-alert-drivers').hidden = driverMessages === 0;
+  document.getElementById('dispatch-alert-customers').hidden = customers === 0;
+  const shouldRing = App.audioEnabled && (!banner.hidden || App.urgentBookings.length > 0);
+  if (shouldRing && App.alertTimer === null) {
+    const ring = () => App.urgentBookings.length ? playOneHourUrgentSound() : playNewBookingSound();
+    ring();
+    App.alertTimer = setInterval(ring, 2500);
+  } else if (!shouldRing && App.alertTimer !== null) {
+    clearInterval(App.alertTimer);
+    App.alertTimer = null;
+  }
+}
+
+async function acknowledgeDispatchAlerts() {
+  const keys = App.pendingAlerts.map(alert => alert.key);
+  try {
+    const response = await fetch('/api/dispatch/ack-alerts', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({keys})
+    });
+    if (!response.ok) throw Error('Could not acknowledge the updates.');
+    await loadData();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+
+async function downloadDispatchBackup() {
+  const status = document.getElementById('dispatch-backup-result');
+  try {
+    const response = await fetch('/api/dispatch/backup');
+    if (!response.ok) throw Error('Could not download the Dispatch backup.');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dispatch-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+async function restoreDispatchBackup(event) {
+  event.preventDefault();
+  const status = document.getElementById('dispatch-backup-result');
+  const file = document.getElementById('dispatch-backup-file').files[0];
+  if (!file) return;
+  event.submitter.disabled = true;
+  try {
+    const response = await fetch('/api/dispatch/restore', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: await file.text()
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || 'Could not restore the Dispatch backup.');
+    status.textContent = `Restored ${result.restored.bookings} bookings.`;
+    await loadData();
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    event.submitter.disabled = false;
+  }
+}
+
+function googleDirections(address) {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address || '')}&travelmode=driving&dir_action=navigate`;
+}
+
+async function openBookingLog(id) {
+  const title = document.getElementById('booking-log-title');
+  const history = document.getElementById('booking-log-history');
+  history.textContent = 'Loading booking history…';
+  openModal('modal-booking-log');
+  try {
+    const response = await fetch(`/api/bookings/${encodeURIComponent(id)}`);
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || 'Could not load booking history.');
+    title.textContent = `Booking log · ${result.booking.confirmation_code}`;
+    if (!result.actions?.length) {
+      history.textContent = 'No actions are recorded for this booking.';
+      return;
+    }
+    history.replaceChildren(...result.actions.map(action => {
+      const row = document.createElement('section');
+      const heading = document.createElement('strong');
+      const details = document.createElement('p');
+      const meta = document.createElement('small');
+      heading.textContent = action.action.replaceAll('_', ' ');
+      details.textContent = action.details || '';
+      meta.textContent = [action.timestamp, action.actor, action.request_ip && `IP ${action.request_ip}`,
+        action.network_trace && `Trace ${action.network_trace}`].filter(Boolean).join(' · ');
+      row.append(heading, details, meta);
+      return row;
+    }));
+  } catch (error) {
+    history.textContent = error.message;
   }
 }

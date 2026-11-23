@@ -1,4 +1,4 @@
-"""Booking-linked customer chat, available during London dispatch hours."""
+"""Booking-linked customer chat."""
 import hashlib
 import hmac
 import os
@@ -19,11 +19,6 @@ def access_token(reference, email):
     secret = key.encode() if key else SESSION_KEY
     identity = f"customer-chat\n{reference}\n{email.strip().lower()}"
     return hmac.new(secret, identity.encode(), hashlib.sha256).hexdigest()
-
-
-def within_hours(now=None):
-    now = (now or datetime.now(LONDON)).astimezone(LONDON)
-    return now.weekday() < 5 and 8 <= now.hour < 19
 
 
 def unread_count():
@@ -51,7 +46,7 @@ def handle(payload, *, dispatch=False):
                 FROM customer_chat_messages AS m JOIN bookings AS b ON b.id = m.booking_id
                 GROUP BY b.id ORDER BY latest DESC
             """)
-            return {"threads": [dict(row) for row in threads], "within_hours": within_hours()}, 200
+            return {"threads": [dict(row) for row in threads]}, 200
 
         if action == "send":
             conn.execute("BEGIN IMMEDIATE")
@@ -70,12 +65,9 @@ def handle(payload, *, dispatch=False):
             return {"error": "Booking not found."}, 404
 
         closed = booking["status"] in CLOSED_STATUSES
-        open_now = within_hours()
         if action == "send":
             if closed:
                 return {"error": "This booking’s chat is closed."}, 409
-            if not open_now:
-                return {"error": "Chat is available Monday to Friday, 08:00–19:00 UK time."}, 409
             message = str(payload.get("message") or "").strip()
             if not 1 <= len(message) <= 1000:
                 return {"error": "Enter a message of 1–1,000 characters."}, 400
@@ -86,7 +78,7 @@ def handle(payload, *, dispatch=False):
                   datetime.now(LONDON).isoformat(timespec="seconds")))
 
         if closed and not dispatch:
-            return {"closed": True, "within_hours": open_now, "messages": []}, 200
+            return {"closed": True, "messages": []}, 200
         if dispatch and action == "read" and not closed:
             conn.execute("""
                 UPDATE customer_chat_messages SET dispatch_read = 1
@@ -96,5 +88,5 @@ def handle(payload, *, dispatch=False):
             SELECT sender, message, sent_at FROM customer_chat_messages
             WHERE booking_id = ? ORDER BY id
         """, (booking["id"],))
-        return {"code": reference, "closed": closed, "within_hours": open_now,
+        return {"code": reference, "closed": closed,
                 "messages": [dict(row) for row in messages]}, 200

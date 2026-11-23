@@ -10,6 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#121715">
   <link rel="manifest" href="/driver-manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="/driver-icon-180.png?v=20261123">
   <style>
     :root {
       --bg-page: #121715;
@@ -441,6 +442,15 @@
       z-index: 1000;
       display: none;
     }
+    #driver-persistent-alert { position:sticky; top:0; z-index:10; border-color:#fca5a5; background:#472422; }
+    #driver-persistent-alert[hidden], #driver-persistent-alert [hidden] { display:none !important; }
+    .driver-swipe-label { display:block; color:var(--gold); font-weight:700; margin-bottom:7px; }
+    .driver-swipe { width:100%; height:38px; accent-color:#c9b894; touch-action:pan-y; }
+    .action-grid:has(.driver-swipe) { display:block; }
+    #driver-navigation { color:#f1f3ee; background:#171f1b; border:1px solid #c9b894; border-radius:8px; padding:18px; }
+    #driver-navigation h2 { font-size:18px; margin:0 0 12px; }
+    #driver-navigation::backdrop { background:rgba(0,0,0,.6); }
+    #driver-navigation form { margin-top:10px; }
   </style>
 </head>
 <body>
@@ -488,35 +498,21 @@
   <!-- AUTHENTICATED CHAUFFEUR PORTAL -->
   <main id="driver-portal-view" class="driver-main" style="display:none;">
 
+    <section id="driver-persistent-alert" class="card" hidden aria-label="Unacknowledged updates">
+      <strong>Attention required</strong>
+      <p id="driver-persistent-text"></p>
+      <a href="#sec-chat" class="nav-link" id="driver-view-messages" hidden>View dispatch messages</a>
+      <button type="button" class="nav-link" id="driver-ack-alerts" onclick="acknowledgeDriverAlerts()">Mark updates seen</button>
+    </section>
     <!-- 1. CHAUFFEUR & VERIFIED VEHICLE DETAILS CARD -->
     <section class="card" id="sec-profile">
       <div class="profile-banner">
         <div>
-          <div class="eyebrow">Verified GA Chauffeur</div>
           <div class="driver-name" id="dp-name">—</div>
           <div class="vehicle-pill">
             <span id="dp-vehicle">—</span>
             <span class="plate-badge" id="dp-plate">—</span>
           </div>
-        </div>
-        <span class="verified-badge" id="dp-verified">✓ Docs &amp; PCO Verified</span>
-      </div>
-      <div class="profile-meta-grid">
-        <div class="meta-box">
-          <div class="meta-label">Direct Mobile</div>
-          <div class="meta-val" id="dp-phone">—</div>
-        </div>
-        <div class="meta-box">
-          <div class="meta-label">PCO / Licence Ref</div>
-          <div class="meta-val" id="dp-pco">—</div>
-        </div>
-        <div class="meta-box">
-          <div class="meta-label">Capacity</div>
-          <div class="meta-val" id="dp-cap">—</div>
-        </div>
-        <div class="meta-box">
-          <div class="meta-label">Driver Rating</div>
-          <div class="meta-val" id="dp-rating">5.0 ★</div>
         </div>
       </div>
     </section>
@@ -581,6 +577,12 @@
     </button>
   </nav>
 
+  <dialog id="driver-navigation" aria-labelledby="driver-navigation-title">
+    <h2 id="driver-navigation-title">Choose navigation app</h2>
+    <a id="driver-google-maps" class="nav-link" target="_blank" rel="noopener noreferrer">Google Maps</a>
+    <a id="driver-waze" class="nav-link" target="_blank" rel="noopener noreferrer">Waze</a>
+    <form method="dialog"><button class="nav-link">Cancel</button></form>
+  </dialog>
   <div class="toast-banner" id="driver-toast"></div>
 
   <script>
@@ -589,10 +591,9 @@
       chauffeur: null,
       jobs: [],
       messages: [],
-      knownJobIds: new Set(),
-      knownMsgIds: new Set(),
-      initialLoaded: false,
-      audioCtx: null
+      audioCtx: null,
+      pendingAlerts: [],
+      alertTimer: null
     };
 
     function getDriverAudioCtx() {
@@ -670,7 +671,10 @@
 
       setInterval(() => {
         if (DriverApp.token) loadDriverPortal(true);
-      }, 3500);
+      }, 1800);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && DriverApp.token) loadDriverPortal(true);
+      });
     })();
 
     async function submitDriverLogin(e) {
@@ -714,6 +718,9 @@
         if (res.status === 401 || res.status === 404) {
           localStorage.removeItem('ga_driver_app_token');
           DriverApp.token = '';
+          DriverApp.jobs = [];
+          DriverApp.pendingAlerts = [];
+          updateDriverAlarm();
           document.getElementById('driver-portal-view').style.display = 'none';
           document.getElementById('driver-bottom-nav').style.display = 'none';
           document.getElementById('driver-login-view').style.display = 'block';
@@ -725,6 +732,8 @@
         DriverApp.chauffeur = data.chauffeur;
         DriverApp.jobs = data.jobs || [];
         DriverApp.messages = data.messages || [];
+        DriverApp.pendingAlerts = data.pending_alerts || [];
+        updateDriverAlarm();
 
         document.getElementById('driver-login-view').style.display = 'none';
         document.getElementById('driver-portal-view').style.display = 'flex';
@@ -732,29 +741,43 @@
         document.getElementById('btn-duty-toggle').style.display = 'inline-block';
         document.getElementById('btn-driver-logout').style.display = 'inline-block';
 
-        // Check for newly allocated job or new message from Dispatch
-        if (DriverApp.initialLoaded) {
-          DriverApp.jobs.forEach(j => {
-            if (!DriverApp.knownJobIds.has(j.id)) {
-              playDriverChime();
-              showDriverToast(`🚨 New Job Allocated: ${j.confirmation_code} (${j.customer_name})`);
-            }
-          });
-          DriverApp.messages.forEach(m => {
-            if (!DriverApp.knownMsgIds.has(m.id) && m.sender_role === 'DISPATCH') {
-              playDriverChime();
-              showDriverToast(`💬 Dispatch: ${m.message}`);
-            }
-          });
-        }
-        DriverApp.knownJobIds = new Set(DriverApp.jobs.map(j => j.id));
-        DriverApp.knownMsgIds = new Set(DriverApp.messages.map(m => m.id));
-        DriverApp.initialLoaded = true;
-
         renderDriverProfile();
         renderDriverJobs();
         renderDriverChat();
       } catch (err) {}
+    }
+
+    function updateDriverAlarm() {
+      const hasAllocation = DriverApp.jobs.some(job => ['ASSIGNED', 'CONFIRMED', 'PENDING'].includes(job.status));
+      const alerts = DriverApp.pendingAlerts;
+      const banner = document.getElementById('driver-persistent-alert');
+      banner.hidden = !(hasAllocation || alerts.length);
+      document.getElementById('driver-persistent-text').textContent = [
+        hasAllocation ? 'Review and accept your allocated booking below.' : '',
+        ...alerts.map(alert => [alert.label, alert.confirmation_code, alert.details].filter(Boolean).join(' · '))
+      ].join(' • ');
+      document.getElementById('driver-ack-alerts').hidden = !alerts.length;
+      document.getElementById('driver-view-messages').hidden = !alerts.some(alert => alert.key.startsWith('message:'));
+      if (!banner.hidden && DriverApp.alertTimer === null) {
+        playDriverChime();
+        DriverApp.alertTimer = setInterval(playDriverChime, 2500);
+      } else if (banner.hidden && DriverApp.alertTimer !== null) {
+        clearInterval(DriverApp.alertTimer);
+        DriverApp.alertTimer = null;
+      }
+    }
+
+    async function acknowledgeDriverAlerts() {
+      try {
+        const response = await fetch('/api/driver/ack-alerts', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({token: DriverApp.token, keys: DriverApp.pendingAlerts.map(alert => alert.key)})
+        });
+        if (!response.ok) throw Error('Could not acknowledge the updates.');
+        await loadDriverPortal(true);
+      } catch (error) {
+        showDriverToast(error.message);
+      }
     }
 
     function renderDriverProfile() {
@@ -763,22 +786,6 @@
       document.getElementById('dp-name').textContent = ch.name;
       document.getElementById('dp-vehicle').textContent = ch.vehicle_model;
       document.getElementById('dp-plate').textContent = ch.license_plate;
-      document.getElementById('dp-phone').textContent = ch.phone || '—';
-      document.getElementById('dp-pco').textContent = ch.pco_license || 'Verified On File';
-      document.getElementById('dp-cap').textContent = `${ch.passenger_capacity || 4} Pax • ${ch.luggage_capacity || 2} Bags`;
-      document.getElementById('dp-rating').textContent = `${ch.rating || '5.0'} ★ (${ch.trips_count || 0} Runs)`;
-
-      const verEl = document.getElementById('dp-verified');
-      if (Number(ch.docs_verified) !== 0) {
-        verEl.textContent = '✓ Docs & PCO Verified';
-        verEl.style.background = 'rgba(16, 185, 129, 0.16)';
-        verEl.style.color = '#34d399';
-      } else {
-        verEl.textContent = '⏳ Pending Verification';
-        verEl.style.background = 'rgba(245, 158, 11, 0.16)';
-        verEl.style.color = '#fbbf24';
-      }
-
       const dutyBtn = document.getElementById('btn-duty-toggle');
       const isAvail = ch.status === 'AVAILABLE';
       dutyBtn.textContent = isAvail ? '🟢 Available' : '🚗 On Trip';
@@ -814,6 +821,7 @@
       }
 
       if (activeJobs.length === 0) {
+        DriverApp.jobMarkup = '';
         list.innerHTML = `
           <div class="card" style="text-align:center;padding:30px 18px;color:var(--muted);">
             <div style="font-size:32px;margin-bottom:8px;">🟢</div>
@@ -824,29 +832,29 @@
         return;
       }
 
-      const stageButtons = [
-        { action: 'EN_ROUTE_PICKUP', match: ['EN_ROUTE'], label: '🚗 En Route' },
-        { action: 'ARRIVED', match: ['ARRIVED'], label: '📍 Arrived' },
-        { action: 'ON_BOARD', match: ['ON_BOARD'], label: '🟢 POB (On Board)' },
-        { action: 'NEXT_STOP', match: ['NEXT_STOP'], label: '➡️ Next Stop' },
-        { action: 'DROPPED_OFF', match: ['DROPPED_OFF'], label: '🛬 Dropped Off' },
-        { action: 'COMPLETED', match: ['COMPLETED'], label: '🏁 Job is Complete', fullWidth: true }
-      ];
+      const nextSteps = {
+        PENDING: ['ACCEPT', 'Accept booking'],
+        CONFIRMED: ['ACCEPT', 'Accept booking'],
+        ASSIGNED: ['ACCEPT', 'Accept booking'],
+        ACCEPTED: ['EN_ROUTE_PICKUP', 'En route'],
+        EN_ROUTE: ['ARRIVED', 'Arrived at pickup'],
+        ARRIVED: ['ON_BOARD', 'Passenger on board'],
+        NEXT_STOP: ['DROPPED_OFF', 'Passenger dropped off'],
+        DROPPED_OFF: ['COMPLETED', 'Complete job']
+      };
 
-      list.innerHTML = activeJobs.map(b => {
+      const markup = activeJobs.map(b => {
         const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
-        const mapsPu = `https://maps.apple.com/?daddr=${encodeURIComponent(b.pickup_address || '')}`;
-        const mapsDo = `https://maps.apple.com/?daddr=${encodeURIComponent(b.dropoff_address || '')}`;
-
-        const needsAcceptance = ['ASSIGNED', 'CONFIRMED', 'PENDING'].includes(b.status);
-        const btnsHtml = needsAcceptance
-          ? `<button type="button" class="act-btn complete-btn" onclick="triggerDriverStage('${esc(b.id)}', 'ACCEPT', 'Accept booking')">Accept booking</button>`
-          : stageButtons.map(st => {
-          const isCurrent = st.match.includes(b.status);
-          const cls = `act-btn ${isCurrent ? 'active-stage' : ''} ${st.fullWidth ? 'complete-btn' : ''}`;
-          return `<button type="button" class="${cls}" onclick="triggerDriverStage('${esc(b.id)}', '${st.action}', '${esc(st.label)}')">${st.label}${isCurrent ? ' ✓' : ''}</button>`;
-        }).join('');
-
+        const next = b.status === 'ON_BOARD'
+          ? (b.hours_booked > 0 ? ['NEXT_STOP', 'Next stop'] : ['DROPPED_OFF', 'Passenger dropped off'])
+          : nextSteps[b.status];
+        const btnsHtml = next ? `
+          <label class="driver-swipe-label" for="swipe-${esc(b.id)}">Swipe right to ${esc(next[1].toLowerCase())}</label>
+          <input class="driver-swipe" type="range" id="swipe-${esc(b.id)}" min="0" max="100" value="0"
+            data-booking="${esc(b.id)}" data-action="${next[0]}" data-label="${esc(next[1])}"
+            onpointerdown="startDriverSwipe(event, this)" onpointermove="moveDriverSwipe(event, this)"
+            onkeydown="this.dataset.inputMethod = 'keyboard'" onchange="confirmDriverSwipe(this)">
+        ` : '';
         return `
           <div class="job-card ${b.status === 'ON_BOARD' ? 'pob' : ''}">
             <div class="job-top">
@@ -860,8 +868,7 @@
             <div>
               <div style="font-size:18px;font-weight:700;color:#fff;">👤 ${esc(b.customer_name)}</div>
               <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:13px;">
-                <a href="tel:${cleanPhone}" style="color:var(--gold);text-decoration:none;font-weight:700;">📞 ${esc(b.customer_phone)}</a>
-                <a href="https://wa.me/${cleanPhone.replace('+','')}" target="_blank" style="color:#4ade80;text-decoration:none;font-weight:700;">💬 WhatsApp Passenger</a>
+                ${cleanPhone ? `<a class="nav-link" href="tel:${cleanPhone}">Call</a><a class="nav-link" href="sms:${cleanPhone}">Text</a>` : ''}
                 <span style="color:var(--muted);">👥 ${b.passenger_count || 1} Pax • 🧳 ${b.luggage_count || 0} Bags</span>
               </div>
             </div>
@@ -870,7 +877,7 @@
               <div class="route-point">
                 <div class="route-head">
                   <span style="color:#4ade80;">🟢 Collection Point</span>
-                  <a href="${mapsPu}" target="_blank" class="nav-link">Navigate ↗</a>
+                  <button type="button" class="nav-link" data-address="${esc(b.pickup_address)}" onclick="chooseDriverMap(this.dataset.address)">Navigate</button>
                 </div>
                 <div style="font-size:13.5px;color:#fff;font-weight:500;">${esc(b.pickup_address)}</div>
               </div>
@@ -878,7 +885,7 @@
               <div class="route-point">
                 <div class="route-head">
                   <span style="color:#93c5fd;">🏁 Destination</span>
-                  <a href="${mapsDo}" target="_blank" class="nav-link">Navigate ↗</a>
+                  <button type="button" class="nav-link" data-address="${esc(b.dropoff_address)}" onclick="chooseDriverMap(this.dataset.address)">Navigate</button>
                 </div>
                 <div style="font-size:13.5px;color:#fff;font-weight:500;">${esc(b.dropoff_address)}</div>
               </div>
@@ -887,7 +894,6 @@
             </div>
 
             <div>
-              <div class="eyebrow" style="margin-bottom:6px;">Tap Live Status (Updates Dispatch Screen Instantly)</div>
               <div class="action-grid">
                 ${btnsHtml}
               </div>
@@ -895,6 +901,49 @@
           </div>
         `;
       }).join('');
+      if (markup !== DriverApp.jobMarkup) {
+        list.innerHTML = markup;
+        DriverApp.jobMarkup = markup;
+      }
+    }
+
+    function chooseDriverMap(address) {
+      const destination = encodeURIComponent(address);
+      document.getElementById('driver-google-maps').href = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving&dir_action=navigate`;
+      document.getElementById('driver-waze').href = `https://waze.com/ul?q=${destination}&navigate=yes&utm_source=ga_chauffeurs`;
+      document.getElementById('driver-navigation').showModal();
+    }
+
+    function startDriverSwipe(event, control) {
+      control.dataset.inputMethod = 'pointer';
+      control.dataset.startX = event.clientX;
+      control.dataset.distance = '0';
+    }
+
+    function moveDriverSwipe(event, control) {
+      if (control.dataset.inputMethod !== 'pointer' || !event.buttons) return;
+      control.dataset.distance = Math.max(Number(control.dataset.distance), event.clientX - Number(control.dataset.startX));
+    }
+
+    async function confirmDriverSwipe(control) {
+      const keyboard = control.dataset.inputMethod === 'keyboard';
+      const deliberateSwipe = Number(control.dataset.distance) >= Math.min(90, control.clientWidth * 0.35);
+      if (control.valueAsNumber < 100 || (!deliberateSwipe && !keyboard)) {
+        control.value = 0;
+        return;
+      }
+      if (keyboard && !confirm(`Confirm: ${control.dataset.label}?`)) {
+        control.value = 0;
+        return;
+      }
+      control.disabled = true;
+      try {
+        await triggerDriverStage(control.dataset.booking, control.dataset.action, control.dataset.label);
+      } finally {
+        control.value = 0;
+        control.dataset.distance = '0';
+        control.disabled = false;
+      }
     }
 
     async function triggerDriverStage(bookingId, action, labelText) {

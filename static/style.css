@@ -2085,3 +2085,24 @@ button, input, textarea, select {
 #customer-chat-unread[hidden] {
   display: none !important;
 }
+
+#urgent-unallocated-banner, .persistent-alert {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+}
+.persistent-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #472422;
+  color: #fff;
+}
+.persistent-alert[hidden], .persistent-alert [hidden] {
+  display: none !important;
+}
+
+#booking-log-history section + section { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+#booking-log-history small { color: var(--text-muted); overflow-wrap: anywhere; }

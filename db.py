@@ -187,6 +187,14 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS customer_chat_booking ON customer_chat_messages (booking_id, id)")
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS alert_receipts (
+            scope TEXT NOT NULL,
+            alert_key TEXT NOT NULL,
+            PRIMARY KEY (scope, alert_key)
+        )
+    """)
+
     # Confirmations Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS confirmations (
@@ -214,6 +222,11 @@ def init_db():
         timestamp TEXT NOT NULL
     )
     """)
+
+    log_columns = {row["name"] for row in cursor.execute("PRAGMA table_info(action_logs)")}
+    for name in ("request_ip", "network_trace"):
+        if name not in log_columns:
+            cursor.execute(f"ALTER TABLE action_logs ADD COLUMN {name} TEXT")
 
     # System Settings Table
     cursor.execute("""
