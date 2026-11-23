@@ -2449,14 +2449,16 @@ async function restoreDispatchBackup(event) {
   event.preventDefault();
   const status = document.getElementById('dispatch-backup-result');
   const file = document.getElementById('dispatch-backup-file').files[0];
-  if (!file) return;
+  const pasted = document.getElementById('dispatch-backup-content');
+  if (!file && !pasted.value.trim()) { status.textContent = 'Select a file or paste backup JSON.'; return; }
   event.submitter.disabled = true;
   try {
     const response = await fetch('/api/dispatch/restore', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: await file.text()
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: file ? await file.text() : pasted.value
     });
     const result = await response.json();
     if (!response.ok) throw Error(result.error || 'Could not restore the Dispatch backup.');
+    pasted.value = '';
     status.textContent = `Restored ${result.restored.bookings} bookings.`;
     await loadData();
   } catch (error) {

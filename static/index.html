@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="style.css?v=dispatch-route-and-alerts">
+  <link rel="stylesheet" href="style.css?v=dispatch-persistent-corner">
   <link rel="apple-touch-icon" sizes="180x180" href="/driver-icon-180.png?v=20261123">
 </head>
 <body>
@@ -791,7 +791,9 @@
         <button type="button" class="btn btn-secondary" onclick="downloadDispatchBackup()">Download backup</button>
         <form onsubmit="restoreDispatchBackup(event)">
           <label for="dispatch-backup-file">Dispatch backup file</label>
-          <input type="file" accept=".json,application/json" id="dispatch-backup-file" required>
+          <input type="file" accept=".json,application/json" id="dispatch-backup-file">
+          <label for="dispatch-backup-content">Or paste backup JSON</label>
+          <textarea id="dispatch-backup-content" rows="4" autocomplete="off"></textarea>
           <button type="submit" class="btn btn-gold">Restore backup</button>
         </form>
         <p id="dispatch-backup-result" role="status"></p>
@@ -810,6 +812,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=dispatch-route-and-alerts"></script>
+  <script src="app.js?v=dispatch-persistent-corner"></script>
 </body>
 </html>

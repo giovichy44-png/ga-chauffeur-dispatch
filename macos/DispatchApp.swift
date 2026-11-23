@@ -70,7 +70,7 @@ final class DispatchApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             let workspace = NSWorkspace.shared
             if url.host == "www.google.com", url.path.hasPrefix("/maps"),
                let chrome = workspace.urlForApplication(withBundleIdentifier: "com.google.Chrome") {
-                workspace.open([url], withApplicationAt: chrome, configuration: .init())
+                workspace.open([url], withApplicationAt: chrome, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
             } else {
                 workspace.open(url)
             }
