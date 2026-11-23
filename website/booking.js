@@ -9,6 +9,11 @@
   const form = document.querySelector('#booking-form');
   if (!form) return;
 
+  const stops = GAJourneyStops.mount(document.getElementById('web-stops'), () => {
+    updateRouteAndMetrics();
+    updatePricingAndReview();
+  });
+  GAJourneyStops.address(document.getElementById('booking-destination'), {suggestions:false});
   const status = document.querySelector('#booking-status');
   const submitBtn = document.querySelector('#booking-submit-btn');
   const reviewConfirmed = document.querySelector('#booking-review-confirmed');
@@ -62,7 +67,7 @@
     const duration = available ? select.value : '0';
     return {pickup, dropoff, vehicle: form.elements.vehicle.value || 'Mercedes-Benz S-Class',
       service: duration === 'open' ? 'Open hours chauffeur service' : service,
-      hours: duration === 'open' ? '0' : duration};
+      hours: duration === 'open' ? '0' : duration, stops: JSON.stringify(stops.values())};
   }
   function currentQuote(){return verifiedQuote && verifiedKey===window.GAServerQuote.key(quoteSpec()) && verifiedQuote.expires>Date.now()/1000+10 ? verifiedQuote:null;}
   window.GAServerQuote?.config.then(config=>{serverQuotes=Boolean(config.server_quotes);if(serverQuotes)updateRouteAndMetrics();}).catch(()=>{});
@@ -718,7 +723,7 @@
     const passCount = form.elements.passengers?.value || '1';
     const luggageCount = form.elements.largeCases?.value || '1';
 
-    if (sumRoute) sumRoute.textContent = `${pVal || 'Pickup'} ➔ ${dVal || (isHourly ? 'As directed' : 'Destination')}`;
+    if (sumRoute) sumRoute.textContent = [pVal || 'Pickup', ...stops.values(), dVal || (isHourly ? 'As directed' : 'Destination')].join(' ➔ ');
     if (sumVehicle) sumVehicle.textContent = v;
     if (sumDateTime) sumDateTime.textContent = (datetimeHidden?.value || '').replace('T', ' at ');
     if (sumMetrics) sumMetrics.textContent = `${journeyDistanceMiles.toFixed(1)} miles • approx. ${journeyDurationMinutes} mins`;
@@ -1042,6 +1047,7 @@
       phone: data.phone,
       service_type: quoteSpec().service,
       hours: Number(quoteSpec().hours),
+      stops: stops.values(),
       pickup_address: pVal,
       pickup: pVal,
       dropoff_address: dVal || (isHourly ? 'As directed' : pVal),

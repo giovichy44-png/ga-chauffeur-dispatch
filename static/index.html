@@ -235,6 +235,7 @@
                 <div class="chip-shortcuts">
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 5, TW6 2GA')">Heathrow T5</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 2, TW6 1EW')">Heathrow T2</span>
+                  <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 3, Camlet Way, Longford, Hounslow TW6 1QG')">Heathrow T3</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Gatwick Airport (LGW) South Terminal, RH6 0NP')">Gatwick</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Claridge\'s, Brook Street, Mayfair, London W1K 4HR')">Claridge's</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Coworth Park Hotel, Blacknest Rd, Ascot SL5 7SE')">Coworth Park</span>
@@ -253,6 +254,7 @@
                 <div class="chip-shortcuts">
                   <span class="quick-chip" onclick="applySuggestion('dropoff', 'Heathrow Airport (LHR) Terminal 5, TW6 2GA')">Heathrow T5</span>
                   <span class="quick-chip" onclick="applySuggestion('dropoff', 'Heathrow Airport (LHR) Terminal 2, TW6 1EW')">Heathrow T2</span>
+                  <span class="quick-chip" onclick="applySuggestion('dropoff', 'Heathrow Airport (LHR) Terminal 3, Camlet Way, Longford, Hounslow TW6 1QG')">Heathrow T3</span>
                   <span class="quick-chip" onclick="applySuggestion('dropoff', 'Claridge\'s, Brook Street, Mayfair, London W1K 4HR')">Claridge's</span>
                   <span class="quick-chip" onclick="applySuggestion('dropoff', 'Coworth Park Hotel, Blacknest Rd, Ascot SL5 7SE')">Coworth Park</span>
                   <span class="quick-chip" onclick="applySuggestion('dropoff', 'The Connaught, Carlos Place, Mayfair, London W1K 2AL')">The Connaught</span>
@@ -261,6 +263,7 @@
               </div>
             </div>
 
+            <div id="dispatch-new-stops"></div>
             <!-- Date, Time & Vehicle -->
             <div class="field" id="wrap-hours" style="display:none">
               <label for="f-hours">How long would you like the service for?</label>
@@ -557,6 +560,7 @@
           <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Drop-off Destination *</label>
           <input type="text" id="eb-dropoff" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
         </div>
+        <div id="dispatch-edit-stops"></div>
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
           <div>
             <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Passengers</label>
@@ -676,6 +680,7 @@
         </div>
       </div>
       <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" onclick="testDispatchPush()">Send test phone notification</button>
         <button type="button" class="btn btn-gold btn-block" onclick="closeModal('modal-sound-iphone')">← Back to Dispatch</button>
       </div>
     </div>
@@ -809,6 +814,8 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=dispatch-duration-refresh"></script>
+  <script src="/journey-stops.js?v=1"></script>
+  <script src="/ga-phone-push.js?v=1"></script>
+  <script src="app.js?v=dispatch-stops-1"></script>
 </body>
 </html>

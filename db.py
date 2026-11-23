@@ -163,7 +163,8 @@ def init_db():
         ("preauth_at", "TEXT"),
         ("stripe_payment_intent_id", "TEXT"),
         ("stripe_customer_id", "TEXT"),
-        ("pending_amendment", "TEXT")
+        ("pending_amendment", "TEXT"),
+        ("stops", "TEXT NOT NULL DEFAULT '[]'")
     ]
     for col_name, col_def in cols_to_add:
         if col_name not in existing_cols:
@@ -198,9 +199,13 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS dispatch_push_subscriptions (
             endpoint TEXT PRIMARY KEY,
-            subscription TEXT NOT NULL
+            subscription TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT 'dispatch'
         )
     """)
+
+    if "scope" not in {row["name"] for row in cursor.execute("PRAGMA table_info(dispatch_push_subscriptions)")}:
+        cursor.execute("ALTER TABLE dispatch_push_subscriptions ADD COLUMN scope TEXT NOT NULL DEFAULT 'dispatch'")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS confirmations (

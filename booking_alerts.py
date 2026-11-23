@@ -5,7 +5,7 @@ import re
 import db
 
 DISPATCH_ACTIONS = ("BOOKING_CREATED", "CUSTOMER_AMENDED_BOOKING", "AMENDMENT_REQUESTED_2H", "CUSTOMER_AMENDMENT_APPROVED", "DISPATCH_AMENDED_BOOKING")
-DRIVER_ACTIONS = ("CHAUFFEUR_ALLOCATED", "CUSTOMER_AMENDED_BOOKING", "DISPATCH_AMENDED_BOOKING", "CUSTOMER_AMENDMENT_APPROVED")
+DRIVER_ACTIONS = ("CHAUFFEUR_ALLOCATED", "CUSTOMER_AMENDED_BOOKING", "DISPATCH_AMENDED_BOOKING", "CUSTOMER_AMENDMENT_APPROVED", "AMENDMENT_REQUESTED_2H")
 
 
 def pending(conn, chauffeur_id=None):
@@ -69,7 +69,7 @@ def describe_changes(previous, changes):
     labels = {
         "customer_name": "customer name", "customer_phone": "contact phone", "customer_email": "contact email",
         "pickup_datetime": "pickup time", "pickup_address": "pickup address",
-        "dropoff_address": "destination", "flight_number": "flight number",
+        "dropoff_address": "destination", "stops": "stops", "flight_number": "flight number",
         "vehicle_class": "vehicle", "passenger_count": "passenger count",
         "large_cases": "luggage", "medium_cases": "luggage", "hand_luggage": "luggage",
         "special_requests": "special requests", "total_fare": "fare",

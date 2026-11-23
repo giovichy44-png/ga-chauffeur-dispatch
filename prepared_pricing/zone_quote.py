@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import math
+import re
 import time
 import urllib.request
 import urllib.parse
@@ -47,32 +48,69 @@ def surcharge(pickup, dropoff):
     p,d=in_zone(pickup),in_zone(dropoff)
     return 18 if p or d else 0
 
+def address_location(address, results):
+    postcode_match = re.search(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", address, re.I)
+    postcode = re.sub(r"\s+", "", postcode_match[0]).upper() if postcode_match else ""
+    street = re.match(r"^\s*(\d+[A-Z]?)\s+([^,]+)", address, re.I)
+    terminal = re.search(r"\b(?:terminal\s*|t)([2-5])\b", address, re.I) if re.search(r"\b(?:heathrow|lhr)\b", address, re.I) else None
+    specific = {"street_address", "premise", "subpremise", "airport", "establishment", "point_of_interest", "transit_station"}
+    matches = {}
+    for candidate in results:
+        if not specific.intersection(candidate.get("types", [])):
+            continue
+        fields = {label: part["long_name"] for part in candidate.get("address_components", []) for label in part["types"]}
+        actual_postcode = re.sub(r"\s+", "", fields.get("postal_code", "")).upper()
+        if postcode and postcode != actual_postcode:
+            continue
+        label = candidate.get("formatted_address", "")
+        if terminal and not re.search(r"\b(?:terminal\s*|t)" + terminal[1] + r"\b", label, re.I):
+            continue
+        verified_street = bool(street and fields.get("street_number", "").casefold() == street[1].casefold()
+                               and fields.get("route", "").casefold() == street[2].strip().casefold())
+        if street and not verified_street:
+            continue
+        if candidate.get("partial_match") and not (postcode and (verified_street or terminal)):
+            continue
+        point = candidate["geometry"]["location"]
+        matches[(round(point["lat"], 5), round(point["lng"], 5))] = point
+    if len(matches) == 1:
+        return next(iter(matches.values()))
+    raise QuoteUnavailable("Choose the matching property or airport terminal from the address suggestions.")
+
+
 def geocode(address,key):
-    if not key: raise QuoteUnavailable('Server-side Google Maps key is not configured.')
+    if not key:
+        raise QuoteUnavailable('Server-side Google Maps key is not configured.')
+    terminal = re.search(r"\b(?:terminal\s*|t)([2-5])\b", address, re.I)
+    if terminal and re.search(r"\b(?:heathrow|lhr)\b", address, re.I):
+        terminal_postcodes = {"2": "TW6 1EW", "3": "TW6 1QG", "4": "TW6 3XA", "5": "TW6 2GA"}
+        # A road or parking entrance can share the terminal postcode. Geocode the named terminal.
+        if not re.search(r"\b(?:parking|car park|valet|hotel)\b", address, re.I):
+            address = f"Heathrow Airport Terminal {terminal[1]}, {terminal_postcodes[terminal[1]]}"
     url='https://maps.googleapis.com/maps/api/geocode/json?'+urllib.parse.urlencode({'address':address,'region':'gb','components':'country:GB','key':key})
-    with urllib.request.urlopen(url,timeout=10) as response: data=json.load(response)
-    results=data.get('results',[])
+    with urllib.request.urlopen(url,timeout=10) as response:
+        data=json.load(response)
     if data.get('status')!='OK':
         status=data.get('status','UNKNOWN')
-        if status not in ('ZERO_RESULTS','OVER_DAILY_LIMIT','OVER_QUERY_LIMIT','REQUEST_DENIED','INVALID_REQUEST','UNKNOWN_ERROR'): status='UNKNOWN'
+        if status not in ('ZERO_RESULTS','OVER_DAILY_LIMIT','OVER_QUERY_LIMIT','REQUEST_DENIED','INVALID_REQUEST','UNKNOWN_ERROR'):
+            status='UNKNOWN'
         raise QuoteUnavailable('Google Geocoding status: '+status)
-    specific=[r for r in results if not (set(r.get('types',[])) & {'postal_code','locality','administrative_area_level_1','administrative_area_level_2'})]
-    result=specific[0] if len(specific)==1 else (results[0] if len(results)==1 else None)
-    if not result:
-        raise QuoteUnavailable('Please choose an unambiguous full address.')
-    types=set(result.get('types',[]))
-    if result.get('partial_match') and not (types & {'airport','street_address','premise','subpremise','establishment','point_of_interest','transit_station'}):
-        raise QuoteUnavailable('Please choose an unambiguous full address.')
-    if types & {'postal_code','locality','administrative_area_level_1','administrative_area_level_2'}:
-        raise QuoteUnavailable('Choose the property or airport, rather than only a postcode or town.')
-    if result.get('partial_match'):
-        raise QuoteUnavailable('Choose the full address from the list to verify the route.')
-    return result['geometry']['location']
+    return address_location(address, data.get('results', []))
 
-def driving_route(pickup,dropoff,key):
+def driving_route(pickup,dropoff,key,*,stops=()):
     """Geometry, metrics and endpoint surcharge all derive from verified addresses."""
-    p,d=geocode(pickup,key),geocode(dropoff,key)
+    def endpoint(address, label):
+        try:
+            return geocode(address, key)
+        except QuoteUnavailable as error:
+            raise QuoteUnavailable(f"{label}: {error}") from error
+    p = endpoint(pickup, "Collection point")
+    d = endpoint(dropoff, "Destination")
     body={'origin':{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},'destination':{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}},'travelMode':'DRIVE','routingPreference':'TRAFFIC_AWARE','polylineEncoding':'GEO_JSON_LINESTRING'}
+    locations=[endpoint(address, f"Stop {i}") for i, address in enumerate(stops, 1)]
+    via=[{'location':{'latLng':{'latitude':point['lat'],'longitude':point['lng']}}} for point in locations]
+    if via:
+        body['intermediates']=via
     try:
         request=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring'})
         with urllib.request.urlopen(request,timeout=15) as response: data=json.load(response)
@@ -89,7 +127,7 @@ def driving_route(pickup,dropoff,key):
     b2b_miles=oneway_miles*2.0
     b2b_minutes=oneway_minutes*2.0
     try:
-        b2b_body={'origin':{'location':{'latLng':{'latitude':HYDE_PARK_CORNER['lat'],'longitude':HYDE_PARK_CORNER['lng']}}},'destination':{'location':{'latLng':{'latitude':HYDE_PARK_CORNER['lat'],'longitude':HYDE_PARK_CORNER['lng']}}},'intermediates':[{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}}],'travelMode':'DRIVE','routingPreference':'TRAFFIC_AWARE'}
+        b2b_body={'origin':{'location':{'latLng':{'latitude':HYDE_PARK_CORNER['lat'],'longitude':HYDE_PARK_CORNER['lng']}}},'destination':{'location':{'latLng':{'latitude':HYDE_PARK_CORNER['lat'],'longitude':HYDE_PARK_CORNER['lng']}}},'intermediates':[{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},*via,{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}}],'travelMode':'DRIVE','routingPreference':'TRAFFIC_AWARE'}
         b2b_req=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(b2b_body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration'})
         with urllib.request.urlopen(b2b_req,timeout=15) as b2b_resp: b2b_data=json.load(b2b_resp)
         b2b_routes=b2b_data.get('routes',[])
@@ -98,7 +136,7 @@ def driving_route(pickup,dropoff,key):
             b2b_minutes=float(b2b_routes[0]['duration'].rstrip('s'))/60
     except Exception:
         pass
-    return {'path':path,'distance_miles':oneway_miles,'duration_minutes':oneway_minutes,'base_to_base_miles':b2b_miles,'base_to_base_minutes':b2b_minutes,'pickup_location':p,'dropoff_location':d,'congestion_charge':surcharge(p,d)}
+    return {'path':path,'distance_miles':oneway_miles,'duration_minutes':oneway_minutes,'base_to_base_miles':b2b_miles,'base_to_base_minutes':b2b_minutes,'pickup_location':p,'dropoff_location':d,'congestion_charge':18 if any(in_zone(point) for point in (p,*locations,d)) else 0}
 
 def totals(base,parking,dropoff,zone_charge):
     """Requested £18 added once to final bill. Existing tax on other fares retained."""
@@ -120,5 +158,7 @@ def verify_quote(token,secret,expected,now=None):
         if quote['expires']<int(now or time.time()): raise ValueError()
         for key in ('pickup','dropoff','vehicle','service','hours'):
             if quote.get(key)!=expected.get(key): raise ValueError()
+        if quote.get('stops',[]) != expected.get('stops',[]):
+            raise ValueError()
         return quote
     except Exception: raise QuoteUnavailable('Refresh your journey quote before confirming payment.') from None

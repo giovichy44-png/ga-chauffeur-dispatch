@@ -514,6 +514,7 @@
       <strong id="driver-persistent-heading">Attention required</strong>
       <div id="driver-alert-links"></div>
     </section>
+    <button type="button" class="nav-link" onclick="enableChauffeurPush(this)">Enable phone notifications</button>
     <!-- 1. CHAUFFEUR & VERIFIED VEHICLE DETAILS CARD -->
     <section class="card" id="sec-profile">
       <div class="profile-banner">
@@ -589,6 +590,7 @@
 
   <div class="toast-banner" id="driver-toast"></div>
 
+  <script src="/ga-phone-push.js?v=1"></script>
   <script>
     const DriverApp = {
       token: '',
@@ -751,6 +753,15 @@
       } catch (err) {}
     }
 
+    async function enableChauffeurPush(button) {
+      const send = (action, subscription) => fetch('/api/driver/push', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({token:DriverApp.token, action, subscription})
+      });
+      await GAPhonePush.enable(button, () => send('key'), subscription =>
+        send('subscribe', subscription), showDriverToast, '/driver/');
+    }
+
     function updateDriverAlarm() {
       const alerts = DriverApp.pendingAlerts;
       const banner = document.getElementById('driver-persistent-alert');
@@ -776,7 +787,8 @@
         links.replaceChildren();
         if (messages.length) addLink('New message from Dispatch', openDispatchMessages);
         for (const alert of bookings) {
-          const change = alert.action === 'CHAUFFEUR_ALLOCATED' ? 'New booking' :
+          const change = alert.action === 'AMENDMENT_REQUESTED_2H' ? 'Amendment awaiting Dispatch approval' :
+            alert.action === 'CHAUFFEUR_ALLOCATED' ? 'New booking' :
             String(alert.details || '').startsWith('Updated ') && alert.details.length <= 100 ?
               alert.details : 'Booking details changed';
           addLink([alert.confirmation_code, change].filter(Boolean).join(' · '), () => {
@@ -919,6 +931,12 @@
                 <div style="font-size:13.5px;color:#fff;font-weight:500;">${esc(b.pickup_address)}</div>
                 ${driverFlightLink(b)}
               </div>
+              ${driverStops(b.stops).map((stop, index) => `
+                <div class="route-point">
+                  <div class="route-head"><span>Stop ${index + 1}</span>${driverMapPicker(stop)}</div>
+                  <div>${esc(stop)}</div>
+                </div>`).join('')}
+              ${b.pending_amendment ? '<p>Amendment awaiting Dispatch approval</p>' : ''}
               <div style="border-top:1px solid var(--border);"></div>
               <div class="route-point">
                 <div class="route-head">
@@ -954,6 +972,11 @@
       return label + ' · ' + time;
     }
 
+    function driverStops(value) {
+      try { return Array.isArray(value) ? value : JSON.parse(value || '[]'); }
+      catch (_) { return []; }
+    }
+
     function driverFlightLink(booking) {
       if (!booking.flight_number) return '';
       const flight = String(booking.flight_number).toUpperCase().replace(/\s+/g, '');
@@ -962,10 +985,13 @@
       const terminal = pickup.match(/\b(?:terminal|t)\s*([2-5])\b/i);
       const heathrow = /\bheathrow\b|\blhr\b/i.test(pickup);
       const code = heathrow && parts ? parts[1] + parts[2].padStart(3, '0') + parts[3] : flight;
-      const href = terminal && parts
+      const arrivalDate = String(booking.pickup_datetime || '').slice(0, 10);
+      const today = new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/London'}).format(new Date());
+      const href = terminal && parts && arrivalDate === today
         ? `https://www.heathrow.com/arrivals/terminal-${terminal[1]}/flight-details/${encodeURIComponent(code)}`
         : 'https://www.heathrow.com/arrivals';
-      const label = `Flight ${esc(code)}`;
+      const day = driverPickupTime(booking.pickup_datetime).split(' · ')[0];
+      const label = `Flight ${esc(code)}${heathrow && day ? ' · ' + esc(day) : ''}`;
       return heathrow ? `<a class="nav-link" href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`
         : `<div>${label}</div>`;
     }

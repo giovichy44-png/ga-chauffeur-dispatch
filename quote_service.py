@@ -1,5 +1,6 @@
 """Server-only quotes. Enable only after live Google and checkout verification."""
-import os, time, threading, collections
+import os, time, threading, collections, json
+import journey_stops
 from prepared_pricing import zone_quote as zone
 
 _lock=threading.RLock()
@@ -23,7 +24,14 @@ def inputs(data,normalize):
     if not pickup or not dropoff or len(pickup)>500 or len(dropoff)>500 or not 0<=hours<=72:
         raise zone.QuoteUnavailable('Enter complete pickup and drop-off addresses and a valid duration.')
     if 'hourly' in service.lower() and hours<4: hours=4
-    return dict(pickup=pickup,dropoff=dropoff,vehicle=vehicle,service=service,hours=hours)
+    try:
+        raw_stops = data.get('stops', [])
+        stops = journey_stops.validate(json.loads(raw_stops) if isinstance(raw_stops, str) else raw_stops)
+    except ValueError as error:
+        raise zone.QuoteUnavailable(str(error)) from error
+    if stops and dropoff.lower() == 'as directed':
+        raise zone.QuoteUnavailable('Enter a destination after the last stop.')
+    return dict(pickup=pickup,dropoff=dropoff,vehicle=vehicle,service=service,hours=hours,stops=stops)
 
 def issue(data,normalize,tariff,client, *, preview=False):
     if (not enabled() and not preview) or not ready(): raise zone.QuoteUnavailable('Verified journey quotes are not available yet.')
@@ -36,7 +44,7 @@ def issue(data,normalize,tariff,client, *, preview=False):
             start,count=_limits.get(key,(now,0))
             if count>=cap: raise zone.QuoteUnavailable('Too many quote requests. Please wait a minute.')
             _limits[key]=(start,count+1)
-        cache_key=(spec['pickup'],spec['dropoff'])
+        cache_key=(spec['pickup'],spec['dropoff'],tuple(spec['stops']))
         cached=_cache.get(cache_key)
         if cached and cached[0]>now: route=cached[1]
         else: route=None
@@ -45,7 +53,7 @@ def issue(data,normalize,tariff,client, *, preview=False):
         if spec['dropoff'].lower()=='as directed' and spec['service'] in ('Hourly chauffeur service', 'Open hours chauffeur service'):
             p=zone.geocode(spec['pickup'],key)
             route=dict(path=[],distance_miles=0,duration_minutes=0,pickup_location=p,dropoff_location=p,congestion_charge=zone.surcharge(p,p),as_directed=True)
-        else: route=zone.driving_route(spec['pickup'],spec['dropoff'],key)
+        else: route=zone.driving_route(spec['pickup'],spec['dropoff'],key,stops=spec['stops']) if spec['stops'] else zone.driving_route(spec['pickup'],spec['dropoff'],key)
         with _lock:
             _cache[cache_key]=(now+300,route)
             while len(_cache)>200: _cache.popitem(last=False)

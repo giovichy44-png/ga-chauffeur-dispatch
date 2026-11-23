@@ -41,7 +41,7 @@ def public_key():
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def store(subscription):
+def store(subscription, *, scope="dispatch"):
     if not vapid():
         return {"error": "Dispatch push needs to be enabled on the server."}, 503
     endpoint = subscription.get("endpoint")
@@ -62,26 +62,27 @@ def store(subscription):
         return {"error": "Invalid push subscription."}, 400
     subscription = {"endpoint": endpoint, "keys": {name: keys[name] for name in ("p256dh", "auth")}}
     with closing(db.get_connection()) as conn, conn:
-        conn.execute("REPLACE INTO dispatch_push_subscriptions VALUES (?, ?)", (endpoint, json.dumps(subscription)))
+        conn.execute("REPLACE INTO dispatch_push_subscriptions (endpoint, subscription, scope) VALUES (?, ?, ?)",
+                     (endpoint, json.dumps(subscription), scope))
     return {"success": True}, 200
 
 
-def notify(message):
+def notify(message, *, scope="dispatch"):
     if vapid():
-        worker.submit(deliver, message)
+        worker.submit(deliver, message, scope=scope)
 
 
-def deliver(message):
+def deliver(message, *, scope="dispatch"):
     import requests
     from pywebpush import WebPushException, webpush
 
     with closing(db.get_connection()) as conn, requests.Session() as session:
-        subscriptions = conn.execute("SELECT endpoint, subscription FROM dispatch_push_subscriptions").fetchall()
+        subscriptions = conn.execute("SELECT endpoint, subscription FROM dispatch_push_subscriptions WHERE scope = ?", (scope,)).fetchall()
         session.max_redirects = 0
         for endpoint, subscription in subscriptions:
             try:
                 webpush(
-                    json.loads(subscription), data=json.dumps({"body": message}),
+                    json.loads(subscription), data=json.dumps({"body": message, "chauffeur": scope != "dispatch"}),
                     vapid_private_key=vapid(), vapid_claims={"sub": "mailto:enquiries@gachauffeurs.co.uk"},
                     requests_session=session, headers={"Urgency": "high"}, ttl=900, timeout=5,
                 )

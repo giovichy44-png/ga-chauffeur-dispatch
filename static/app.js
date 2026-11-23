@@ -860,6 +860,7 @@ function renderCdsDispatchTable(filtered) {
             <strong>New Pickup Time:</strong> ${escapeHtml(pendingAmendObj.pickup_datetime)} &nbsp;|&nbsp;
             <strong>New Pickup:</strong> ${escapeHtml(pendingAmendObj.pickup_address)} &nbsp;&rarr;&nbsp;
             <strong>New Destination:</strong> ${escapeHtml(pendingAmendObj.dropoff_address)}
+            ${bookingStops(pendingAmendObj.stops).map((stop, i) => `<div>Requested stop ${i + 1}: ${escapeHtml(stop)}</div>`).join('')}
             ${pendingAmendObj.flight_number ? ` &nbsp;|&nbsp; <strong>Flight:</strong> ${escapeHtml(pendingAmendObj.flight_number)}` : ''}
             ${pendingAmendObj.special_requests ? ` &nbsp;|&nbsp; <strong>Notes:</strong> ${escapeHtml(pendingAmendObj.special_requests)}` : ''}
           </div>
@@ -883,6 +884,7 @@ function renderCdsDispatchTable(filtered) {
               <div style="margin-bottom:6px;"><strong style="color:#38bdf8;">Destination:</strong><br><span style="color:#fff;">${escapeHtml(b.dropoff_address)}</span> <a href="${googleDirections(b.dropoff_address)}" target="_blank" rel="noopener noreferrer">Google Maps ↗</a></div>
               ${b.flight_number ? `<div style="margin-top:6px;color:#38bdf8;">✈️ <strong>Flight Number:</strong> ${escapeHtml(b.flight_number)} (45m free wait)</div>` : ''}
               ${b.service_type ? `<div style="margin-top:6px;"><strong>Service:</strong> ${escapeHtml(b.service_type)}${hours > 0 ? ` · ${hours} hours booked` : ''}</div>` : ''}
+              ${bookingStops(b.stops).map((stop, i) => `<div>Stop ${i + 1}: ${escapeHtml(stop)}</div>`).join('')}
               ${b.special_requests ? `<div style="margin-top:6px;color:#fde68a;">📝 <strong>Special Requests:</strong> ${escapeHtml(b.special_requests)}</div>` : '<div style="margin-top:4px;color:var(--text-muted);font-size:11.5px;">No special requests noted.</div>'}
             </div>
 
@@ -999,6 +1001,7 @@ function openEditBookingModal(bookingId) {
   document.getElementById('eb-flight').value = b.flight_number || '';
   document.getElementById('eb-pickup').value = b.pickup_address || '';
   document.getElementById('eb-dropoff').value = b.dropoff_address || '';
+  editStops.set(bookingStops(b.stops));
   document.getElementById('eb-pax').value = b.passenger_count || 1;
   document.getElementById('eb-bags').value = b.luggage_count || 0;
   document.getElementById('eb-fare').value = parseFloat(b.fare_amount || 165.0).toFixed(2);
@@ -1011,6 +1014,7 @@ async function submitEditBooking(e) {
   const bookingId = document.getElementById('eb-id').value;
   if (!bookingId) return;
   const payload = {
+    stops: editStops.values(),
     send_confirmation: e.submitter?.name === 'send_confirmation',
     pickup_datetime: document.getElementById('eb-datetime').value.replace('T', ' '),
     vehicle_class: document.getElementById('eb-vehicle').value,
@@ -1661,8 +1665,21 @@ function renderDriverView() {
 }
 
 // Intake Form Logic, Smart Autocomplete, & Live VAT Pricing Engine
+let editStops;
+function bookingStops(value) {
+  try { return Array.isArray(value) ? value : JSON.parse(value || '[]'); }
+  catch (_) { return []; }
+}
+
 function initForm() {
   const form = document.getElementById('simple-intake-form');
+  const intakeStops = GAJourneyStops.mount(document.getElementById('dispatch-new-stops'), () => {
+    clearTimeout(previewTimer);
+    ++previewRequest;
+    previewTimer = setTimeout(updatePricePreview, 350);
+  });
+  editStops = GAJourneyStops.mount(document.getElementById('dispatch-edit-stops'));
+  for (const id of ['eb-pickup', 'eb-dropoff']) GAJourneyStops.address(document.getElementById(id));
   const dtInput = document.getElementById('f-datetime');
   const vSelect = document.getElementById('f-vehicle');
   const serviceSelect = document.getElementById('f-service-type');
@@ -1672,6 +1689,7 @@ function initForm() {
 
   const pInput = document.getElementById('f-pickup');
   const dInput = document.getElementById('f-dropoff');
+  GAJourneyStops.address(dInput, {suggestions:false});
   const pDropdown = document.getElementById('dropdown-pickup');
   const dDropdown = document.getElementById('dropdown-dropoff');
 
@@ -1954,7 +1972,7 @@ function initForm() {
     const duration = showDuration ? hoursSelect.value : '0';
     return {pickup, dropoff, vehicle: vSelect.value,
       service: duration === 'open' ? 'Open hours chauffeur service' : service,
-      hours: duration === 'open' ? '0' : duration};
+      hours: duration === 'open' ? '0' : duration, stops: JSON.stringify(intakeStops.values())};
   }
 
   async function updatePricePreview() {
@@ -2002,6 +2020,7 @@ function initForm() {
         customer_email: document.getElementById('f-email').value,
         service_type: journeySpec().service,
         hours_booked: Number(journeySpec().hours),
+        stops: intakeStops.values(),
         pickup_address: pInput.value,
         pickup_unit: document.getElementById('f-pickup-unit') ? document.getElementById('f-pickup-unit').value : '',
         dropoff_address: dInput.value,
@@ -2021,7 +2040,7 @@ function initForm() {
       try {
         const config=await fetch('/api/forms-config').then(r=>r.json());
         if(config.server_quotes){
-          const spec={pickup:payload.pickup_address,dropoff:payload.dropoff_address,vehicle:payload.vehicle_class,service:payload.service_type,hours:payload.hours_booked};
+          const spec={pickup:payload.pickup_address,dropoff:payload.dropoff_address,vehicle:payload.vehicle_class,service:payload.service_type,hours:payload.hours_booked,stops:JSON.stringify(payload.stops)};
           const qr=await fetch('/api/route-quote?'+new URLSearchParams(spec));const q=await qr.json();
           if(!qr.ok)throw Error(q.error||'Unable to verify route.');
           if(!confirm(payload.service_type.startsWith('Open hours') ? 'Create this open-hours booking with billing after the journey?' : 'Verified journey total: £'+q.total_fare.toFixed(2)+'. Create this booking?')){submitBtn.disabled=false;submitBtn.textContent='Confirm Booking & Send Email ↗';return;}
@@ -2036,6 +2055,7 @@ function initForm() {
         if (data.success) {
           showToast(`Job ${data.booking.confirmation_code} created! Email sent.`);
           form.reset();
+          intakeStops.set([]);
           submitBtn.disabled = false;
           submitBtn.textContent = 'Confirm Booking & Send Email ↗';
           switchTab('jobs');
@@ -2401,40 +2421,19 @@ async function downloadCustomerChat() {
 }
 
 async function enableDispatchPush(button) {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    showToast('On iPhone, add GA Dispatch to the Home Screen in Safari and open it there first.');
-    return;
-  }
-  button.disabled = true;
-  try {
-    if (await Notification.requestPermission() !== 'granted') {
-      throw Error('Allow GA Dispatch notifications in your device settings.');
-    }
-    const response = await fetch('/api/dispatch/push-key');
-    const config = await response.json();
-    if (!response.ok) throw Error(config.error || 'Phone notifications are unavailable.');
-    await navigator.serviceWorker.register('/sw.js');
-    const registration = await navigator.serviceWorker.ready;
-    const encoded = config.key.replace(/-/g, '+').replace(/_/g, '/');
-    const key = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
-    let subscription = await registration.pushManager.getSubscription();
-    const previous = subscription?.options.applicationServerKey;
-    if (previous && new Uint8Array(previous).some((byte, index) => byte !== key[index])) {
-      await subscription.unsubscribe();
-      subscription = null;
-    }
-    subscription ||= await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: key});
-    const saved = await fetch('/api/dispatch/push-subscription', {
+  await GAPhonePush.enable(button, () => fetch('/api/dispatch/push-key'), subscription =>
+    fetch('/api/dispatch/push-subscription', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(subscription)
+    }), showToast);
+}
+
+async function testDispatchPush() {
+  try {
+    const response = await fetch('/api/dispatch/test-push', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'
     });
-    if (!saved.ok) throw Error('Could not save phone notifications. Please try again.');
-    button.textContent = 'Phone notifications enabled';
-    showToast('Dispatch notifications enabled on this device.');
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    button.disabled = false;
-  }
+    showToast(response.ok ? 'Test notification queued for subscribed Dispatch devices.' : 'Phone notifications are unavailable.');
+  } catch (_) { showToast('Could not send the test notification.'); }
 }
 
 function updateDispatchAlarm() {
