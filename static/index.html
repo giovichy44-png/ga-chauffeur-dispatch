@@ -224,7 +224,7 @@
             <!-- Route with Autocomplete Dropdown & Postcode Lookup -->
             <div class="form-group-grid two-col">
               <div class="field">
-                <label>Collection Point / Airport (Type LHR, T5, Hotel or Address) *</label>
+                <label>Collection Point *</label>
                 <div style="position: relative;">
                   <input type="text" id="f-pickup" required placeholder="e.g. Claridge's, LHR, T5, or Postcode" autocomplete="off">
                   <div class="autocomplete-dropdown" id="dropdown-pickup" style="display: none;"></div>
@@ -242,7 +242,7 @@
               </div>
 
               <div class="field">
-                <label id="lbl-dropoff">Destination / Drop-off Location *</label>
+                <label id="lbl-dropoff">Destination *</label>
                 <div style="position: relative;">
                   <input type="text" id="f-dropoff" required placeholder="e.g. Coworth Park, LHR T5, The Connaught, or Address" autocomplete="off">
                   <div class="autocomplete-dropdown" id="dropdown-dropoff" style="display: none;"></div>
@@ -279,7 +279,7 @@
                 <input type="datetime-local" id="f-datetime" required>
               </div>
               <div class="field">
-                <label>Flight No. (45m free wait)</label>
+                <label>Flight Number</label>
                 <input type="text" id="f-flight" placeholder="e.g. BA 178">
               </div>
               <div class="field">
@@ -809,6 +809,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="app.js?v=dispatch-duration"></script>
+  <script src="app.js?v=dispatch-duration-refresh"></script>
 </body>
 </html>

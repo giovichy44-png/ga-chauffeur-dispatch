@@ -1827,10 +1827,8 @@ function initForm() {
     }
 
     input.addEventListener('input', () => {
-      if (input.dataset.suppressAutocomplete === '1') {
-        delete input.dataset.suppressAutocomplete;
-        return;
-      }
+      const fromSuggestion = input.dataset.suppressAutocomplete === '1';
+      delete input.dataset.suppressAutocomplete;
       clearTimeout(timer);
       const val = input.value.trim();
       autoDetectServiceType();
@@ -1841,6 +1839,7 @@ function initForm() {
       clearTimeout(previewTimer);
       previewTimer = setTimeout(updatePricePreview, 350);
 
+      if (fromSuggestion) return;
       if (val.length === 0) {
         timer = setTimeout(() => fetchAndShowSuggestions(''), 100);
         return;
