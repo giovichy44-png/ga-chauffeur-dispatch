@@ -400,8 +400,9 @@ LOGIN_PAGE_HTML = """<!DOCTYPE html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Private Dispatch Portal | GA Chauffeurs</title>
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="/chauffeur-touch-v2.png">
+  <link rel="icon" type="image/png" href="/chauffeur-touch-v2.png">
+  <link rel="manifest" href="/manifest.json?v=dispatch-icon-2">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#121715">
@@ -2545,6 +2546,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "theme_color": "#121715",
             "orientation": "portrait-primary",
             "icons": [
+                {"src": "/chauffeur-touch-v2.png", "sizes": "180x180", "type": "image/png", "purpose": "any"},
                 {
                     "src": "icon-192.png",
                     "sizes": "192x192",
