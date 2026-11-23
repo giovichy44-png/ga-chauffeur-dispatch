@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>GA Chauffeur App | Driver Portal</title>
-  <meta name="application-name" content="GA Driver">
-  <meta name="apple-mobile-web-app-title" content="GA Driver">
+  <title>GA Chauffeur App</title>
+  <meta name="application-name" content="GA Chauffeur">
+  <meta name="apple-mobile-web-app-title" content="GA Chauffeur">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#121715">
-  <link rel="manifest" href="/driver-manifest.json">
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/driver-manifest.json?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="/chauffeur-touch-v2.png">
+  <link rel="icon" type="image/png" href="/chauffeur-touch-v2.png">
   <style>
     :root {
       --bg-page: #121715;
@@ -443,14 +444,25 @@
       display: none;
     }
     #driver-persistent-alert { position:sticky; top:0; z-index:10; border-color:#fca5a5; background:#472422; }
+    #driver-persistent-alert.driver-message-only { border-color:#9ac9f6; background:#1a3344; }
     #driver-persistent-alert[hidden], #driver-persistent-alert [hidden] { display:none !important; }
-    .driver-swipe-label { display:block; color:var(--gold); font-weight:700; margin-bottom:7px; }
-    .driver-swipe { width:100%; height:38px; accent-color:#c9b894; touch-action:pan-y; }
+    .swipe-box { position:relative; display:grid; place-items:center; min-height:54px; margin-top:6px; background:#242c25; color:var(--gold); border:1px solid #655e49; border-radius:12px; font-weight:700; }
+    .swipe-box label { pointer-events:none; padding-inline:56px; text-align:center; }
+    .driver-swipe { position:absolute; inset:0; margin:0; width:100%; height:100%; appearance:none; background:transparent; cursor:grab; touch-action:pan-y; }
+    .driver-swipe::-webkit-slider-thumb { appearance:none; width:52px; height:50px; border-radius:10px; background:#c9b894 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23121715' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12h15m-6-6 6 6-6 6'/%3E%3C/svg%3E") center / 26px no-repeat; }
+    .driver-swipe::-moz-range-thumb { width:52px; height:50px; border:0; border-radius:10px; background:#c9b894 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23121715' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12h15m-6-6 6 6-6 6'/%3E%3C/svg%3E") center / 26px no-repeat; }
     .action-grid:has(.driver-swipe) { display:block; }
-    #driver-navigation { color:#f1f3ee; background:#171f1b; border:1px solid #c9b894; border-radius:8px; padding:18px; }
-    #driver-navigation h2 { font-size:18px; margin:0 0 12px; }
-    #driver-navigation::backdrop { background:rgba(0,0,0,.6); }
-    #driver-navigation form { margin-top:10px; }
+    .route-head { align-items:start; }
+    .map-picker { position:relative; flex-shrink:0; text-align:left; }
+    .map-picker[open] { z-index:3; }
+    .map-options { position:absolute; top:100%; right:0; width:150px; margin-top:6px; overflow:hidden; border:1px solid #474a43; border-radius:11px; background:#252b27; box-shadow:0 8px 22px #0008; }
+    .map-options a { color:#f2f4ef; font-size:14px; padding:12px; }
+    .map-options a + a { border-top:1px solid #474a43; }
+    .map-picker summary { cursor:pointer; }
+    .map-picker a { display:block; padding:8px; white-space:nowrap; }
+    .pickup-time { display:block; font-size:16px; color:#fff; font-weight:700; margin-bottom:5px; }
+    .driver-alert-link { display:block; text-align:left; width:100%; margin-top:6px; }
+
   </style>
 </head>
 <body>
@@ -458,7 +470,7 @@
   <header class="driver-header">
     <div class="brand-row">
       <span class="monogram">GA</span>
-      <span class="brand-sub">Chauffeur<br>Driver App</span>
+      <span class="brand-sub">Chauffeur<br>App</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <button type="button" id="btn-duty-toggle" onclick="toggleDriverDuty()" style="background:rgba(16,185,129,0.16);border:1px solid #10b981;color:#34d399;padding:6px 11px;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;display:none;">
@@ -476,7 +488,7 @@
       <div class="eyebrow">Verified Chauffeur Portal</div>
       <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:22px;color:#fff;margin-bottom:8px;">Chauffeur Sign In</h2>
       <p style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.45;">
-        Enter your vehicle registration plate (or mobile number) and your 4-digit Driver PIN provided by GA Dispatch.
+        Enter your vehicle registration plate (or mobile number) and your 4-digit chauffeur PIN provided by GA Dispatch.
       </p>
       <div id="driver-login-err" style="display:none;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;padding:10px;border-radius:6px;font-size:12.5px;margin-bottom:14px;"></div>
       <form onsubmit="submitDriverLogin(event)">
@@ -499,10 +511,8 @@
   <main id="driver-portal-view" class="driver-main" style="display:none;">
 
     <section id="driver-persistent-alert" class="card" hidden aria-label="Unacknowledged updates">
-      <strong>Attention required</strong>
-      <p id="driver-persistent-text"></p>
-      <a href="#sec-chat" class="nav-link" id="driver-view-messages" hidden>View dispatch messages</a>
-      <button type="button" class="nav-link" id="driver-ack-alerts" onclick="acknowledgeDriverAlerts()">Mark updates seen</button>
+      <strong id="driver-persistent-heading">Attention required</strong>
+      <div id="driver-alert-links"></div>
     </section>
     <!-- 1. CHAUFFEUR & VERIFIED VEHICLE DETAILS CARD -->
     <section class="card" id="sec-profile">
@@ -545,7 +555,7 @@
       </div>
 
       <div class="quick-msg-bar">
-        <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Arrived at pickup location — nameboard active.')">📍 At Pickup</button>
+        <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Arrived at pickup location.')">📍 At Pickup</button>
         <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Passenger on board (POB), departing now.')">🟢 POB Departing</button>
         <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Heavy traffic en route — keeping passenger updated.')">🚦 Heavy Traffic</button>
         <button type="button" class="quick-chip" onclick="sendQuickDriverMessage('Waiting at terminal arrivals meeting point.')">✈️ At Terminal</button>
@@ -566,7 +576,7 @@
       <span>My Jobs</span>
       <span class="d-badge" id="nav-job-badge" style="display:none;">0</span>
     </button>
-    <button type="button" class="d-tab" onclick="scrollToSection('sec-chat', this)">
+    <button type="button" class="d-tab" id="driver-chat-tab" onclick="openDispatchMessages()">
       <span style="font-size:18px;">💬</span>
       <span>Message Dispatch</span>
       <span class="d-badge" id="nav-msg-badge" style="display:none;">0</span>
@@ -577,12 +587,6 @@
     </button>
   </nav>
 
-  <dialog id="driver-navigation" aria-labelledby="driver-navigation-title">
-    <h2 id="driver-navigation-title">Choose navigation app</h2>
-    <a id="driver-google-maps" class="nav-link" target="_blank" rel="noopener noreferrer">Google Maps</a>
-    <a id="driver-waze" class="nav-link" target="_blank" rel="noopener noreferrer">Waze</a>
-    <form method="dialog"><button class="nav-link">Cancel</button></form>
-  </dialog>
   <div class="toast-banner" id="driver-toast"></div>
 
   <script>
@@ -748,21 +752,42 @@
     }
 
     function updateDriverAlarm() {
-      const hasAllocation = DriverApp.jobs.some(job => ['ASSIGNED', 'CONFIRMED', 'PENDING'].includes(job.status));
       const alerts = DriverApp.pendingAlerts;
       const banner = document.getElementById('driver-persistent-alert');
-      banner.hidden = !(hasAllocation || alerts.length);
-      const newest = alerts[0];
-      document.getElementById('driver-persistent-text').textContent = hasAllocation ? 'Accept your allocated booking.'
-        : newest ? [
-            newest.confirmation_code,
-            newest.key.startsWith('message:') ? 'New message from Dispatch' :
-              String(newest.details || '').startsWith('Updated ') && newest.details.length <= 100
-                ? newest.details : 'Booking details changed',
-            alerts.length > 1 ? `+${alerts.length - 1} more` : ''
-          ].filter(Boolean).join(' · ') : '';
-      document.getElementById('driver-ack-alerts').hidden = !alerts.length;
-      document.getElementById('driver-view-messages').hidden = !alerts.some(alert => alert.key.startsWith('message:'));
+      const links = document.getElementById('driver-alert-links');
+      banner.hidden = !alerts.length;
+      const hasBookingUpdates = alerts.some(alert => !alert.key.startsWith('message:'));
+      banner.classList.toggle('driver-message-only', !hasBookingUpdates);
+      document.getElementById('driver-persistent-heading').textContent =
+        hasBookingUpdates ? 'Attention required' : 'Dispatch messages';
+      const signature = JSON.stringify(alerts);
+      if (links.dataset.alerts !== signature) {
+        links.dataset.alerts = signature;
+        const messages = alerts.filter(alert => alert.key.startsWith('message:'));
+        const bookings = alerts.filter(alert => !alert.key.startsWith('message:'));
+        const addLink = (label, onOpen) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'nav-link driver-alert-link';
+          button.textContent = label;
+          button.onclick = onOpen;
+          links.append(button);
+        };
+        links.replaceChildren();
+        if (messages.length) addLink('New message from Dispatch', openDispatchMessages);
+        for (const alert of bookings) {
+          const change = alert.action === 'CHAUFFEUR_ALLOCATED' ? 'New booking' :
+            String(alert.details || '').startsWith('Updated ') && alert.details.length <= 100 ?
+              alert.details : 'Booking details changed';
+          addLink([alert.confirmation_code, change].filter(Boolean).join(' · '), () => {
+            const card = document.getElementById('driver-job-' + alert.booking_id);
+            if (!card) return;
+            card.focus({preventScroll:true});
+            card.scrollIntoView({block:'center'});
+            acknowledgeDriverAlerts([alert.key]);
+          });
+        }
+      }
       if (!banner.hidden && DriverApp.alertTimer === null) {
         playDriverChime();
         DriverApp.alertTimer = setInterval(playDriverChime, 2500);
@@ -772,11 +797,18 @@
       }
     }
 
-    async function acknowledgeDriverAlerts() {
+    function openDispatchMessages() {
+      scrollToSection('sec-chat', document.getElementById('driver-chat-tab'));
+      const keys = DriverApp.pendingAlerts.filter(alert =>
+        DriverApp.messages.some(message => alert.key === 'message:' + message.id)).map(alert => alert.key);
+      if (keys.length) acknowledgeDriverAlerts(keys);
+    }
+
+    async function acknowledgeDriverAlerts(keys) {
       try {
         const response = await fetch('/api/driver/ack-alerts', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({token: DriverApp.token, keys: DriverApp.pendingAlerts.map(alert => alert.key)})
+          body: JSON.stringify({token: DriverApp.token, keys})
         });
         if (!response.ok) throw Error('Could not acknowledge the updates.');
         await loadDriverPortal(true);
@@ -851,21 +883,21 @@
       const markup = activeJobs.map(b => {
         const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
         const next = b.status === 'ON_BOARD'
-          ? (b.hours_booked > 0 ? ['NEXT_STOP', 'Next stop'] : ['DROPPED_OFF', 'Passenger dropped off'])
+          ? (b.hours_booked > 2 || b.service_type === 'Open hours chauffeur service' ? ['NEXT_STOP', 'Next stop'] : ['DROPPED_OFF', 'Passenger dropped off'])
           : nextSteps[b.status];
         const btnsHtml = next ? `
-          <label class="driver-swipe-label" for="swipe-${esc(b.id)}">Swipe right to ${esc(next[1].toLowerCase())}</label>
+          <div class="swipe-box"><label for="swipe-${esc(b.id)}">${esc(next[1])}</label>
           <input class="driver-swipe" type="range" id="swipe-${esc(b.id)}" min="0" max="100" value="0"
             data-booking="${esc(b.id)}" data-action="${next[0]}" data-label="${esc(next[1])}"
             onpointerdown="startDriverSwipe(event, this)" onpointermove="moveDriverSwipe(event, this)"
-            onkeydown="this.dataset.inputMethod = 'keyboard'" onchange="confirmDriverSwipe(this)">
+            onkeydown="this.dataset.inputMethod = 'keyboard'" onchange="confirmDriverSwipe(this)"></div>
         ` : '';
         return `
-          <div class="job-card ${b.status === 'ON_BOARD' ? 'pob' : ''}">
+          <div id="driver-job-${esc(b.id)}" tabindex="-1" class="job-card ${b.status === 'ON_BOARD' ? 'pob' : ''}">
             <div class="job-top">
               <div>
+                <time class="pickup-time">${esc(driverPickupTime(b.pickup_datetime))}</time>
                 <span class="ref-pill">${esc(b.confirmation_code)}</span>
-                <span style="font-size:13px;font-weight:700;color:#fff;margin-left:8px;">📅 ${esc(b.pickup_datetime)}</span>
               </div>
               <span class="status-pill">${esc(b.status.replace('_', ' '))}</span>
             </div>
@@ -882,19 +914,19 @@
               <div class="route-point">
                 <div class="route-head">
                   <span style="color:#4ade80;">🟢 Collection Point</span>
-                  <button type="button" class="nav-link" data-address="${esc(b.pickup_address)}" onclick="chooseDriverMap(this.dataset.address)">Navigate</button>
+                  ${driverMapPicker(b.pickup_address)}
                 </div>
                 <div style="font-size:13.5px;color:#fff;font-weight:500;">${esc(b.pickup_address)}</div>
+                ${driverFlightLink(b)}
               </div>
               <div style="border-top:1px solid var(--border);"></div>
               <div class="route-point">
                 <div class="route-head">
                   <span style="color:#93c5fd;">🏁 Destination</span>
-                  <button type="button" class="nav-link" data-address="${esc(b.dropoff_address)}" onclick="chooseDriverMap(this.dataset.address)">Navigate</button>
+                  ${driverMapPicker(b.dropoff_address)}
                 </div>
                 <div style="font-size:13.5px;color:#fff;font-weight:500;">${esc(b.dropoff_address)}</div>
               </div>
-              ${b.flight_number ? `<div style="font-size:12.5px;color:#38bdf8;font-weight:700;">✈️ Flight: ${esc(b.flight_number)}</div>` : ''}
               ${b.special_requests ? `<div style="font-size:12.5px;color:#fde68a;">📝 Notes: ${esc(b.special_requests)}</div>` : ''}
             </div>
 
@@ -912,11 +944,54 @@
       }
     }
 
-    function chooseDriverMap(address) {
-      const destination = encodeURIComponent(address);
-      document.getElementById('driver-google-maps').href = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving&dir_action=navigate`;
-      document.getElementById('driver-waze').href = `https://waze.com/ul?q=${destination}&navigate=yes&utm_source=ga_chauffeurs`;
-      document.getElementById('driver-navigation').showModal();
+    function driverPickupTime(value) {
+      const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}:\d{2})/);
+      if (!match) return value || '';
+      const [, year, month, day, time] = match;
+      const label = new Intl.DateTimeFormat('en-GB', {
+        day:'numeric', month:'short', year:'numeric', timeZone:'UTC'
+      }).format(new Date(Date.UTC(+year, +month - 1, +day)));
+      return label + ' · ' + time;
+    }
+
+    function driverFlightLink(booking) {
+      if (!booking.flight_number) return '';
+      const flight = String(booking.flight_number).toUpperCase().replace(/\s+/g, '');
+      const pickup = String(booking.pickup_address || '');
+      const parts = flight.match(/^([A-Z][A-Z0-9]|[0-9][A-Z])(\d{1,4})([A-Z]?)$/);
+      const terminal = pickup.match(/\b(?:terminal|t)\s*([2-5])\b/i);
+      const heathrow = /\bheathrow\b|\blhr\b/i.test(pickup);
+      const code = heathrow && parts ? parts[1] + parts[2].padStart(3, '0') + parts[3] : flight;
+      const href = terminal && parts
+        ? `https://www.heathrow.com/arrivals/terminal-${terminal[1]}/flight-details/${encodeURIComponent(code)}`
+        : 'https://www.heathrow.com/arrivals';
+      const label = `Flight ${esc(code)}`;
+      return heathrow ? `<a class="nav-link" href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`
+        : `<div>${label}</div>`;
+    }
+
+    document.addEventListener('click', event => {
+      for (const picker of document.querySelectorAll('.map-picker[open]')) {
+        if (!picker.contains(event.target) || event.target.closest('.map-options a')) picker.open = false;
+      }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        const picker = document.querySelector('.map-picker[open]');
+        if (picker) {
+          picker.open = false;
+          picker.querySelector('summary').focus();
+        }
+      }
+    });
+
+    function driverMapPicker(address) {
+      const destination = encodeURIComponent(address || '');
+      return `<details class="map-picker">
+        <summary class="nav-link">Navigate</summary>
+        <div class="map-options"><a class="nav-link" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/dir/?api=1&amp;destination=${esc(destination)}&amp;travelmode=driving&amp;dir_action=navigate">Google Maps</a>
+        <a class="nav-link" target="_blank" rel="noopener noreferrer" href="https://waze.com/ul?q=${esc(destination)}&amp;navigate=yes">Waze</a></div>
+      </details>`;
     }
 
     function startDriverSwipe(event, control) {
@@ -983,6 +1058,9 @@
     function renderDriverChat() {
       const box = document.getElementById('dp-chat-box');
       if (!box) return;
+      const transcript = JSON.stringify(DriverApp.messages);
+      if (box.dataset.transcript === transcript) return;
+      box.dataset.transcript = transcript;
       if (!DriverApp.messages || DriverApp.messages.length === 0) {
         box.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;margin:auto;">No messages yet. Tap a quick message or type below to alert Dispatch immediately.</div>`;
         return;

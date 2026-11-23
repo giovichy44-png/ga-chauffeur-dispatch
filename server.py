@@ -35,6 +35,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 import db
 import customer_chat
+import dispatch_push
 import booking_alerts
 import dispatch_restore
 import quote_service
@@ -860,7 +861,16 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     included_miles = 0.0
     excess_miles = 0.0
 
-    if "hourly" in final_type.lower() or hours_int > 0:
+    if final_type == "Open hours chauffeur service":
+        net_fare = 0.0
+        service_label = "Open hours"
+    elif final_type == "Point-to-point transfer" and hours_int == 2:
+        billable_hours = 2.0
+        included_miles = 20.0
+        excess_miles = round(max(0.0, float(distance_mi) - included_miles), 2)
+        net_fare = billable_hours * cfg["hourly_rate"] + excess_miles * cfg["excess_mile_rate"]
+        service_label = "Point-to-point transfer (2 hours)"
+    elif "hourly" in final_type.lower() or hours_int > 0:
         h = max(4, hours_int if hours_int > 0 else 4)
         billable_hours = float(h)
         if h == 10:
@@ -955,6 +965,19 @@ def generate_confirmation_code():
     return f"GA-{suffix}"
 
 def broadcast_event(event_type, data):
+    pushes = {
+        "booking_created": "New booking",
+        "booking_updated": "Booking details changed",
+        "amendment_requested": "Customer requested a booking amendment",
+        "confirmation_resent": "Booking confirmation sent",
+    }
+    notice = pushes.get(event_type)
+    if event_type == "driver_message" and data.get("sender_role") == "DRIVER":
+        notice = "You have a new message from the chauffeur"
+    if event_type == "live_action_executed" and data.get("by_chauffeur"):
+        notice = "Chauffeur update: " + data["action"].replace("_", " ").capitalize()
+    if notice:
+        dispatch_push.notify(notice)
     payload = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
     with sse_lock:
         stale_clients = []
@@ -1158,7 +1181,8 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     vehicle = VEHICLE_CONFIGS[normalize_vehicle_tier(vehicle_tier)]
     display_vehicle = VEHICLE_CONFIGS.get(normalize_vehicle_tier(chauffeur.get("vehicle_class") or vehicle_tier)) if chauffeur else vehicle
     pickup_time, _ = format_pickup_and_dropoff_times(pickup_dt)
-    fare_rows = confirmation_fare(net_fare if net_fare is not None else fare_amt, parking_fee,
+    deferred = service_type == "Open hours chauffeur service"
+    fare_rows = () if deferred else confirmation_fare(net_fare if net_fare is not None else fare_amt, parking_fee,
                                   dropoff_fee, congestion_charge, vat_amt, total_fare)
     fare_table = "".join(
         f'<tr><td style="padding:6px 8px 6px 0;">{label}</td>'
@@ -1215,9 +1239,9 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
         {flight_details}{notes}
       </div>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:12px;background:#121715;border:1px solid #49564d;border-radius:6px;">
-        {fare_table}
+        {fare_table or '<tr><td>Open hours · Final fare billed after the journey</td></tr>'}
       </table>
-      <p style="margin:8px 0 14px;color:#cfd6d1;">{esc(payment)}</p>
+      {f'<p style="margin:8px 0 14px;color:#cfd6d1;">{esc(payment)}</p>' if not deferred else ''}
       <p style="margin:0 0 16px;text-align:center;"><a href="{esc(customer_manage_url(booking_ref, customer_email))}" style="display:inline-block;color:#121715;background:#c9b894;border-radius:4px;padding:12px 20px;font-weight:700;text-decoration:none;">Amend booking</a></p>
     </td></tr>
     <tr><td style="padding:14px 16px;text-align:center;border-top:1px solid #49564d;color:#cfd6d1;font-size:12px;">
@@ -1247,11 +1271,24 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
         lines.append(f"Flight number: {flight}")
     if special_requests:
         lines.append(f"Special requests: {special_requests}")
-    lines.extend(["", *(f"{label}: £{amount:,.2f}" for label, amount in confirmation_fare(
-        net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare
-    )), "", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
-    "GA Chauffeur Services Limited", COMPANY_PHONE, FROM_EMAIL, COMPANY_WEBSITE])
+    if service_type == "Open hours chauffeur service":
+        lines.extend(["", "Open hours · Final fare billed after the journey."])
+    else:
+        lines.extend(["", *(f"{label}: £{amount:,.2f}" for label, amount in confirmation_fare(
+            net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare
+        ))])
+    lines.extend(["", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
+                  "GA Chauffeur Services Limited", COMPANY_PHONE, FROM_EMAIL, COMPANY_WEBSITE])
     return "\n".join(lines)
+
+
+def requested_nameboard(booking):
+    match = re.search(
+        r"^\s*nameboard(?:\s+(?:sign|signage|text))?\s*:\s*([^\r\n]{1,100})$",
+        booking.get("special_requests") or "", re.IGNORECASE | re.MULTILINE,
+    )
+    text = match[1].strip() if match else ""
+    return "" if text.lower() in {"none", "no", "no thanks", "n/a", "not requested", "not required"} else text
 
 
 def build_arrival_email(booking, chauffeur):
@@ -1277,10 +1314,12 @@ def build_arrival_email(booking, chauffeur):
     service = booking.get("service_type") or "Chauffeur service"
     pickup = confirmation_pickup(booking["pickup_address"])
     destination = booking["dropoff_address"]
+    nameboard = requested_nameboard(booking)
     subject = f"Your chauffeur has arrived · {booking['confirmation_code']}"
     text = (f"Dear {customer},\n\nYour chauffeur has arrived.\n\nPickup: {pickup}\n"
             f"Scheduled pickup: {pickup_time}\nDestination: {destination}\nService: {service}\n"
             f"{vehicle['name']} · {chauffeur_first_name(chauffeur)}\n"
+            + (f"Nameboard: {nameboard}\n" if nameboard else "")
             + (f"Chauffeur phone: {phone}\n" if phone else "")
             + "".join(f"{label}: {href}\n" for label, href in actions))
     markup = f"""
@@ -1296,6 +1335,7 @@ def build_arrival_email(booking, chauffeur):
       <p style="margin:4px 0;">{esc(pickup_time)}</p>
       <p style="margin:4px 0;"><strong>Destination</strong> · {esc(destination)}</p>
       <p style="margin:4px 0 12px;"><strong>Service</strong> · {esc(service)}</p>
+      {f"<p><strong>Nameboard</strong> · {esc(nameboard)}</p>" if nameboard else ""}
       <div style="padding:8px;background:#fff;border-radius:5px;text-align:center;">
         <img src="{esc(vehicle.get('image_url'))}" alt="{esc(vehicle['name'])}" width="200" style="display:block;width:100%;max-width:200px;height:auto;margin:auto;">
       </div>
@@ -1569,7 +1609,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         raw_path = (self.path or "")
         path_only = raw_path.split("?")[0].lower()
-        if path_only in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+        if path_only in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png", "/chauffeur-touch-v2.png"):
             self.send_header("Cache-Control", "public, max-age=3600")
         elif ("?v=" in raw_path and path_only.endswith((".js", ".css"))) or path_only.endswith((".png", ".jpg", ".webp", ".svg", ".ico")):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
@@ -1690,7 +1730,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(f"Error serving file: {e}".encode("utf-8"))
 
     def serve_apple_touch_icon(self, *, head_only=False):
-        with open(os.path.join(STATIC_DIR, "driver-icon-180.png"), "rb") as image:
+        filename = "chauffeur-touch-v2.png" if urlparse(self.path).path == "/chauffeur-touch-v2.png" else "driver-icon-180.png"
+        with open(os.path.join(STATIC_DIR, filename), "rb") as image:
             body = image.read()
         self.send_response(200)
         self.send_header("Content-Type", "image/png")
@@ -1700,7 +1741,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
 
     def do_HEAD(self):
-        if urlparse(self.path).path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+        if urlparse(self.path).path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png", "/chauffeur-touch-v2.png"):
             self.serve_apple_touch_icon(head_only=True)
             return
         super().do_HEAD()
@@ -1718,7 +1759,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             or host.startswith("192.168.")
         )
 
-        if path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+        if path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png", "/chauffeur-touch-v2.png"):
             self.serve_apple_touch_icon()
             return
 
@@ -2146,6 +2187,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        if path == "/api/dispatch/push-key":
+            key = dispatch_push.public_key()
+            self.send_json({"key": key} if key else {"error": "Dispatch push needs to be enabled on the server."},
+                           200 if key else 503)
+            return
+
         if path == "/manifest.json":
             self.handle_serve_manifest()
             return
@@ -2230,6 +2277,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Message is too long."}, 413)
                 return
             response, status = customer_chat.handle(payload)
+            if status == 200 and payload.get("action") == "send":
+                dispatch_push.notify("New message from the customer")
             self.send_json(response, status)
             return
 
@@ -2266,6 +2315,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 return
             result, status = dispatch_restore.restore(payload)
             self.send_json(result, status)
+            return
+
+        if path == "/api/dispatch/push-subscription":
+            if len(post_data) > 4096:
+                self.send_json({"error": "Push subscription is too long."}, 413)
+                return
+            response, status = dispatch_push.store(payload)
+            self.send_json(response, status)
             return
 
         if path == "/api/dispatch/ack-alerts":
@@ -2414,7 +2471,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def handle_serve_manifest(self):
         manifest = {
             "name": "GA Chauffeur Services",
-            "short_name": "GA Chauffeurs",
+            "short_name": "GA Dispatch",
             "description": "Executive Dispatch & Fleet Operations - gachauffeurs.co.uk",
             "start_url": "/?source=pwa",
             "display": "standalone",
@@ -2452,6 +2509,20 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         });
         self.addEventListener('activate', (e) => {
             e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => clients.claim()));
+        });
+        self.addEventListener('push', (e) => {
+            const payload = e.data ? e.data.json() : {};
+            e.waitUntil(self.registration.showNotification('GA Dispatch', {
+                body: payload.body || 'New Dispatch update',
+                icon: '/icon-192.png'
+            }));
+        });
+        self.addEventListener('notificationclick', (e) => {
+            e.notification.close();
+            e.waitUntil(clients.matchAll({type: 'window', includeUncontrolled: true}).then(windows => {
+                const app = windows.find(window => ['/','/index.html'].includes(new URL(window.url).pathname));
+                return app ? app.focus() : clients.openWindow('/?source=pwa');
+            }));
         });
         self.addEventListener('fetch', (e) => {
             e.respondWith(fetch(e.request, { cache: 'no-store' }).catch(() => caches.match(e.request)));
@@ -2623,7 +2694,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 return
 
         verified_quote = None
-        if quote_service.enabled():
+        if quote_service.enabled() or payload.get("service_type") == "Open hours chauffeur service":
             try:
                 verified_quote = quote_service.accept(payload, normalize_vehicle_tier)
             except QuoteUnavailable as error:
@@ -2728,6 +2799,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             card_auth_code = f"CORP-{code}"
             preauth_amount = total_fare
             preauth_at = now_str
+        elif service_type == "Open hours chauffeur service":
+            payment_method = "INVOICE"
         elif test_no_charge:
             payment_method = "TEST_PREAUTH"
             payment_status = "PRE_AUTHORIZED"
@@ -3299,7 +3372,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.commit()
         conn.close()
         broadcast_event("booking_updated", {"booking_id": real_id})
-        self.send_json({"success": True, "booking_id": real_id})
+        confirmation_sent = False
+        if payload.get("send_confirmation") is True:
+            _, status = self._send_booking_confirmation(real_id, {"recipient_email": customer_email})
+            confirmation_sent = status == 200
+        self.send_json({"success": True, "booking_id": real_id, "confirmation_sent": confirmation_sent})
 
     def handle_send_booking_confirmation(self, booking_id, payload):
         response, status = self._send_booking_confirmation(booking_id, payload)
@@ -3619,6 +3696,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.close()
 
         _, delivery_status = self._send_booking_confirmation(real_id, {"recipient_email": booking.get("customer_email")})
+        broadcast_event("booking_updated", {"booking_id": real_id})
         self.send_json({"success": True, "mode": "UPDATED", "confirmation_sent": delivery_status == 200})
         return
 
@@ -3686,7 +3764,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                                     "Dispatch account", booking_alerts.describe_changes(booking, amend))
             conn.commit()
             conn.close()
-            # Automatically send updated confirmation email to the customer!
+            broadcast_event("booking_updated", {"booking_id": real_id})
             self.handle_send_booking_confirmation(real_id, {"recipient_email": booking.get("customer_email")})
             return
         else:
@@ -4134,7 +4212,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if chauffeur_id:
                 cursor.execute("UPDATE chauffeurs SET lat = ?, lng = ?, current_zone = ? WHERE id = ?",
                                (booking["pickup_lat"], booking["pickup_lng"], "At Pickup Location", chauffeur_id))
-            details = f"Chauffeur arrived at {booking['pickup_address']}. Meet-and-greet nameboard active."
+            details = f"Chauffeur arrived at {booking['pickup_address']}."
+            nameboard = requested_nameboard(booking)
+            if nameboard:
+                details += f" Nameboard: {nameboard}."
             sms_alert = f"GA Chauffeurs: Chauffeur {chauffeur['name'] if chauffeur else ''} has arrived at {booking['pickup_address']}. Vehicle: {chauffeur['vehicle_model'] if chauffeur else ''} [{chauffeur['license_plate'] if chauffeur else ''}]."
             recipient = str(booking.get("customer_email") or "").strip()
             if chauffeur and "@" in recipient:
@@ -4167,6 +4248,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             details = f"Passenger {booking['customer_name']} safely dropped off at {booking['dropoff_address']}."
             sms_alert = f"GA Chauffeurs: Passenger dropped off at {booking['dropoff_address']} for booking {booking['confirmation_code']}."
 
+        elif action == "COMPLETED" and booking.get("service_type") == "Open hours chauffeur service":
+            new_booking_status = "COMPLETED"
+            if chauffeur_id:
+                cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL, trips_count = trips_count + 1 WHERE id = ?", (chauffeur_id,))
+            details = "Journey completed. Final fare pending Dispatch invoice."
         elif action == "COMPLETED":
             new_booking_status = "COMPLETED"
             if chauffeur_id:
@@ -4289,6 +4375,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "booking_id": booking_id,
             "action": action,
             "new_status": new_booking_status,
+            "by_chauffeur": bool(acting_driver_id),
             "chauffeur_id": chauffeur_id,
             "details": details,
             "timestamp": now_str
@@ -4672,8 +4759,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
     def handle_serve_driver_manifest(self):
         manifest = {
-            "name": "GA Chauffeur Driver App",
-            "short_name": "GA Driver",
+            "name": "GA Chauffeur App",
+            "short_name": "GA Chauffeur",
             "description": "Chauffeur Driver Portal & Live Dispatch Comms - GA Chauffeur Services",
             "start_url": "/driver",
             "display": "standalone",
@@ -4681,6 +4768,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "theme_color": "#121715",
             "orientation": "portrait-primary",
             "icons": [
+                {"src": "/chauffeur-touch-v2.png", "sizes": "180x180", "type": "image/png", "purpose": "any"},
                 {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
                 {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
             ]
@@ -4744,16 +4832,21 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             SELECT id, confirmation_code, customer_name, customer_phone,
                    pickup_address, pickup_unit, dropoff_address, dropoff_unit,
                    pickup_datetime, flight_number, passenger_count, luggage_count,
-                   special_requests, hours_booked, status
+                   special_requests, hours_booked, service_type, status
             FROM bookings
             WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED')
             ORDER BY pickup_datetime ASC
         """, (ch["id"],)).fetchall()]
         messages = [dict(r) for r in reversed(cursor.execute("""
             SELECT * FROM driver_messages
-            WHERE chauffeur_id = ?
+            WHERE chauffeur_id = ?1 AND (
+                id IN (SELECT id FROM driver_messages WHERE chauffeur_id = ?1 ORDER BY id DESC LIMIT 80)
+                OR (sender_role = 'DISPATCH' AND NOT EXISTS (
+                    SELECT 1 FROM alert_receipts
+                    WHERE scope = 'driver:' || ?1 AND alert_key = 'message:' || driver_messages.id
+                ))
+            )
             ORDER BY id DESC
-            LIMIT 80
         """, (ch["id"],)).fetchall())]
         alerts = booking_alerts.pending(conn, ch["id"])
         conn.close()
@@ -4882,7 +4975,6 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             VALUES (?, ?, 'DISPATCH', 'Dispatch Control', ?, 1, ?)
         """, (ch_id, booking_id, message, now_str))
         msg_id = cursor.lastrowid
-        cursor.execute("UPDATE driver_messages SET is_read = 1 WHERE chauffeur_id = ? AND sender_role = 'DRIVER'", (ch_id,))
         conn.commit()
         conn.close()
         msg_obj = {
@@ -4900,13 +4992,18 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
     def handle_mark_driver_messages_read(self, payload):
         ch_id = str(payload.get("chauffeur_id") or "").strip()
-        conn = db.get_connection()
-        if ch_id:
-            conn.execute("UPDATE driver_messages SET is_read = 1 WHERE chauffeur_id = ? AND sender_role = 'DRIVER'", (ch_id,))
-        else:
-            conn.execute("UPDATE driver_messages SET is_read = 1 WHERE sender_role = 'DRIVER'")
-        conn.commit()
-        conn.close()
+        ids = payload.get("ids")
+        if ids is not None and (not ch_id or not isinstance(ids, list) or any(type(value) is not int for value in ids)):
+            self.send_json({"error": "Invalid message selection."}, 400)
+            return
+        with db.get_connection() as conn:
+            if ids is not None:
+                conn.executemany("UPDATE driver_messages SET is_read = 1 WHERE chauffeur_id = ? AND id = ? AND sender_role = 'DRIVER'",
+                                 ((ch_id, message_id) for message_id in ids))
+            elif ch_id:
+                conn.execute("UPDATE driver_messages SET is_read = 1 WHERE chauffeur_id = ? AND sender_role = 'DRIVER'", (ch_id,))
+            else:
+                conn.execute("UPDATE driver_messages SET is_read = 1 WHERE sender_role = 'DRIVER'")
         self.send_json({"success": True})
 
     def handle_delete_chauffeur(self, payload):

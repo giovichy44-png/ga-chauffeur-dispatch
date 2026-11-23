@@ -49,7 +49,7 @@ def surcharge(pickup, dropoff):
 
 def geocode(address,key):
     if not key: raise QuoteUnavailable('Server-side Google Maps key is not configured.')
-    url='https://maps.googleapis.com/maps/api/geocode/json?'+urllib.parse.urlencode({'address':address,'region':'gb','key':key})
+    url='https://maps.googleapis.com/maps/api/geocode/json?'+urllib.parse.urlencode({'address':address,'region':'gb','components':'country:GB','key':key})
     with urllib.request.urlopen(url,timeout=10) as response: data=json.load(response)
     results=data.get('results',[])
     if data.get('status')!='OK':
@@ -65,6 +65,8 @@ def geocode(address,key):
         raise QuoteUnavailable('Please choose an unambiguous full address.')
     if types & {'postal_code','locality','administrative_area_level_1','administrative_area_level_2'}:
         raise QuoteUnavailable('Choose the property or airport, rather than only a postcode or town.')
+    if result.get('partial_match'):
+        raise QuoteUnavailable('Choose the full address from the list to verify the route.')
     return result['geometry']['location']
 
 def driving_route(pickup,dropoff,key):

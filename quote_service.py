@@ -42,18 +42,22 @@ def issue(data,normalize,tariff,client, *, preview=False):
         else: route=None
     if route is None:
         key=os.environ['GOOGLE_MAPS_SERVER_KEY']
-        if spec['dropoff'].lower()=='as directed' and 'hourly' in spec['service'].lower():
+        if spec['dropoff'].lower()=='as directed' and spec['service'] in ('Hourly chauffeur service', 'Open hours chauffeur service'):
             p=zone.geocode(spec['pickup'],key)
             route=dict(path=[],distance_miles=0,duration_minutes=0,pickup_location=p,dropoff_location=p,congestion_charge=zone.surcharge(p,p),as_directed=True)
         else: route=zone.driving_route(spec['pickup'],spec['dropoff'],key)
         with _lock:
             _cache[cache_key]=(now+300,route)
             while len(_cache)>200: _cache.popitem(last=False)
+    if spec['service'] == 'Point-to-point transfer' and spec['hours'] == 2 and route['duration_minutes'] > 120:
+        raise zone.QuoteUnavailable('This route takes over two hours. Choose a longer service.')
     try:
         fare=tariff(spec['vehicle'],spec['service'],spec['pickup'],spec['dropoff'],spec['hours'],route['distance_miles'],duration_min=route.get('duration_minutes'),base_to_base_miles=route.get('base_to_base_miles'),base_to_base_minutes=route.get('base_to_base_minutes'))
     except TypeError:
         fare=tariff(spec['vehicle'],spec['service'],spec['pickup'],spec['dropoff'],spec['hours'],route['distance_miles'])
     amounts=zone.totals(fare['net_fare'],fare['parking_fee'],fare['dropoff_fee'],route['congestion_charge'])
+    if spec['service'] == 'Open hours chauffeur service':
+        amounts = zone.totals(0, 0, 0, 0)
     summary=dict(
         spec,
         **amounts,

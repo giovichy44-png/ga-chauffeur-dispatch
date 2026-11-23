@@ -2047,7 +2047,9 @@ button, input, textarea, select {
 }
 
 .dispatch-status-dot[data-status="UNALLOCATED"] { background: #fca5a5; }
+.dispatch-status-dot[data-status="ACCEPTED"],
 .dispatch-status-dot[data-status="ASSIGNED"] { background: #86efac; }
+.dispatch-status-dot[data-status="EN_ROUTE"] { background: #60a5fa; }
 .dispatch-status-dot[data-status="ARRIVED"] { background: #fbbf24; }
 .dispatch-status-dot[data-status="ON_BOARD"] { background: #f87171; }
 .dispatch-status-dot[data-status="NEXT_STOP"] { background: #c4b5fd; }
@@ -2118,7 +2120,6 @@ button, input, textarea, select {
   border-radius: 8px;
   box-shadow: 0 8px 24px #0006;
 }
-#dispatch-alert-text { flex-basis: 100%; overflow-wrap: anywhere; }
 #dispatch-backup-content { width: 100%; }
 
 #dispatch-persistent-alerts {
@@ -2129,7 +2130,10 @@ button, input, textarea, select {
   gap: 5px 7px;
   font-size: 12px;
 }
-#dispatch-persistent-alerts strong,
-#dispatch-persistent-alerts #dispatch-alert-text { flex-basis: 100%; }
-#dispatch-alert-text:empty { display: none; }
+#dispatch-persistent-alerts strong { flex-basis: 100%; }
+#dispatch-alert-drivers, #dispatch-alert-customers { background: #f1db9e; color:#121715; text-align:left; }
 #dispatch-persistent-alerts .btn { padding: 4px 7px; font-size: 11px; }
+
+#simple-intake-form .field { min-width: 0; }
+#simple-intake-form .field > select, #f-pickup, #f-dropoff { width:100%; min-width:0; }
+.dispatch-status-cell { white-space:nowrap; }

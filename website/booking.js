@@ -33,6 +33,7 @@
 
   function updateCorporateUI() {
     const corp = isCorporateAccount();
+    const deferred = quoteSpec().service === 'Open hours chauffeur service';
     const em = getEnteredEmail();
     const badge = document.querySelector('#corporate-account-badge');
     const cardFieldset = document.querySelector('#booking-card-fieldset');
@@ -42,19 +43,27 @@
     const totalLabel = document.querySelector('#review-total-label');
 
     if (badge) badge.style.display = corp ? 'block' : 'none';
-    if (cardFieldset) cardFieldset.style.display = corp ? 'none' : 'block';
+    if (cardFieldset) cardFieldset.style.display = corp || deferred ? 'none' : 'block';
     if (corpBox) corpBox.style.display = corp ? 'block' : 'none';
     if (corpEmailSpan) corpEmailSpan.textContent = em;
-    if (cardholderInput) cardholderInput.required = !corp;
-    if (totalLabel) totalLabel.textContent = corp ? 'Total Corporate Invoice:' : 'Total Pre-Authorised Hold:';
+    if (cardholderInput) cardholderInput.required = !corp && !deferred;
+    if (totalLabel) totalLabel.textContent = deferred ? 'Billing' : corp ? 'Total Corporate Invoice:' : 'Total Pre-Authorised Hold:';
   }
-  function quoteSpec(){return {
-    pickup:getAddressVal('booking-pickup'),
-    dropoff:getAddressVal('booking-destination') || (form.elements.serviceType?.value==='Hourly chauffeur service'?'As directed':''),
-    vehicle:form.elements.vehicle?.value || 'Mercedes-Benz S-Class',
-    service:form.elements.serviceType?.value || 'Point-to-point transfer',
-    hours:form.elements.hours?.value || (form.elements.serviceType?.value==='Hourly chauffeur service'?'2':'0')
-  };}
+  function quoteSpec() {
+    const service = form.elements.serviceType.value;
+    const hourly = service === 'Hourly chauffeur service';
+    const pickup = getAddressVal('booking-pickup');
+    const dropoff = getAddressVal('booking-destination') || (hourly ? 'As directed' : '');
+    const select = form.elements.hours;
+    const available = Boolean(pickup && dropoff && (hourly || service === 'Point-to-point transfer'));
+    document.querySelector('#booking-duration').hidden = !available;
+    select.options[0].disabled = hourly;
+    if (hourly && select.value === '2') select.value = '4';
+    const duration = available ? select.value : '0';
+    return {pickup, dropoff, vehicle: form.elements.vehicle.value || 'Mercedes-Benz S-Class',
+      service: duration === 'open' ? 'Open hours chauffeur service' : service,
+      hours: duration === 'open' ? '0' : duration};
+  }
   function currentQuote(){return verifiedQuote && verifiedKey===window.GAServerQuote.key(quoteSpec()) && verifiedQuote.expires>Date.now()/1000+10 ? verifiedQuote:null;}
   window.GAServerQuote?.config.then(config=>{serverQuotes=Boolean(config.server_quotes);if(serverQuotes)updateRouteAndMetrics();}).catch(()=>{});
 
@@ -662,7 +671,7 @@
 
     if (serverQuotes) {
       const spec=quoteSpec(), key=window.GAServerQuote.key(spec);
-      [[sPrice,'mercedes_s_class'],[vPrice,'mercedes_v_class'],[rPrice,'range_rover_autobiography']].forEach(async([el,vehicle])=>{if(!el)return;el.textContent='Verifying…';try{const q=await window.GAServerQuote.get({...spec,vehicle});if(window.GAServerQuote.key(quoteSpec())===key)el.textContent='£'+q.total_fare.toFixed(2);}catch(e){el.textContent='Quote unavailable';}});
+      [[sPrice,'mercedes_s_class'],[vPrice,'mercedes_v_class'],[rPrice,'range_rover_autobiography']].forEach(async([el,vehicle])=>{if(!el)return;el.textContent='Verifying…';try{const q=await window.GAServerQuote.get({...spec,vehicle});if(window.GAServerQuote.key(quoteSpec())===key)el.textContent=spec.service.startsWith('Open hours')?'Billed after the journey':'£'+q.total_fare.toFixed(2);}catch(e){el.textContent='Quote unavailable';}});
     } else if (isHourly) {
       if (sPrice) sPrice.textContent = `£340.00`;
       if (vPrice) vPrice.textContent = `£380.00`;
@@ -683,6 +692,7 @@
     const revCongRow = document.querySelector('#review-row-congestion');
     const revCongVal = document.querySelector('#review-congestion-fee');
     const revTax = document.querySelector('#review-tax-fare');
+    const deferred = quoteSpec().service === 'Open hours chauffeur service';
     const revTotal = document.querySelector('#review-total-fare');
 
     if (revBase) revBase.textContent = `£${base.toFixed(2)}`;
@@ -693,7 +703,10 @@
     if (revCongRow) revCongRow.style.display = hasCongestion ? 'flex' : 'none';
     if (revCongVal) revCongVal.textContent = '+£18.00';
     if (revTax) revTax.textContent = `£${tax.toFixed(2)}`;
-    if (revTotal) revTotal.textContent = `£${total.toFixed(2)}`;
+    if (revTotal) revTotal.textContent = deferred ? 'After the journey' : `£${total.toFixed(2)}`;
+    for (const value of [revBase, revTax]) {
+      if (value) value.parentElement.hidden = deferred;
+    }
 
     // Update Step 4 Summary Box
     const sumRoute = document.querySelector('#review-summary-route');
@@ -711,7 +724,7 @@
     if (sumMetrics) sumMetrics.textContent = `${journeyDistanceMiles.toFixed(1)} miles • approx. ${journeyDurationMinutes} mins`;
     if (sumParty) sumParty.textContent = `${passCount} Passenger${passCount > 1 ? 's' : ''} • ${luggageCount} Luggage / Suitcase${luggageCount > 1 ? 's' : ''}`;
     const reviewDetails = {
-      service: isHourly ? `${form.elements.serviceType.value} · ${Math.max(4, Number(quoteSpec().hours) || 0)} hours` : form.elements.serviceType?.value,
+      service: deferred ? 'Open hours' : [quoteSpec().service, Number(quoteSpec().hours) ? quoteSpec().hours + ' hours' : ''].filter(Boolean).join(' · '),
       contact: ['name', 'email', 'phone'].map(name => form.elements[name]?.value?.trim()).filter(Boolean).join(' · '),
       flight: form.querySelector('#booking-flight')?.value?.trim() || 'None provided',
       requests: bookingRequests() || 'None'
@@ -723,7 +736,7 @@
 
     updateCorporateUI();
     if (submitBtn) {
-      submitBtn.textContent = isCorporateAccount()
+      submitBtn.textContent = deferred ? 'Confirm Open Hours Booking ↗' : isCorporateAccount()
         ? `Confirm Corporate Booking (£${total.toFixed(2)}) ↗`
         : `Pre-Authorise £${total.toFixed(2)} & Confirm Booking ↗`;
     }
@@ -930,7 +943,13 @@
     if (flightEl) flightEl.addEventListener(ev, updateWhatsAppLinks);
   });
 
-  form.addEventListener('change',event=>{if(serverQuotes && ['vehicle','serviceType','hours'].includes(event.target.name))updateRouteAndMetrics();});
+  form.addEventListener('change', event => {
+    if (['vehicle', 'serviceType', 'hours'].includes(event.target.name)) {
+      updateCorporateUI();
+      updateRouteAndMetrics();
+      updatePricingAndReview();
+    }
+  });
 
   function bookingRequests() {
     const selection = form.elements.specialRequests?.value;
@@ -998,6 +1017,7 @@
     const tax = Math.round((base + parkingFee + dropoffFee) * 0.20 * 100) / 100;
     const total = Math.round((base + parkingFee + dropoffFee + tax + congestionFee) * 100) / 100;
 
+    const isOpen = quoteSpec().service === 'Open hours chauffeur service';
     const isCorp = isCorporateAccount();
     sending = true;
     submitBtn.disabled = true;
@@ -1005,7 +1025,7 @@
     status.style.background = '#f8fafc';
     status.style.border = '1px solid #cbd5e1';
     status.style.color = '#1e293b';
-    status.textContent = isCorp
+    status.textContent = isOpen ? 'Confirming your booking…' : isCorp
       ? 'Confirming corporate account reservation & dispatching confirmation email…'
       : 'Securing credit card pre-authorisation hold with Stripe…';
 
@@ -1020,7 +1040,8 @@
       email: data.email,
       customer_phone: data.phone,
       phone: data.phone,
-      service_type: data.serviceType || 'Point-to-point transfer',
+      service_type: quoteSpec().service,
+      hours: Number(quoteSpec().hours),
       pickup_address: pVal,
       pickup: pVal,
       dropoff_address: dVal || (isHourly ? 'As directed' : pVal),
@@ -1072,12 +1093,12 @@
         signal: AbortSignal.timeout(18000)
       });
 
-      if (isCorp) {
+      if (isCorp || isOpen) {
         const res = await sendBooking();
         const jsonRes = await res.json().catch(() => ({}));
         if (res.ok && (jsonRes.ok || jsonRes.success)) {
           dispatchSuccess = true;
-          corporateConfirmed = true;
+          corporateConfirmed = isCorp;
           dispatchRef = jsonRes.reference || jsonRes.booking?.confirmation_code || jsonRes.booking_id;
           manageUrl = jsonRes.booking?.manage_url;
         } else {
@@ -1115,6 +1136,10 @@
     sending = false;
     submitBtn.disabled = false;
 
+    if (dispatchSuccess && isOpen) {
+      renderSuccessConfirmation(dispatchRef, 0, data, payload, false, false, manageUrl);
+      return;
+    }
     if (dispatchSuccess && (paymentPreAuthorized || corporateConfirmed)) {
       const ref = dispatchRef || 'GA-CONFIRMED';
       renderSuccessConfirmation(ref, payload.total_fare, data, payload, true, corporateConfirmed, manageUrl);
@@ -1128,6 +1153,7 @@
       status.style.border = '1px solid #feb2b2';
       status.style.color = '#9b2c2c';
       status.style.lineHeight = '1.6';
+      if (isOpen) { status.textContent = dispatchError; return; }
       status.innerHTML = `We couldn't authorize your credit card right now. Kindly use a different one or get in touch with GA Chauffeurs: <a href="tel:+447886622082" style="font-weight:700;color:#9b2c2c;text-decoration:underline;">+44 7886 622082</a> | <a href="mailto:enquiries@gachauffeurs.co.uk" style="font-weight:700;color:#9b2c2c;text-decoration:underline;">enquiries@gachauffeurs.co.uk</a>`;
       return;
     }
@@ -1144,7 +1170,8 @@
     const p = getAddressVal('booking-pickup');
     const d = getAddressVal('booking-destination');
 
-    const statusBadgeText = corporateBooking
+    const deferred = payload.service_type === 'Open hours chauffeur service';
+    const statusBadgeText = deferred ? '✓ Booking confirmed' : corporateBooking
       ? '✓ Corporate Account — Invoice'
       : (preauthSuccess ? '✓ Card Pre-Authorised' : '✓ Booking Received');
 
@@ -1165,10 +1192,10 @@
         </div>
 
         <h2 style="font-family: Georgia, serif; font-size: 28px; font-weight: normal; color: #171c1c; margin: 0 0 10px 0;">
-          ${preauthSuccess ? 'Booking Confirmed' : 'Booking Request Received'}: <span style="color: #c9b894; font-weight: 600;">${ref}</span>
+          ${preauthSuccess || deferred ? 'Booking Confirmed' : 'Booking Request Received'}: <span style="color: #c9b894; font-weight: 600;">${ref}</span>
         </h2>
         <p style="color: #475569; font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
-          ${corporateBooking
+          ${deferred ? 'Your final fare will be billed after the journey.' : corporateBooking
             ? `Your corporate account reservation has been confirmed (<strong>£${total.toFixed(2)}</strong>). An executive booking confirmation has been automatically sent to <strong>${data.email}</strong>.`
             : (preauthSuccess
               ? `A credit card pre-authorisation hold of <strong>£${total.toFixed(2)}</strong> has been placed on your card. Your card is only charged after journey completion. An executive confirmation has been dispatched to <strong>${data.email}</strong>.`
@@ -1185,7 +1212,7 @@
             <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Pickup Address</span><strong>${p}</strong></div>
             <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Drop-off Address</span><strong>${d}</strong></div>
             <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Distance &amp; Duration</span><strong>${journeyDistanceMiles.toFixed(1)} miles (~${journeyDurationMinutes} mins)</strong></div>
-            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">${corporateBooking ? 'Total Corporate Invoice' : (preauthSuccess ? 'Total Pre-Authorised Hold' : 'Estimated Journey Total — payment pending')}</span><strong style="color: #854d0e; font-size: 16px;">£${total.toFixed(2)}</strong></div>
+            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">${deferred ? 'Billing' : corporateBooking ? 'Total Corporate Invoice' : (preauthSuccess ? 'Total Pre-Authorised Hold' : 'Estimated Journey Total — payment pending')}</span><strong style="color: #854d0e; font-size: 16px;">${deferred ? 'After the journey' : '£' + total.toFixed(2)}</strong></div>
           </div>
         </div>
 

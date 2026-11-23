@@ -195,7 +195,13 @@ def init_db():
         )
     """)
 
-    # Confirmations Table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dispatch_push_subscriptions (
+            endpoint TEXT PRIMARY KEY,
+            subscription TEXT NOT NULL
+        )
+    """)
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS confirmations (
         id TEXT PRIMARY KEY,

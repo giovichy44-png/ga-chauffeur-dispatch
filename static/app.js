@@ -10,7 +10,6 @@ const App = {
   confirmations: [],
   driverMessages: [],
   activeCommsChauffeurId: '',
-  knownDriverMsgIds: new Set(),
   activeFilter: 'ACTIVE',
   jobSort: 'pickup',
   viewMode: 'GRID',
@@ -371,7 +370,6 @@ async function loadData() {
     saveToLocalCache();
     checkLiveNotificationsAndUrgency(App.bookings);
     checkIncomingDriverMessages(App.driverMessages);
-    updateDispatchAlarm();
     updateTopCarCards();
     populateDriverSelectDropdown();
     renderJobsList();
@@ -709,7 +707,7 @@ function runDispatchJobAction(bookingId, select) {
   const actions = {
     allocate: openAllocateModal,
     unallocate: id => {
-      if (confirm('Remove the driver and leave this booking unallocated?')) inlineAllocateVehicle(id, 'UNALLOCATE');
+      if (confirm('Remove the chauffeur and leave this booking unallocated?')) inlineAllocateVehicle(id, 'UNALLOCATE');
     },
     edit: openEditBookingModal,
     email: sendBookingConfirmationEmail,
@@ -734,7 +732,7 @@ function renderCdsDispatchTable(filtered) {
     App.renderedJobRows = '';
     tbody.innerHTML = `
       <tr>
-        <td colspan="9" style="text-align: center; padding: 28px; color: var(--text-muted);">
+        <td colspan="8" style="text-align: center; padding: 28px; color: var(--text-muted);">
           No bookings found under this filter. Click <strong>"+ New Booking ↗"</strong> to add a job.
         </td>
       </tr>
@@ -778,8 +776,10 @@ function renderCdsDispatchTable(filtered) {
       { status: 'CANCELLED', action: 'CANCEL', label: '✖️ Cancelled' }
     ];
 
-    const normalizedStatus = b.status === 'ACCEPTED' || (b.status === 'CONFIRMED' && b.chauffeur_id) ? 'ASSIGNED' : b.status;
-    const statusLabel = statusChoices.find(choice => choice.status === normalizedStatus)?.label.split(' ').slice(1).join(' ') || (b.chauffeur_id ? 'Confirmed' : 'Unallocated');
+    const normalizedStatus = b.status;
+    const statusLabel = normalizedStatus === 'ON_BOARD' ? 'POB' : normalizedStatus === 'ACCEPTED' ? 'Accepted' :
+      statusChoices.find(choice => choice.status === normalizedStatus)?.label.split(' ').slice(1).join(' ') || (b.chauffeur_id ? 'Confirmed' : 'Unallocated');
+    const vehicleLabel = formatVehTierLabel(b.vehicle_class).replace(/^Mercedes(?:-Benz)? /, '').replace(/^Range Rover.*$/, 'Range Rover');
     const statusColour = ['COMPLETED', 'CANCELLED'].includes(b.status) ? b.status
       : b.chauffeur_id ? normalizedStatus : 'UNALLOCATED';
     const hours = Number(b.hours_booked) || 0;
@@ -812,8 +812,8 @@ function renderCdsDispatchTable(filtered) {
               <span style="color:var(--text-muted);">•</span>
               <strong>${escapeHtml(b.customer_name)}</strong>
               <span style="color:var(--text-muted);">•</span>
-              <span>${escapeHtml(formatVehTierLabel(b.vehicle_class))}</span>
-              <span>${escapeHtml(serviceLabel)}</span>
+              <span>${escapeHtml(vehicleLabel)}</span>
+              <span>${escapeHtml(statusLabel)}</span>
             </span>
           </button>
         </td>
@@ -821,15 +821,14 @@ function renderCdsDispatchTable(filtered) {
         <td><strong>${escapeHtml(date)} ${escapeHtml(time)}</strong>${urgencyDot}</td>
         <td><span class="excel-cell-truncate">${escapeHtml(b.customer_name)}</span></td>
         <td><span class="excel-cell-truncate">${escapeHtml(shortPu)} &rarr; ${escapeHtml(shortDo)}</span>${flightTag}</td>
-        <td>${escapeHtml(formatVehTierLabel(b.vehicle_class))}</td>
-        <td>${escapeHtml(serviceLabel)}</td>
+        <td>${escapeHtml(vehicleLabel)}</td>
         <td>${escapeHtml(b.chauffeur_id ? (b.chauffeur_name || 'Allocated') : 'Unallocated')}</td>
-        <td class="dispatch-status-cell"><span class="dispatch-status-dot" data-status="${escapeHtml(statusColour)}" role="img" aria-label="${escapeHtml(statusLabel)}" title="${escapeHtml(statusLabel)}"></span></td>
+        <td class="dispatch-status-cell"><span class="dispatch-status-dot" data-status="${escapeHtml(statusColour)}" role="img" aria-label="${escapeHtml(statusLabel)}" title="${escapeHtml(statusLabel)}"></span> ${escapeHtml(statusLabel)}</td>
         <td class="dispatch-action-cell">
           <select class="dispatch-job-action" aria-label="Actions for ${escapeHtml(b.confirmation_code)}" onchange="runDispatchJobAction('${b.id}', this)">
             <option value="">Actions</option>
-            <option value="allocate">Allocate driver and vehicle</option>
-            ${b.chauffeur_id ? '<option value="unallocate">Remove driver (leave unallocated)</option>' : ''}
+            <option value="allocate">Allocate chauffeur and vehicle</option>
+            ${b.chauffeur_id ? '<option value="unallocate">Remove chauffeur (leave unallocated)</option>' : ''}
             <option value="edit">Edit booking</option>
             <option value="email">Send confirmation email</option>
             <option value="invoice">Request tax invoice</option>
@@ -874,7 +873,7 @@ function renderCdsDispatchTable(filtered) {
 
     const expandRowHtml = `
       <tr class="excel-expand-row">
-        <td colspan="9">
+        <td colspan="8">
           <div class="excel-expand-drawer">
             ${amendBannerHtml}
             <!-- Box 1: Full Route, Flight & Notes -->
@@ -1012,6 +1011,7 @@ async function submitEditBooking(e) {
   const bookingId = document.getElementById('eb-id').value;
   if (!bookingId) return;
   const payload = {
+    send_confirmation: e.submitter?.name === 'send_confirmation',
     pickup_datetime: document.getElementById('eb-datetime').value.replace('T', ' '),
     vehicle_class: document.getElementById('eb-vehicle').value,
     customer_name: document.getElementById('eb-name').value,
@@ -1034,7 +1034,7 @@ async function submitEditBooking(e) {
     const data = await res.json();
     if (data.success) {
       closeModal('modal-edit-booking');
-      showToast('💾 Booking updated successfully!');
+      showToast(payload.send_confirmation ? (data.confirmation_sent ? 'Saved and confirmation sent.' : 'Saved. Confirmation could not be sent.') : 'Saved without emailing.');
       loadData();
     } else {
       alert(data.error || 'Could not update booking');
@@ -1074,7 +1074,7 @@ function renderFleetThinTable() {
     const assignedJobs = App.bookings.filter(b => b.chauffeur_id === ch.id && b.status !== 'COMPLETED' && b.status !== 'CANCELLED');
 
     const mainRow = `
-      <tr class="excel-thin-row ${isExpanded ? 'expanded' : ''}" onclick="toggleExpandFleetRow('${escapeHtml(ch.id)}', event)" title="Click row to expand vehicle &amp; driver details">
+      <tr class="excel-thin-row ${isExpanded ? 'expanded' : ''}" onclick="toggleExpandFleetRow('${escapeHtml(ch.id)}', event)" title="Click row to expand vehicle &amp; chauffeur details">
         <td>
           <div class="excel-first-col-inner">
             <span class="excel-expand-icon">${isExpanded ? '▾' : '▸'}</span>
@@ -1120,7 +1120,7 @@ function renderFleetThinTable() {
               <div><strong>Model:</strong> <span style="color:#fff;">${escapeHtml(ch.vehicle_model)}</span></div>
               <div style="margin-top:4px;"><strong>Registration Plate:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.license_plate)}</span></div>
               <div style="margin-top:4px;"><strong>PCO / Licence Ref:</strong> <span style="color:#34d399;">${escapeHtml(ch.pco_license || 'Verified On File')}</span></div>
-              <div style="margin-top:4px;"><strong>Driver App PIN:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.driver_pin || '1234')}</span></div>
+              <div style="margin-top:4px;"><strong>Chauffeur App PIN:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.driver_pin || '1234')}</span></div>
             </div>
             <div class="excel-drawer-box">
               <div class="excel-drawer-title">👤 Chauffeur Profile &amp; App Link</div>
@@ -1129,7 +1129,7 @@ function renderFleetThinTable() {
               <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
                 <button type="button" class="excel-act-btn gold" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')">📲 Send App via WhatsApp</button>
                 <button type="button" class="excel-act-btn" onclick="copyDriverAppLink('${escapeHtml(ch.id)}')">🔗 Copy App Link</button>
-                <a href="${driverAppUrl}" target="_blank" class="excel-act-btn" style="text-decoration:none;">↗ Open Driver App</a>
+                <a href="${driverAppUrl}" target="_blank" class="excel-act-btn" style="text-decoration:none;">↗ Open Chauffeur App</a>
               </div>
             </div>
             <div class="excel-drawer-box">
@@ -1297,7 +1297,7 @@ function copyDriverAppLink(chId) {
   if (!ch) return;
   const url = getDriverAppInstallUrl(ch);
   navigator.clipboard?.writeText(url);
-  showToast(`🔗 Driver App link copied for ${ch.name}!`);
+  showToast(`🔗 Chauffeur App link copied for ${ch.name}!`);
 }
 
 function sendDriverAppInvite(chId) {
@@ -1306,13 +1306,13 @@ function sendDriverAppInvite(chId) {
   const url = getDriverAppInstallUrl(ch);
   const cleanPhone = (ch.phone || '').replace(/[^0-9]/g, '');
   const msg = [
-    `🚘 *GA Chauffeur Services — Verified Driver App*`,
+    `🚘 *GA Chauffeur Services — Verified Chauffeur App*`,
     `Hello ${ch.name}, your chauffeur profile & vehicle (${ch.vehicle_model} — *${ch.license_plate}*) have been verified on GA Dispatch.`,
     ``,
     `📲 *Install Your Personal Chauffeur App:*`,
     url,
     ``,
-    `🔑 *Your 4-Digit Driver PIN:* ${ch.driver_pin || '1234'}`,
+    `🔑 *Your 4-Digit Chauffeur PIN:* ${ch.driver_pin || '1234'}`,
     `(Open the link in Safari on your iPhone -> tap Share -> "Add to Home Screen". Allocated jobs & live Dispatch chat will appear there automatically.)`
   ].join('\n');
   navigator.clipboard?.writeText(url);
@@ -1320,7 +1320,7 @@ function sendDriverAppInvite(chId) {
     ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
     : `https://wa.me/?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, '_blank');
-  showToast(`📲 Opening WhatsApp to send ${ch.name}'s Driver App link!`);
+  showToast(`📲 Opening WhatsApp to send ${ch.name}'s Chauffeur App link!`);
 }
 
 function checkIncomingDriverMessages(messages) {
@@ -1338,15 +1338,12 @@ function checkIncomingDriverMessages(messages) {
     }
   });
 
-  if (App.initialLoadDone) {
-    messages.forEach(m => {
-      if (!App.knownDriverMsgIds.has(m.id) && m.sender_role === 'DRIVER') {
-        playNewBookingSound();
-        showToast(`💬 ${m.chauffeur_name || m.sender_name} [${m.license_plate || ''}]: "${m.message}"`);
-      }
-    });
-  }
-  App.knownDriverMsgIds = new Set(messages.map(m => m.id));
+  updateDispatchAlarm();
+}
+
+function openUnreadChauffeurMessage() {
+  const unread = App.driverMessages.find(m => m.sender_role === 'DRIVER' && !Number(m.is_read));
+  if (unread) openDriverCommsModal(unread.chauffeur_id);
 }
 
 function openDriverCommsModal(chauffeurId) {
@@ -1370,13 +1367,18 @@ function selectCommsChauffeur(chId) {
 async function markDriverMessagesRead(chId) {
   if (!chId) return;
   try {
-    await fetch('/api/driver-messages/mark-read', {
+    const ids = App.driverMessages.filter(message =>
+      message.chauffeur_id === chId && message.sender_role === 'DRIVER' && !Number(message.is_read)
+    ).map(message => message.id);
+    if (!ids.length) return;
+    const response = await fetch('/api/driver-messages/mark-read', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chauffeur_id: chId })
+      body: JSON.stringify({ chauffeur_id: chId, ids })
     });
+    if (!response.ok) return;
     (App.driverMessages || []).forEach(m => {
-      if (m.chauffeur_id === chId && m.sender_role === 'DRIVER') m.is_read = 1;
+      if (ids.includes(m.id)) m.is_read = 1;
     });
     checkIncomingDriverMessages(App.driverMessages);
   } catch (_) {}
@@ -1384,7 +1386,6 @@ async function markDriverMessagesRead(chId) {
 
 function renderDriverCommsModal() {
   const sel = document.getElementById('comms-driver-select');
-  const banner = document.getElementById('comms-install-banner');
   const chatBox = document.getElementById('comms-chat-history');
   if (!sel || !chatBox) return;
 
@@ -1398,26 +1399,9 @@ function renderDriverCommsModal() {
   }).join('');
 
   const ch = App.chauffeurs.find(c => c.id === App.activeCommsChauffeurId);
-  if (ch && banner) {
-    const appUrl = getDriverAppInstallUrl(ch);
-    banner.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div style="font-size:12px;">
-          <strong style="color:var(--gold);">📲 ${escapeHtml(ch.name)}'s Personal Chauffeur App:</strong>
-          <div style="color:var(--text-muted);margin-top:2px;">Reg: <strong style="color:#fff;">${escapeHtml(ch.license_plate)}</strong> • PIN: <strong style="color:var(--gold);">${escapeHtml(ch.driver_pin || '1234')}</strong></div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button type="button" class="excel-act-btn gold" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')">📲 Send via WhatsApp</button>
-          <button type="button" class="excel-act-btn" onclick="copyDriverAppLink('${escapeHtml(ch.id)}')">🔗 Copy Link</button>
-          <a href="${appUrl}" target="_blank" class="excel-act-btn" style="text-decoration:none;">↗ Open Driver App</a>
-        </div>
-      </div>
-    `;
-  }
-
   const msgs = (App.driverMessages || []).filter(m => m.chauffeur_id === App.activeCommsChauffeurId);
   if (msgs.length === 0) {
-    chatBox.innerHTML = `<div style="margin:auto;text-align:center;color:var(--text-muted);font-size:12.5px;">No messages with ${ch ? escapeHtml(ch.name) : 'this chauffeur'} yet. Messages sent from the Driver App appear here and play an alert chime immediately.</div>`;
+    chatBox.innerHTML = `<div style="margin:auto;text-align:center;color:var(--text-muted);font-size:12.5px;">No messages with ${ch ? escapeHtml(ch.name) : 'this chauffeur'} yet.</div>`;
   } else {
     chatBox.innerHTML = msgs.map(m => {
       const isDriver = m.sender_role === 'DRIVER';
@@ -1594,8 +1578,8 @@ function renderDriverView() {
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button type="button" class="btn btn-gold" style="padding:7px 12px;font-size:12px;" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')">📲 Send App to Driver's Phone</button>
-        <button type="button" class="btn btn-secondary" style="padding:7px 12px;font-size:12px;" onclick="openDriverCommsModal('${escapeHtml(ch.id)}')">💬 Live Driver Chat</button>
-        <a href="${appUrl}" target="_blank" class="btn btn-secondary" style="padding:7px 12px;font-size:12px;text-decoration:none;">↗ Open Driver App</a>
+        <button type="button" class="btn btn-secondary" style="padding:7px 12px;font-size:12px;" onclick="openDriverCommsModal('${escapeHtml(ch.id)}')">💬 Live Chauffeur Chat</button>
+        <a href="${appUrl}" target="_blank" class="btn btn-secondary" style="padding:7px 12px;font-size:12px;text-decoration:none;">↗ Open Chauffeur App</a>
       </div>
     </div>
   `;
@@ -1750,7 +1734,7 @@ function initForm() {
           try {
             const pRes = await fetch(`/api/place-details?place_id=${encodeURIComponent(item.place_id)}`);
             const pData = await pRes.json();
-            if (pData && pData.ok && pData.full_address) {
+            if (pData && pData.ok && pData.full_address && document.getElementById('f-' + field).value === fullText) {
               window.applySuggestion(field, pData.full_address);
             }
           } catch (_) {}
@@ -1850,7 +1834,12 @@ function initForm() {
       clearTimeout(timer);
       const val = input.value.trim();
       autoDetectServiceType();
-      updatePricePreview();
+      journeySpec();
+      ++previewRequest;
+      document.getElementById('calc-fare-total').textContent = '—';
+      document.getElementById('calc-fare-sub').textContent = '';
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(updatePricePreview, 350);
 
       if (val.length === 0) {
         timer = setTimeout(() => fetchAndShowSuggestions(''), 100);
@@ -1909,11 +1898,11 @@ function initForm() {
       if (wrapHours) wrapHours.style.display = isHourly ? 'block' : 'none';
       const lblDrop = document.getElementById('lbl-dropoff');
       if (lblDrop) {
-        lblDrop.textContent = isHourly ? 'Disposal Destination (e.g. As Directed / Central London)' : 'Destination / Drop-off Location *';
+        lblDrop.textContent = isHourly ? 'Disposal Destination (e.g. As directed)' : 'Destination / Drop-off Location *';
       }
       if (isHourly && dInput && !dInput.value) {
-        dInput.value = 'As Directed / Central London';
-      } else if (!isHourly && dInput && dInput.value === 'As Directed / Central London') {
+        dInput.value = 'As directed';
+      } else if (!isHourly && dInput && dInput.value === 'As directed') {
         dInput.value = '';
       }
       updatePricePreview();
@@ -1951,37 +1940,51 @@ function initForm() {
     }
   }
 
-  // Update Live Fare with 20% VAT
+  let previewRequest = 0;
+  let previewTimer;
+  function journeySpec() {
+    const pickup = pInput.value.trim();
+    const dropoff = dInput.value.trim();
+    const service = serviceSelect.value;
+    const hourly = service === 'Hourly chauffeur service';
+    const timed = hourly || service === 'Point-to-point transfer';
+    const showDuration = Boolean(timed && pickup && dropoff);
+    wrapHours.style.display = showDuration ? 'block' : 'none';
+    hoursSelect.options[0].disabled = hourly;
+    if (hourly && hoursSelect.value === '2') hoursSelect.value = '4';
+    const duration = showDuration ? hoursSelect.value : '0';
+    return {pickup, dropoff, vehicle: vSelect.value,
+      service: duration === 'open' ? 'Open hours chauffeur service' : service,
+      hours: duration === 'open' ? '0' : duration};
+  }
+
   async function updatePricePreview() {
-    const v = vSelect ? vSelect.value : 'mercedes_s_class';
-    const sType = serviceSelect ? serviceSelect.value : 'Airport arrival';
-    const hours = hoursSelect ? hoursSelect.value : 4;
-    const p = pInput ? pInput.value : '';
-    const d = dInput ? dInput.value : '';
-
+    const id = ++previewRequest;
+    const spec = journeySpec();
+    const total = document.getElementById('calc-fare-total');
+    const sub = document.getElementById('calc-fare-sub');
+    const title = document.getElementById('fare-service-title');
+    total.textContent = '—';
+    sub.textContent = '';
+    if (!spec.pickup || !spec.dropoff) return;
+    if (spec.service.startsWith('Open hours')) {
+      title.textContent = 'Open hours';
+      total.textContent = 'Billed after the journey';
+      return;
+    }
+    total.textContent = 'Checking route…';
     try {
-      const res = await fetch(`/api/quote?vehicle=${v}&service_type=${encodeURIComponent(sType)}&hours=${hours}&pickup=${encodeURIComponent(p)}&dropoff=${encodeURIComponent(d)}`);
-      const q = await res.json();
-
-      const totalEl = document.getElementById('calc-fare-total');
-      const subEl = document.getElementById('calc-fare-sub');
-      const titleEl = document.getElementById('fare-service-title');
-
-      if (totalEl) totalEl.textContent = `£${q.total_fare.toFixed(2)}`;
-      if (subEl) subEl.textContent = `£${q.net_fare.toFixed(2)} + £${q.vat_amount.toFixed(2)} VAT (20%)`;
-      if (titleEl) titleEl.textContent = q.service_label ? q.service_label.toUpperCase() : 'ESTIMATED JOURNEY FARE';
-    } catch (e) {
-      // Fallback local calc
-      let net = 165.0;
-      if (v === 'mercedes_v_class') net = 175.0;
-      if (v === 'range_rover_autobiography') net = 225.0;
-      const vat = net * 0.20;
-      const total = net + vat;
-
-      const totalEl = document.getElementById('calc-fare-total');
-      const subEl = document.getElementById('calc-fare-sub');
-      if (totalEl) totalEl.textContent = `£${total.toFixed(2)}`;
-      if (subEl) subEl.textContent = `£${net.toFixed(2)} + £${vat.toFixed(2)} VAT (20%)`;
+      const response = await fetch('/api/route-quote?' + new URLSearchParams(spec));
+      const quote = await response.json();
+      if (!response.ok) throw Error(quote.error);
+      if (id !== previewRequest) return;
+      total.textContent = `£${quote.total_fare.toFixed(2)}`;
+      sub.textContent = `Includes £${quote.vat_amount.toFixed(2)} VAT`;
+      title.textContent = quote.service_label;
+    } catch (error) {
+      if (id !== previewRequest) return;
+      total.textContent = 'Quote unavailable';
+      sub.textContent = error.message;
     }
   }
 
@@ -1998,8 +2001,8 @@ function initForm() {
         customer_name: document.getElementById('f-name').value,
         customer_phone: document.getElementById('f-phone').value,
         customer_email: document.getElementById('f-email').value,
-        service_type: serviceSelect ? serviceSelect.value : 'Airport arrival',
-        hours_booked: wrapHours && wrapHours.style.display !== 'none' ? parseInt(hoursSelect.value) : 0,
+        service_type: journeySpec().service,
+        hours_booked: Number(journeySpec().hours),
         pickup_address: pInput.value,
         pickup_unit: document.getElementById('f-pickup-unit') ? document.getElementById('f-pickup-unit').value : '',
         dropoff_address: dInput.value,
@@ -2022,7 +2025,7 @@ function initForm() {
           const spec={pickup:payload.pickup_address,dropoff:payload.dropoff_address,vehicle:payload.vehicle_class,service:payload.service_type,hours:payload.hours_booked};
           const qr=await fetch('/api/route-quote?'+new URLSearchParams(spec));const q=await qr.json();
           if(!qr.ok)throw Error(q.error||'Unable to verify route.');
-          if(!confirm('Verified journey total: £'+q.total_fare.toFixed(2)+'. Create this booking?')){submitBtn.disabled=false;submitBtn.textContent='Confirm Booking & Send Email ↗';return;}
+          if(!confirm(payload.service_type.startsWith('Open hours') ? 'Create this open-hours booking with billing after the journey?' : 'Verified journey total: £'+q.total_fare.toFixed(2)+'. Create this booking?')){submitBtn.disabled=false;submitBtn.textContent='Confirm Booking & Send Email ↗';return;}
           payload.quote_token=q.quote_token;
         }
         const res = await fetch('/api/bookings', {
@@ -2261,10 +2264,6 @@ function escapeHtml(str) {
 
 function updateCustomerUnread(count) {
   const badge = document.getElementById('customer-chat-unread');
-  if (App.customerUnread !== undefined && count > App.customerUnread) {
-    playStatusBlipSound();
-    showToast('New customer message');
-  }
   App.customerUnread = count;
   badge.textContent = count;
   badge.hidden = count === 0;
@@ -2279,6 +2278,16 @@ async function customerChatRequest(action, code, message) {
   const result = await response.json();
   if (!response.ok) throw Error(result.error || 'Unable to load the conversation.');
   return result;
+}
+
+async function openUnreadCustomerMessage() {
+  try {
+    const inbox = await customerChatRequest('inbox');
+    const unread = inbox.threads.find(thread => thread.unread > 0);
+    openCustomerChat(unread?.confirmation_code);
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 function openCustomerChat(reference) {
@@ -2346,6 +2355,9 @@ async function refreshCustomerChat() {
       : 'Live chat is open.';
     form.hidden = conversation.closed;
     download.hidden = !conversation.closed || !conversation.messages.length;
+    updateCustomerUnread(inbox.threads.reduce((count, thread) =>
+      count + (thread.confirmation_code === reference ? 0 : Number(thread.unread || 0)), 0));
+    updateDispatchAlarm();
   } catch (error) {
     if (select.value === reference) status.textContent = error.message;
   }
@@ -2389,6 +2401,43 @@ async function downloadCustomerChat() {
   }
 }
 
+async function enableDispatchPush(button) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    showToast('On iPhone, add GA Dispatch to the Home Screen in Safari and open it there first.');
+    return;
+  }
+  button.disabled = true;
+  try {
+    if (await Notification.requestPermission() !== 'granted') {
+      throw Error('Allow GA Dispatch notifications in your device settings.');
+    }
+    const response = await fetch('/api/dispatch/push-key');
+    const config = await response.json();
+    if (!response.ok) throw Error(config.error || 'Phone notifications are unavailable.');
+    await navigator.serviceWorker.register('/sw.js');
+    const registration = await navigator.serviceWorker.ready;
+    const encoded = config.key.replace(/-/g, '+').replace(/_/g, '/');
+    const key = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
+    let subscription = await registration.pushManager.getSubscription();
+    const previous = subscription?.options.applicationServerKey;
+    if (previous && new Uint8Array(previous).some((byte, index) => byte !== key[index])) {
+      await subscription.unsubscribe();
+      subscription = null;
+    }
+    subscription ||= await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: key});
+    const saved = await fetch('/api/dispatch/push-subscription', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(subscription)
+    });
+    if (!saved.ok) throw Error('Could not save phone notifications. Please try again.');
+    button.textContent = 'Phone notifications enabled';
+    showToast('Dispatch notifications enabled on this device.');
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function updateDispatchAlarm() {
   const banner = document.getElementById('dispatch-persistent-alerts');
   const updates = App.pendingAlerts;
@@ -2396,17 +2445,11 @@ function updateDispatchAlarm() {
   const customers = App.customerUnread || 0;
   banner.hidden = !(updates.length || driverMessages || customers);
   const latest = updates[0];
-  const messageCount = driverMessages + customers;
-  const title = messageCount && !latest
-    ? `${messageCount} new ${messageCount === 1 ? 'message' : 'messages'}`
-    : `${updates.length} booking ${updates.length === 1 ? 'update' : 'updates'}`;
-  const line = latest ? `${latest.confirmation_code} · ${shortBookingAlert(latest)}` : '';
   const heading = document.getElementById('dispatch-alert-heading');
-  const description = document.getElementById('dispatch-alert-text');
-  if (heading.textContent !== title) heading.textContent = title;
-  if (description.textContent !== line) description.textContent = line;
-  document.getElementById('dispatch-alert-ack').hidden = !latest;
-  document.getElementById('dispatch-alert-ack-all').hidden = updates.length < 2;
+  heading.textContent = latest ? `${updates.length} booking ${updates.length === 1 ? 'update' : 'updates'}` : 'Messages';
+  const bookingButton = document.getElementById('dispatch-alert-booking');
+  bookingButton.hidden = !latest;
+  bookingButton.textContent = latest ? `${latest.confirmation_code} · ${shortBookingAlert(latest)}` : '';
   document.getElementById('dispatch-alert-drivers').hidden = driverMessages === 0;
   document.getElementById('dispatch-alert-customers').hidden = customers === 0;
   const shouldRing = App.audioEnabled && (!banner.hidden || App.urgentBookings.length > 0);
@@ -2431,8 +2474,10 @@ function shortBookingAlert(alert) {
   return details.startsWith('Updated ') && details.length <= 100 ? details : 'Booking details changed';
 }
 
-async function acknowledgeDispatchAlerts(all = false) {
-  const keys = (all ? App.pendingAlerts : App.pendingAlerts.slice(0, 1)).map(alert => alert.key);
+async function reviewDispatchAlert() {
+  const alert = App.pendingAlerts[0];
+  if (!alert || !await openBookingLog(alert.booking_id || alert.confirmation_code)) return;
+  const keys = [alert.key];
   try {
     const response = await fetch('/api/dispatch/ack-alerts', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({keys})
@@ -2503,7 +2548,7 @@ async function openBookingLog(id) {
     title.textContent = `Booking log · ${result.booking.confirmation_code}`;
     if (!result.actions?.length) {
       history.textContent = 'No actions are recorded for this booking.';
-      return;
+      return true;
     }
     history.replaceChildren(...result.actions.map(action => {
       const row = document.createElement('section');
@@ -2517,7 +2562,9 @@ async function openBookingLog(id) {
       row.append(heading, details, meta);
       return row;
     }));
+    return true;
   } catch (error) {
     history.textContent = error.message;
+    return false;
   }
 }
