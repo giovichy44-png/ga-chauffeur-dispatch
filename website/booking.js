@@ -206,13 +206,16 @@
     if (!aviationSelect || aviationLocationsLoaded) return;
     aviationLocationsLoaded = true;
     try {
-      const response = await fetch('/private-aviation.json');
+      const response = await fetch('/private-aviation.json?v=2');
       if (!response.ok) throw Error('Locations unavailable');
       const airports = await response.json();
       for (const [airport, locations] of Object.entries(airports)) {
         const group = document.createElement('optgroup');
         group.label = airport;
-        for (const location of locations) group.append(new Option(location, location));
+        for (const location of locations) {
+          const label = location.label || location;
+          group.append(new Option(label, location.address || label));
+        }
         aviationSelect.append(group);
       }
     } catch {
