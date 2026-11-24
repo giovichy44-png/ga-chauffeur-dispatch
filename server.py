@@ -2799,6 +2799,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": str(error)}, 409)
                 return
 
+        if verified_quote:
+            payload["pickup_address"] = verified_quote["pickup"]
+            payload["dropoff_address"] = verified_quote["dropoff"]
+            stops = verified_quote["stops"]
+
         conn = db.get_connection()
         cursor = conn.cursor()
 

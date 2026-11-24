@@ -1,5 +1,5 @@
 """Server-only quotes. Enable only after live Google and checkout verification."""
-import os, time, threading, collections, json
+import os, time, threading, collections, json, re
 import journey_stops
 from prepared_pricing import zone_quote as zone
 
@@ -14,9 +14,26 @@ def enabled():
         return False
     return flag == '1' or ready()
 
+ONE_HYDE_PARK = "One Hyde Park, 100 Knightsbridge, London SW1X 7LJ, UK"
+
+
+def normalize_address(address):
+    # Places can label the same building twice and add a conflicting postcode.
+    named_building = r"(?:one|1) hyde park"
+    street = r"100 knightsbridge"
+    suffix = r"(?:,?\s+(?:london|(?:sw1x\s*7lj|sw7\s*1dn)|uk))*"
+    if re.fullmatch(
+        rf"(?:{named_building}(?:,\s*(?:one,\s*hyde park,\s*)?{street})?|{street}){suffix}",
+        address, flags=re.IGNORECASE
+    ):
+        return ONE_HYDE_PARK
+    return address
+
+
 def inputs(data,normalize):
     pickup=str(data.get('pickup') or data.get('pickup_address') or '').strip()
     dropoff=str(data.get('dropoff') or data.get('dropoff_address') or '').strip()
+    pickup, dropoff = normalize_address(pickup), normalize_address(dropoff)
     vehicle=normalize(data.get('vehicle') or data.get('vehicle_class'))
     service=str(data.get('service') or data.get('service_type') or 'Point-to-point transfer').strip()
     try: hours=int(data.get('hours') or data.get('hours_booked') or 0)
@@ -26,7 +43,7 @@ def inputs(data,normalize):
     if 'hourly' in service.lower() and hours<4: hours=4
     try:
         raw_stops = data.get('stops', [])
-        stops = journey_stops.validate(json.loads(raw_stops) if isinstance(raw_stops, str) else raw_stops)
+        stops = [normalize_address(stop) for stop in journey_stops.validate(json.loads(raw_stops) if isinstance(raw_stops, str) else raw_stops)]
     except ValueError as error:
         raise zone.QuoteUnavailable(str(error)) from error
     if stops and dropoff.lower() == 'as directed':
