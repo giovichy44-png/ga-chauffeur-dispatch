@@ -19,13 +19,12 @@ ONE_HYDE_PARK = "One Hyde Park, 100 Knightsbridge, London SW1X 7LJ, UK"
 
 def normalize_address(address):
     # Places can label the same building twice and add a conflicting postcode.
-    named_building = r"(?:one|1) hyde park"
+    parts = re.sub(r"[,\s]+", " ", address.strip().casefold())
+    name = r"(?:one|1) hyde park"
     street = r"100 knightsbridge"
-    suffix = r"(?:,?\s+(?:london|(?:sw1x\s*7lj|sw7\s*1dn)|uk))*"
-    if re.fullmatch(
-        rf"(?:{named_building}(?:,\s*(?:one,\s*hyde park,\s*)?{street})?|{street}){suffix}",
-        address, flags=re.IGNORECASE
-    ):
+    # Limit this to the known building, its street number and the two postcode variants.
+    location = r"(?: knightsbridge| (?:greater )?london| sw1x ?7lj| sw7 ?1dn| uk| united kingdom)*"
+    if re.fullmatch(rf"(?:{name}(?: {name})?(?: {street})?|{street}){location}", parts):
         return ONE_HYDE_PARK
     return address
 

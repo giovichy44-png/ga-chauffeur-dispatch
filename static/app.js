@@ -1821,6 +1821,7 @@ function initForm() {
               includedRegionCodes: ['gb']
             });
             if (mySeq !== reqSeq) return;
+            if (serverItems.some(item => item.full_address === 'One Hyde Park, 100 Knightsbridge, London SW1X 7LJ, UK')) return;
             const googleItems = (suggestions || [])
               .filter(s => s.placePrediction)
               .map(s => {
@@ -2631,45 +2632,212 @@ async function openBookingLog(id) {
 }
 
 
+let dispatchMapsLoad;
+let dispatchMapsDenied = false;
+
+function loadDispatchMaps(key) {
+  if (window.google?.maps?.Map) return Promise.resolve(google.maps);
+  dispatchMapsLoad ||= new Promise((resolve, reject) => {
+    if (!key) return reject(Error('Google Maps is unavailable.'));
+    const script = document.createElement('script');
+    const url = new URL('https://maps.googleapis.com/maps/api/js');
+    url.search = new URLSearchParams({key, callback:'gaDispatchMapsReady', loading:'async'});
+    window.gaDispatchMapsReady = () => resolve(google.maps);
+    window.gm_authFailure = () => {
+      dispatchMapsDenied = true;
+      document.getElementById('dispatch-map-status').textContent = 'Google Maps could not load for this Dispatch address.';
+    };
+    script.onerror = () => reject(Error('Google Maps could not load.'));
+    script.src = url;
+    script.async = true;
+    document.head.append(script);
+  }).catch(error => {
+    dispatchMapsLoad = null;
+    throw error;
+  });
+  return dispatchMapsLoad;
+}
+
+function liveVehicleIcon(maps, tier) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  const van = tier === 'mercedes_v_class';
+  const suv = tier === 'range_rover_autobiography';
+  const width = van ? 41 : suv ? 38 : 32;
+  const left = (64 - width) / 2;
+  const top = van ? 6 : 10;
+  const height = van ? 84 : 76;
+  ctx.fillStyle = '#12181b';
+  for (const y of [top + 13, top + height - 22]) {
+    ctx.fillRect(left - 4, y, 8, 11);
+    ctx.fillRect(left + width - 4, y, 8, 11);
+  }
+  ctx.beginPath();
+  ctx.roundRect(left, top, width, height, van ? 8 : suv ? 10 : 13);
+  ctx.fillStyle = van ? '#25b290' : suv ? '#d5a453' : '#93b5fa';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.fillStyle = '#223447';
+  ctx.beginPath();
+  ctx.roundRect(left + 5, top + (van ? 14 : 19), width - 10, van ? 52 : 40, 5);
+  ctx.fill();
+  ctx.fillStyle = '#dce7ee';
+  ctx.fillRect(left + 7, top + 7, 5, 4);
+  ctx.fillRect(left + width - 12, top + 7, 5, 4);
+  return {url:canvas.toDataURL(), scaledSize:new maps.Size(32,48), anchor:new maps.Point(16,24)};
+}
+
 async function openLiveTracking() {
   const dialog = document.getElementById('dispatch-live-tracking');
+  if (dialog.open) return;
   const list = document.getElementById('dispatch-live-locations');
-  dialog.showModal();
+  const status = document.getElementById('dispatch-map-status');
+  const routeStatus = document.getElementById('dispatch-route-status');
+  const container = document.getElementById('dispatch-live-map');
   const session = new AbortController();
-  dialog.addEventListener('close', () => session.abort(), {once:true});
+  const markers = new Map();
+  let maps, map, selectedId, routeKey, routeVersion = 0, overlays = [], framed = false;
+  let latest = [];
+  dialog.showModal();
+  container.replaceChildren();
+  status.textContent = 'Loading Google Maps…';
+  routeStatus.textContent = '';
   list.textContent = 'Checking chauffeur locations…';
+
+  function clearRoute() {
+    routeVersion++;
+    overlays.forEach(overlay => overlay.setMap(null));
+    overlays = [];
+    routeKey = null;
+    routeStatus.textContent = '';
+  }
+
+  async function selectVehicle(chauffeur, zoom = false) {
+    selectedId = chauffeur?.id;
+    const key = chauffeur?.journey_id;
+    if (zoom && map && chauffeur?.updated_at != null) {
+      map.panTo({lat:chauffeur.latitude, lng:chauffeur.longitude});
+      if (!key) map.setZoom(15);
+    }
+    if (!map || routeKey === key) return;
+    clearRoute();
+    if (!key) return;
+    routeKey = key;
+    const version = routeVersion;
+    routeStatus.textContent = 'Loading passenger journey…';
+    try {
+      const response = await fetch('/api/dispatch/live-route?' + new URLSearchParams({id:key}), {
+        cache:'no-store', signal:AbortSignal.any([session.signal, AbortSignal.timeout(40000)])
+      });
+      if (!response.ok) throw Error();
+      const route = await response.json();
+      if (version !== routeVersion || session.signal.aborted) return;
+      const path = route.path.map(([lng,lat]) => ({lat,lng}));
+      if (path.length < 2) throw Error();
+      overlays = [
+        new maps.Polyline({map, path, strokeColor:'#1261e9', strokeOpacity:1, strokeWeight:6}),
+        new maps.Marker({map, position:route.pickup_location, label:'A', title:'Pickup'}),
+        new maps.Marker({map, position:route.dropoff_location, label:'B', title:'Drop-off'})
+      ];
+      const bounds = new maps.LatLngBounds();
+      path.forEach(point => bounds.extend(point));
+      bounds.extend({lat:chauffeur.latitude, lng:chauffeur.longitude});
+      map.fitBounds(bounds, 50);
+      routeStatus.textContent = chauffeur.journey_reference + ' · Passenger on board · A Pickup → B Drop-off';
+    } catch {
+      if (version === routeVersion && !session.signal.aborted) {
+        routeStatus.textContent = 'The route is unavailable. Live vehicle positions are still shown.';
+      }
+    }
+  }
+
+  dialog.addEventListener('close', () => {
+    session.abort();
+    clearRoute();
+    markers.forEach(marker => marker.setMap(null));
+  }, {once:true});
+
   while (!session.signal.aborted) {
     try {
-      const response = await fetch('/api/dispatch/live-locations', {cache:'no-store', signal:AbortSignal.any([session.signal, AbortSignal.timeout(8000)])});
+      const response = await fetch('/api/dispatch/live-locations', {
+        cache:'no-store', signal:AbortSignal.any([session.signal, AbortSignal.timeout(8000)])
+      });
       if (!response.ok) throw Error();
-      const {chauffeurs} = await response.json();
+      const {chauffeurs, maps_key:key} = await response.json();
       if (session.signal.aborted) return;
+      latest = chauffeurs.filter(chauffeur => chauffeur.updated_at != null);
+      if (!map) {
+        try {
+          maps = await loadDispatchMaps(key);
+          if (session.signal.aborted) return;
+          map = new maps.Map(container, {center:{lat:51.5074,lng:-0.1278}, zoom:11, mapTypeControl:false, streetViewControl:false});
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      }
+      if (map) {
+        const bounds = new maps.LatLngBounds();
+        const ids = new Set(latest.map(chauffeur => chauffeur.id));
+        for (const [id, marker] of markers) {
+          if (!ids.has(id)) {
+            marker.setMap(null);
+            markers.delete(id);
+          }
+        }
+        for (const chauffeur of latest) {
+          const point = {lat:chauffeur.latitude, lng:chauffeur.longitude};
+          bounds.extend(point);
+          const tier = allocationVehicleClass(chauffeur.vehicle_class);
+          const existing = markers.get(chauffeur.id);
+          if (existing) {
+            existing.setPosition(point);
+            continue;
+          }
+          const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier), title:chauffeur.name, zIndex:10});
+          marker.addListener('click', () => selectVehicle(latest.find(row => row.id === chauffeur.id), true));
+          markers.set(chauffeur.id, marker);
+        }
+        if (!framed && latest.length) {
+          framed = true;
+          if (latest.length === 1) {
+            map.setCenter(bounds.getCenter());
+            map.setZoom(14);
+          } else map.fitBounds(bounds, 45);
+        }
+        if (!dispatchMapsDenied) {
+          status.textContent = latest.length ? latest.length + ' sharing live location' : 'No chauffeurs are sharing live location.';
+        }
+      }
       const focused = document.activeElement?.dataset.chauffeur;
       list.replaceChildren(...chauffeurs.map(chauffeur => {
         const row = document.createElement('li');
-        row.style.marginBlock = '12px';
-        const fresh = chauffeur.updated_at != null;
-        row.append(chauffeur.name + ' · ' + (fresh
-          ? 'Updated ' + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB') +
-            ' (±' + Math.round(chauffeur.accuracy) + ' m) · '
-          : 'Location unavailable'));
-        if (fresh) {
-          const link = document.createElement('a');
-          link.href = 'https://www.google.com/maps/search/?api=1&query=' +
-            encodeURIComponent(chauffeur.latitude + ',' + chauffeur.longitude);
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.dataset.chauffeur = chauffeur.id;
-          link.textContent = 'View on Google Maps';
-          row.append(link);
-        }
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-secondary';
+        button.disabled = chauffeur.updated_at == null || !map;
+        button.dataset.chauffeur = chauffeur.id;
+        const tier = ({mercedes_v_class:'V-Class',mercedes_s_class:'S-Class',range_rover_autobiography:'Range Rover'})[allocationVehicleClass(chauffeur.vehicle_class)] || 'Vehicle';
+        button.textContent = chauffeur.name + ' · ' + tier + (chauffeur.journey_id ? ' · POB' : '');
+        button.onclick = () => selectVehicle(chauffeur,true);
+        row.append(button, ' ' + (chauffeur.updated_at == null ? 'Location unavailable' :
+          'Updated ' + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB')));
         return row;
       }));
-      if (!chauffeurs.length) list.textContent = 'No chauffeurs found.';
-      if (focused) Array.from(list.querySelectorAll('a')).find(link => link.dataset.chauffeur === focused)?.focus();
+      const selected = latest.find(chauffeur => chauffeur.id === selectedId);
+      if (selectedId) selectVehicle(selected);
+      else selectVehicle(latest.find(chauffeur => chauffeur.journey_id));
+      if (focused) Array.from(list.querySelectorAll('button')).find(button => button.dataset.chauffeur === focused)?.focus();
     } catch {
       if (session.signal.aborted) return;
-      list.textContent = 'Unable to load chauffeur locations. Retrying…';
+      status.textContent = 'Unable to refresh chauffeur locations. Retrying…';
+      markers.forEach(marker => marker.setMap(null));
+      markers.clear();
+      clearRoute();
+      list.replaceChildren();
     }
     await new Promise(resolve => setTimeout(resolve, 8000));
   }

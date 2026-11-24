@@ -1907,12 +1907,39 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/dispatch/live-locations":
             with db.get_connection() as conn:
                 rows = conn.execute("""
-                    SELECT c.id, c.name, l.latitude, l.longitude, l.accuracy, l.updated_at
+                    SELECT c.id, c.name, c.vehicle_class, l.latitude, l.longitude, l.accuracy,
+                           l.updated_at, b.id AS journey_id, b.confirmation_code AS journey_reference
                     FROM chauffeurs c LEFT JOIN chauffeur_live_locations l
                       ON l.chauffeur_id = c.id AND l.updated_at >= ?
+                    LEFT JOIN bookings b ON l.updated_at IS NOT NULL AND b.id = (
+                        SELECT id FROM bookings
+                        WHERE chauffeur_id = c.id AND status IN ('ON_BOARD', 'NEXT_STOP')
+                        ORDER BY updated_at DESC, id DESC LIMIT 1
+                    )
                     ORDER BY c.name
                 """, (time.time() - 90,)).fetchall()
-            self.send_json({"chauffeurs": [dict(row) for row in rows]}, cache_control="no-store")
+            self.send_json({"chauffeurs": [dict(row) for row in rows],
+                            "maps_key": GOOGLE_PLACES_BROWSER_KEY}, cache_control="no-store")
+            return
+
+        if path == "/api/dispatch/live-route":
+            booking_id = query.get("id", [""])[0]
+            with db.get_connection() as conn:
+                trip = conn.execute("""
+                    SELECT b.pickup_address, b.dropoff_address, b.stops, b.vehicle_class, b.service_type
+                    FROM bookings b JOIN chauffeur_live_locations l ON l.chauffeur_id = b.chauffeur_id
+                    WHERE b.id = ? AND b.status IN ('ON_BOARD', 'NEXT_STOP') AND l.updated_at >= ?
+                """, (booking_id, time.time() - 90)).fetchone()
+            if not trip:
+                self.send_json({"error": "No live passenger journey for this vehicle."}, 404)
+                return
+            try:
+                route = quote_service.issue(dict(trip), normalize_vehicle_tier, calculate_fare,
+                                            self.client_address[0], preview=True)
+                self.send_json({key: route[key] for key in ("path", "pickup_location", "dropoff_location")},
+                               cache_control="no-store")
+            except (QuoteUnavailable, OSError, KeyError, ValueError):
+                self.send_json({"error": "The journey route is temporarily unavailable."}, 503)
             return
 
         if path == "/api/events":
@@ -2133,6 +2160,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             q_raw = query.get("q", [""])[0].strip()
             q = q_raw.lower().replace("’", "'")
             q_norm = q.replace("'", "")
+            if q and quote_service.normalize_address(q_raw) == quote_service.ONE_HYDE_PARK:
+                self.send_json({"suggestions": [{
+                    "title": "One Hyde Park", "subtitle": "100 Knightsbridge, London SW1X 7LJ",
+                    "full_address": quote_service.ONE_HYDE_PARK, "category": "address",
+                }]})
+                return
             terminal_alias = re.fullmatch(r"(?:heathrow(?: airport)?|lhr)\s+(?:terminal\s*|t\s*)([2-5])", q)
             if terminal_alias:
                 q = q_norm = "t" + terminal_alias[1]

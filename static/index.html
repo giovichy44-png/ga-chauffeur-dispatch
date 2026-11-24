@@ -237,6 +237,7 @@
                 <div class="chip-shortcuts">
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 5, TW6 2GA')">Heathrow T5</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 2, TW6 1EW')">Heathrow T2</span>
+                  <button type="button" class="quick-chip" onclick="applySuggestion('pickup', 'One Hyde Park, 100 Knightsbridge, London SW1X 7LJ, UK')">One Hyde Park</button>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Heathrow Airport (LHR) Terminal 3, Camlet Way, Longford, Hounslow TW6 1QG')">Heathrow T3</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Gatwick Airport (LGW) South Terminal, RH6 0NP')">Gatwick</span>
                   <span class="quick-chip" onclick="applySuggestion('pickup', 'Claridge\'s, Brook Street, Mayfair, London W1K 4HR')">Claridge's</span>
@@ -818,13 +819,16 @@
   <div class="toast-stack" id="toast-stack"></div>
 
   <script src="/journey-stops.js?v=1"></script>
-  <dialog id="dispatch-live-tracking" style="width:min(36rem,calc(100% - 2rem));max-height:80vh;overflow:auto;background:#1b231f;color:#f0e9db;border:1px solid #847759;border-radius:12px;padding:1.25rem">
+  <dialog id="dispatch-live-tracking" style="width:min(92rem,calc(100% - 2rem));max-height:92vh;overflow:auto;background:#1b231f;color:#f0e9db;border:1px solid #847759;border-radius:12px;padding:1.25rem">
     <form method="dialog" style="float:right"><button class="btn btn-secondary">Close</button></form>
     <h2>Live chauffeur tracking</h2>
-    <p>Locations update while chauffeurs share from their app.</p>
+    <p id="dispatch-map-status" role="status">Loading Google Maps…</p>
+    <div id="dispatch-live-map" aria-label="Google map of live chauffeur locations"
+         style="height:clamp(300px,65vh,800px);border-radius:8px;background:#27352e"></div>
+    <p id="dispatch-route-status" role="status"></p>
     <ul id="dispatch-live-locations" aria-label="Chauffeur locations"></ul>
   </dialog>
   <script src="/ga-phone-push.js?v=2"></script>
-  <script src="app.js?v=dispatch-push-diagnostics-1"></script>
+  <script src="app.js?v=dispatch-live-map-1"></script>
 </body>
 </html>
