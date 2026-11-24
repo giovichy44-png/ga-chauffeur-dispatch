@@ -749,9 +749,26 @@ VEHICLE_ALIASES = {
     "executive_suv": "range_rover_autobiography"
 }
 
+VEHICLE_MODEL_PATTERNS = (
+    (r"\bv[ -]?class\b|\bv[ -]?(?:220|250|300)\b", "mercedes_v_class"),
+    (r"\bs[ -]?class\b|\bs[ -]?(?:350|400|450|500|560|580|600|63|65)e?\b", "mercedes_s_class"),
+    (r"\brange rover\b", "range_rover_autobiography"),
+)
+
+
+def vehicle_tier_key(value):
+    key = str(value or "").casefold().strip()
+    key = re.sub(r"[‐‑‒–—]", "-", key)
+    if key in VEHICLE_CONFIGS:
+        return key
+    if key in VEHICLE_ALIASES:
+        return VEHICLE_ALIASES[key]
+    return next((tier for pattern, tier in VEHICLE_MODEL_PATTERNS if re.search(pattern, key)), None)
+
+
 def normalize_vehicle_tier(tier_key):
-    tier = str(tier_key).lower().strip()
-    return VEHICLE_ALIASES.get(tier, tier if tier in VEHICLE_CONFIGS else "mercedes_s_class")
+    return vehicle_tier_key(tier_key) or "mercedes_s_class"
+
 
 PRIVATE_AVIATION_LOCATION = re.compile(
     r"\b(?:harrods aviation|signature (?:aviation|flight support)|netjets|flexjet|"
@@ -991,13 +1008,15 @@ def broadcast_event(event_type, data):
     pushes = {
         "booking_created": "New booking",
         "booking_updated": "Booking details changed",
+        "chauffeur_allocated": "Chauffeur allocated",
+        "chauffeur_removed": "Chauffeur allocation removed",
         "amendment_requested": "Customer requested a booking amendment",
         "confirmation_resent": "Booking confirmation sent",
     }
     notice = pushes.get(event_type)
     if event_type == "driver_message" and data.get("sender_role") == "DRIVER":
         notice = "You have a new message from the chauffeur"
-    if event_type == "live_action_executed" and data.get("by_chauffeur"):
+    if event_type == "live_action_executed":
         notice = "Chauffeur update: " + data["action"].replace("_", " ").capitalize()
     if notice:
         dispatch_push.notify(notice)
@@ -1005,7 +1024,9 @@ def broadcast_event(event_type, data):
         with db.get_connection() as conn:
             allocation = conn.execute("SELECT chauffeur_id FROM bookings WHERE id = ?", (data.get("booking_id"),)).fetchone()
         if allocation and allocation["chauffeur_id"]:
-            dispatch_push.notify(notice or "A booking has been allocated to you", scope=allocation["chauffeur_id"])
+            dispatch_push.notify("A booking has been allocated to you" if event_type == "chauffeur_allocated" else notice, scope=allocation["chauffeur_id"])
+    if event_type in ("chauffeur_removed", "chauffeur_allocated") and data.get("old_chauffeur_id"):
+        dispatch_push.notify("A booking has been removed from your jobs", scope=data["old_chauffeur_id"])
     elif event_type == "driver_message" and data.get("sender_role") == "DISPATCH" and data.get("chauffeur_id"):
         dispatch_push.notify("New message from Dispatch", scope=data["chauffeur_id"])
     payload = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
@@ -1208,16 +1229,9 @@ def confirmation_vehicle(chauffeur, booked_tier):
     if not chauffeur:
         return VEHICLE_CONFIGS[normalize_vehicle_tier(booked_tier)]
     model = str(chauffeur.get("vehicle_model") or "").strip()
-    if not model:
-        return VEHICLE_CONFIGS[normalize_vehicle_tier(chauffeur.get("vehicle_class") or booked_tier)]
-    families = (
-        (r"\bv[ -]?class\b|\bv[ -]?(?:220|250|300)\b", "mercedes_v_class"),
-        (r"\bs[ -]?class\b|\bs[ -]?(?:350|400|450|500|560|580|600|63|65)e?\b", "mercedes_s_class"),
-        (r"\brange rover\b", "range_rover_autobiography"),
-    )
-    for pattern, tier in families:
-        if re.search(pattern, model, re.I):
-            return VEHICLE_CONFIGS[tier]
+    tier = vehicle_tier_key(model) or vehicle_tier_key(chauffeur.get("vehicle_class"))
+    if tier:
+        return VEHICLE_CONFIGS[tier]
     return {"name": model, "image_url": ""}
 
 
@@ -1677,11 +1691,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         sys.stderr.write(f"[{datetime.now().strftime('%H:%M:%S')}] {args[0]} {args[1]}\n")
 
-    def send_json(self, data, status_code=200):
+    def send_json(self, data, status_code=200, *, cache_control=None):
         body = json.dumps(data, default=str).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
@@ -1887,6 +1903,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 else:
                     self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                     return
+
+        if path == "/api/dispatch/live-locations":
+            with db.get_connection() as conn:
+                rows = conn.execute("""
+                    SELECT c.id, c.name, l.latitude, l.longitude, l.accuracy, l.updated_at
+                    FROM chauffeurs c LEFT JOIN chauffeur_live_locations l
+                      ON l.chauffeur_id = c.id AND l.updated_at >= ?
+                    ORDER BY c.name
+                """, (time.time() - 90,)).fetchall()
+            self.send_json({"chauffeurs": [dict(row) for row in rows]}, cache_control="no-store")
+            return
 
         if path == "/api/events":
             self.handle_sse()
@@ -2356,6 +2383,37 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_driver_status(payload)
             return
 
+        if path == "/api/driver/location":
+            if not isinstance(payload, dict):
+                self.send_json({"error": "Invalid location."}, 400)
+                return
+            token = payload.get("token")
+            coordinates = [payload.get(key) for key in ("latitude", "longitude", "accuracy")]
+            stop = payload.get("sharing") is False
+            if not stop and (payload.get("sharing") is not True or not all(
+                type(value) in (int, float) and low <= value <= high
+                for value, (low, high) in zip(coordinates, ((-90, 90), (-180, 180), (0, 10000)))
+            )):
+                self.send_json({"error": "Invalid location."}, 400)
+                return
+            with db.get_connection() as conn:
+                chauffeur = conn.execute(
+                    "SELECT id FROM chauffeurs WHERE driver_token = ?", (token,)
+                ).fetchone() if isinstance(token, str) and token else None
+                if not chauffeur:
+                    self.send_json({"error": "Chauffeur sign-in required."}, 401)
+                    return
+                if stop:
+                    conn.execute("DELETE FROM chauffeur_live_locations WHERE chauffeur_id = ?", (chauffeur["id"],))
+                else:
+                    conn.execute("""
+                        INSERT INTO chauffeur_live_locations VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(chauffeur_id) DO UPDATE SET latitude=excluded.latitude,
+                            longitude=excluded.longitude, accuracy=excluded.accuracy, updated_at=excluded.updated_at
+                    """, (chauffeur["id"], *coordinates, time.time()))
+            self.send_json({"success": True}, cache_control="no-store")
+            return
+
         if path == "/api/driver/push":
             token = str(payload.get("token") or "")
             with db.get_connection() as conn:
@@ -2401,8 +2459,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if not dispatch_push.public_key():
                 self.send_json({"error": "The server has not enabled notifications."}, 503)
                 return
-            dispatch_push.notify("Test notification from GA Dispatch")
-            self.send_json({"success": True})
+            endpoint = payload.get("endpoint") if isinstance(payload, dict) else None
+            if not isinstance(endpoint, str) or not endpoint or len(endpoint) > 2048:
+                self.send_json({"error": "Enable phone notifications on this device first."}, 400)
+                return
+            result = dispatch_push.deliver("Test notification from GA Dispatch", endpoint=endpoint)
+            if not result["registered"]:
+                self.send_json({"error": "This device is not registered for Dispatch alerts. Enable phone notifications and try again."}, 404)
+            elif not result["accepted"]:
+                self.send_json({"error": "The push service did not accept the test. Reopen Dispatch and enable phone notifications again."}, 502)
+            else:
+                self.send_json({"success": True})
             return
 
         if path == "/api/dispatch/push-subscription":
@@ -3244,40 +3311,42 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                                     "Dispatch account", "Chauffeur removed from booking.")
             conn.commit()
             conn.close()
+            if booking.get("chauffeur_id"):
+                broadcast_event("chauffeur_removed", {"booking_id": booking_id, "old_chauffeur_id": booking["chauffeur_id"]})
             self.send_json({"success": True, "booking_id": booking_id, "chauffeur": None, "status": "PENDING"})
             return
 
+        booked_tier = vehicle_tier_key(booking["vehicle_class"])
+        if not booked_tier:
+            conn.close()
+            self.send_json({"error": "Set the booking vehicle class before allocating it."}, 409)
+            return
+
+        def matches_vehicle(candidate):
+            configured = vehicle_tier_key(candidate["vehicle_class"])
+            model = vehicle_tier_key(candidate["vehicle_model"])
+            return configured == booked_tier and model in (None, configured)
+
         if not chauffeur_id or chauffeur_id == "auto":
-            # Exact vehicle class match first
-            cursor.execute("""
-            SELECT * FROM chauffeurs
-            WHERE status = 'AVAILABLE' AND vehicle_class = ?
-            ORDER BY rating DESC, trips_count DESC
-            LIMIT 1
-            """, (booking["vehicle_class"],))
-            chauffeur = cursor.fetchone()
-
-            # Otherwise any available among the 3 vehicles
-            if not chauffeur:
-                cursor.execute("""
-                SELECT * FROM chauffeurs
-                WHERE status = 'AVAILABLE'
-                ORDER BY rating DESC
-                LIMIT 1
-                """)
-                chauffeur = cursor.fetchone()
-
+            available = cursor.execute("""
+                SELECT * FROM chauffeurs WHERE status = 'AVAILABLE'
+                ORDER BY rating DESC, trips_count DESC
+            """).fetchall()
+            chauffeur = next((candidate for candidate in available if matches_vehicle(candidate)), None)
             if not chauffeur:
                 conn.close()
-                self.send_json({"error": "All 3 vehicles are currently on active trips or on break."}, 409)
+                self.send_json({"error": "No available chauffeur has the booked vehicle class."}, 409)
                 return
             chauffeur_id = chauffeur["id"]
         else:
-            cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (chauffeur_id,))
-            chauffeur = cursor.fetchone()
+            chauffeur = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (chauffeur_id,)).fetchone()
             if not chauffeur:
                 conn.close()
                 self.send_json({"error": "Chauffeur not found"}, 404)
+                return
+            if not matches_vehicle(chauffeur):
+                conn.close()
+                self.send_json({"error": f"Choose a chauffeur with a {VEHICLE_CONFIGS[booked_tier]['name']}."}, 409)
                 return
 
         chauffeur = dict(chauffeur)
@@ -3287,6 +3356,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             cursor.execute("""
             UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ?
             """, (booking["chauffeur_id"],))
+
+            self.log_booking_action(conn, booking_id, booking["chauffeur_id"], "CHAUFFEUR_REMOVED",
+                                    "Dispatch account", "Booking reassigned to another chauffeur.")
 
         cursor.execute("""
         UPDATE chauffeurs SET status = 'ON_TRIP', active_booking_id = ? WHERE id = ?
@@ -3367,6 +3439,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "booking_id": booking_id,
             "chauffeur_id": chauffeur_id,
             "chauffeur_name": chauffeur["name"],
+            "old_chauffeur_id": booking["chauffeur_id"] if booking["chauffeur_id"] != chauffeur_id else None,
             "status": "ASSIGNED"
         })
 
@@ -3416,6 +3489,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         dropoff_address = str(payload.get("dropoff_address", booking.get("dropoff_address", ""))).strip()
         flight_number = str(payload.get("flight_number") if "flight_number" in payload else (booking.get("flight_number") or "")).strip() or None
         vehicle_class = normalize_vehicle_tier(payload.get("vehicle_class", booking.get("vehicle_class", "mercedes_s_class")))
+        if booking["chauffeur_id"] and vehicle_class != vehicle_tier_key(booking["vehicle_class"]):
+            assigned = cursor.execute("SELECT vehicle_class, vehicle_model FROM chauffeurs WHERE id = ?",
+                                      (booking["chauffeur_id"],)).fetchone()
+            if not assigned or vehicle_tier_key(assigned["vehicle_class"]) != vehicle_class or vehicle_tier_key(assigned["vehicle_model"]) not in (None, vehicle_class):
+                conn.close()
+                self.send_json({"error": "Remove the current chauffeur before changing the booking vehicle class."}, 409)
+                return
         passenger_count = int(payload.get("passenger_count", booking.get("passenger_count", 1)) or 1)
         luggage_count = int(payload.get("luggage_count", booking.get("luggage_count", 1)) or 0)
         large_cases = int(payload.get("large_cases", booking.get("large_cases", luggage_count)) or 0)
@@ -4836,8 +4916,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         pco_license = str(payload.get("pco_license") or "").strip()
         docs_verified = 1 if payload.get("docs_verified", True) else 0
         driver_pin = str(payload.get("driver_pin") or "").strip() or str(random.randint(1000, 9999))
-        vehicle_model = str(payload.get("vehicle_model") or "Mercedes-Benz S-Class").strip()
-        vehicle_class = str(payload.get("vehicle_class") or "mercedes_s_class").strip()
+        vehicle_model = str(payload.get("vehicle_model") or VEHICLE_CONFIGS[normalize_vehicle_tier(payload.get("vehicle_class"))]["name"]).strip()
+        model_tier = vehicle_tier_key(vehicle_model)
+        vehicle_class = vehicle_tier_key(payload.get("vehicle_class") or vehicle_model)
+        if not vehicle_class or (model_tier and model_tier != vehicle_class):
+            self.send_json({"error": "Choose a vehicle class that matches the vehicle model."}, 400)
+            return
         license_plate = str(payload.get("license_plate") or "").strip().upper()
         pax_cap = int(payload.get("passenger_capacity") or (6 if "v_class" in vehicle_class else 4))
         requested_luggage_capacity = payload.get("luggage_capacity")
@@ -4851,7 +4935,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn = db.get_connection()
         cursor = conn.cursor()
         if ch_id:
-            existing = cursor.execute("SELECT driver_token FROM chauffeurs WHERE id = ?", (ch_id,)).fetchone()
+            existing = cursor.execute("SELECT driver_token, vehicle_class FROM chauffeurs WHERE id = ?", (ch_id,)).fetchone()
+            if existing and vehicle_tier_key(existing["vehicle_class"]) != vehicle_class:
+                active_jobs = cursor.execute("""
+                    SELECT vehicle_class FROM bookings
+                    WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED', 'DROPPED_OFF')
+                """, (ch_id,)).fetchall()
+                if any(vehicle_tier_key(job["vehicle_class"]) != vehicle_class for job in active_jobs):
+                    conn.close()
+                    self.send_json({"error": "Remove incompatible booking allocations before changing this vehicle class."}, 409)
+                    return
             driver_token = (existing["driver_token"] if existing and existing["driver_token"] else f"drv_{ch_id.lower().replace('-', '')}_{random.randint(100000, 999999)}")
             cursor.execute("""
                 UPDATE chauffeurs

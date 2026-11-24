@@ -44,6 +44,7 @@
         <button type="button" class="btn btn-secondary" onclick="switchTab('fleet')" style="font-size: 12px; padding: 7px 11px;">
           🚘 Fleet &amp; Chauffeurs
         </button>
+        <button type="button" class="btn btn-secondary" onclick="openLiveTracking()">Live Tracking</button>
         <button type="button" class="btn btn-secondary" id="dispatch-phone-push" onclick="enableDispatchPush(this)">Enable phone notifications</button>
         <button type="button" class="btn btn-secondary" onclick="openDriverCommsModal()" style="font-size: 12px; padding: 7px 11px; position: relative;" title="Live Chauffeur Messages">
           💬 Chauffeur Messages <span id="badge-driver-msgs" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:10px;margin-left:4px;">0</span>
@@ -681,7 +682,8 @@
         </div>
       </div>
       <div class="modal-foot">
-        <button type="button" class="btn btn-secondary" onclick="testDispatchPush()">Send test phone notification</button>
+        <button type="button" class="btn btn-secondary" onclick="testDispatchPush(this)">Send test phone notification</button>
+        <p id="dispatch-phone-test-status" role="status"></p>
         <button type="button" class="btn btn-gold btn-block" onclick="closeModal('modal-sound-iphone')">← Back to Dispatch</button>
       </div>
     </div>
@@ -816,7 +818,13 @@
   <div class="toast-stack" id="toast-stack"></div>
 
   <script src="/journey-stops.js?v=1"></script>
+  <dialog id="dispatch-live-tracking" style="width:min(36rem,calc(100% - 2rem));max-height:80vh;overflow:auto;background:#1b231f;color:#f0e9db;border:1px solid #847759;border-radius:12px;padding:1.25rem">
+    <form method="dialog" style="float:right"><button class="btn btn-secondary">Close</button></form>
+    <h2>Live chauffeur tracking</h2>
+    <p>Locations update while chauffeurs share from their app.</p>
+    <ul id="dispatch-live-locations" aria-label="Chauffeur locations"></ul>
+  </dialog>
   <script src="/ga-phone-push.js?v=2"></script>
-  <script src="app.js?v=dispatch-mac-notifications-1"></script>
+  <script src="app.js?v=dispatch-push-diagnostics-1"></script>
 </body>
 </html>

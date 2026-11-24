@@ -515,6 +515,10 @@
       <div id="driver-alert-links"></div>
     </section>
     <button type="button" class="nav-link" id="chauffeur-phone-push" onclick="enableChauffeurPush(this)">Enable phone notifications</button>
+    <div>
+      <button type="button" class="nav-link" id="driver-location-toggle" aria-pressed="false" onclick="toggleDriverLocation()">Share live location</button>
+      <p id="driver-location-status" role="status" style="margin:4px 0">Share your location with Dispatch while this app is open.</p>
+    </div>
     <!-- 1. CHAUFFEUR & VERIFIED VEHICLE DETAILS CARD -->
     <section class="card" id="sec-profile">
       <div class="profile-banner">
@@ -711,8 +715,74 @@
       }
     }
 
-    function driverLogout() {
+    let driverLocationSession = null;
+    let driverLocationRequest = Promise.resolve();
+
+    function sendDriverLocation(payload, token) {
+      driverLocationRequest = driverLocationRequest.catch(() => {}).then(async () => {
+        const response = await fetch('/api/driver/location', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({token, ...payload}), keepalive:!payload.sharing,
+          signal:AbortSignal.timeout(8000)
+        });
+        if (!response.ok) throw Error('Unable to update Dispatch.');
+      });
+      return driverLocationRequest;
+    }
+
+    function stopDriverLocation(message = 'Live location is off.') {
+      const session = driverLocationSession;
+      driverLocationSession = null;
+      clearTimeout(session?.timer);
+      const button = document.getElementById('driver-location-toggle');
+      button.textContent = 'Share live location';
+      button.setAttribute('aria-pressed', 'false');
+      document.getElementById('driver-location-status').textContent = message;
+      return session ? sendDriverLocation({sharing:false}, session.token).catch(() => {}) : Promise.resolve();
+    }
+
+    function toggleDriverLocation() {
+      if (driverLocationSession) return stopDriverLocation();
+      const button = document.getElementById('driver-location-toggle');
+      const status = document.getElementById('driver-location-status');
+      if (!navigator.geolocation || !DriverApp.token) {
+        status.textContent = 'Live location is unavailable on this device.';
+        return;
+      }
+      const session = {token:DriverApp.token};
+      driverLocationSession = session;
+      button.textContent = 'Stop sharing location';
+      button.setAttribute('aria-pressed', 'true');
+      status.textContent = 'Getting your location…';
+      const sample = () => navigator.geolocation.getCurrentPosition(async ({coords}) => {
+        if (driverLocationSession !== session || document.hidden) return;
+        try {
+          await sendDriverLocation({
+            sharing:true, latitude:coords.latitude, longitude:coords.longitude, accuracy:coords.accuracy
+          }, session.token);
+          if (driverLocationSession === session) status.textContent = 'Sharing live location with Dispatch.';
+        } catch {
+          if (driverLocationSession === session) status.textContent = 'Could not send your location. Retrying…';
+        }
+        if (driverLocationSession === session) session.timer = setTimeout(sample, 20000);
+      }, error => {
+        if (driverLocationSession !== session) return;
+        if (error.code === 1) stopDriverLocation('Location permission was declined.');
+        else {
+          status.textContent = 'Waiting for a GPS fix…';
+          session.timer = setTimeout(sample, 20000);
+        }
+      }, {maximumAge:0, timeout:12000, enableHighAccuracy:true});
+      sample();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && driverLocationSession) stopDriverLocation('Sharing paused. Tap to share again.');
+    });
+
+    async function driverLogout() {
       if (!confirm('Sign out of your Chauffeur App on this phone?')) return;
+      await stopDriverLocation();
       localStorage.removeItem('ga_driver_app_token');
       DriverApp.token = '';
       window.location.href = '/driver';
@@ -722,6 +792,7 @@
       try {
         const res = await fetch(`/api/driver/me?token=${encodeURIComponent(DriverApp.token)}`);
         if (res.status === 401 || res.status === 404) {
+          stopDriverLocation();
           localStorage.removeItem('ga_driver_app_token');
           DriverApp.token = '';
           DriverApp.jobs = [];
@@ -791,13 +862,14 @@
         for (const alert of bookings) {
           const change = alert.action === 'AMENDMENT_REQUESTED_2H' ? 'Amendment awaiting Dispatch approval' :
             alert.action === 'CHAUFFEUR_ALLOCATED' ? 'New booking' :
+            alert.action === 'CHAUFFEUR_REMOVED' ? 'Allocation removed' :
             String(alert.details || '').startsWith('Updated ') && alert.details.length <= 100 ?
               alert.details : 'Booking details changed';
           addLink([alert.confirmation_code, change].filter(Boolean).join(' · '), () => {
             const card = document.getElementById('driver-job-' + alert.booking_id);
-            if (!card) return;
-            card.focus({preventScroll:true});
-            card.scrollIntoView({block:'center'});
+            if (!card && alert.action !== 'CHAUFFEUR_REMOVED') return;
+            card?.focus({preventScroll:true});
+            card?.scrollIntoView({block:'center'});
             acknowledgeDriverAlerts([alert.key]);
           });
         }

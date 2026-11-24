@@ -4,16 +4,17 @@ import re
 
 import db
 
-DISPATCH_ACTIONS = ("BOOKING_CREATED", "CUSTOMER_AMENDED_BOOKING", "AMENDMENT_REQUESTED_2H", "CUSTOMER_AMENDMENT_APPROVED", "DISPATCH_AMENDED_BOOKING")
-DRIVER_ACTIONS = ("CHAUFFEUR_ALLOCATED", "CUSTOMER_AMENDED_BOOKING", "DISPATCH_AMENDED_BOOKING", "CUSTOMER_AMENDMENT_APPROVED", "AMENDMENT_REQUESTED_2H")
+DISPATCH_ACTIONS = ("BOOKING_CREATED", "CHAUFFEUR_ALLOCATED", "CHAUFFEUR_REMOVED", "CUSTOMER_AMENDED_BOOKING", "AMENDMENT_REQUESTED_2H", "CUSTOMER_AMENDMENT_APPROVED", "DISPATCH_AMENDED_BOOKING")
+DRIVER_ACTIONS = ("CHAUFFEUR_ALLOCATED", "CHAUFFEUR_REMOVED", "CUSTOMER_AMENDED_BOOKING", "DISPATCH_AMENDED_BOOKING", "CUSTOMER_AMENDMENT_APPROVED", "AMENDMENT_REQUESTED_2H")
 
 
 def pending(conn, chauffeur_id=None):
     scope = f"driver:{chauffeur_id}" if chauffeur_id else "dispatch"
     actions = DRIVER_ACTIONS if chauffeur_id else DISPATCH_ACTIONS
     placeholders = ",".join("?" for _ in actions)
-    where_driver = "AND b.chauffeur_id = ?" if chauffeur_id else ""
-    params = (*actions, *((chauffeur_id,) if chauffeur_id else ()), scope)
+    where_driver = """AND ((a.action = 'CHAUFFEUR_REMOVED' AND a.chauffeur_id = ?)
+        OR (a.action <> 'CHAUFFEUR_REMOVED' AND b.chauffeur_id = ? AND a.chauffeur_id = ?))""" if chauffeur_id else ""
+    params = (*actions, *((chauffeur_id,) * 3 if chauffeur_id else ()), scope)
     bookings = conn.execute(f"""
         WITH latest AS (
             SELECT b.confirmation_code, MAX(a.id) AS alert_id

@@ -356,6 +356,7 @@ async function loadData() {
       App.confirmations = data.confirmations || [];
       App.driverMessages = data.driver_messages || [];
       App.pendingAlerts = data.pending_alerts || [];
+      enableDispatchPush(document.getElementById('dispatch-phone-push'), true);
       updateCustomerUnread(data.unread_customer_messages || 0);
     } else {
       const [bRes, cRes, confRes] = await Promise.all([
@@ -1506,6 +1507,14 @@ async function captureBookingPayment(bookingId, amount) {
 }
 
 // Allocate Modal
+function allocationVehicleClass(value) {
+  const key = String(value || '').toLowerCase().trim().replace(/[‐‑‒–—]/g, '-');
+  if (/^(mercedes_v_class|luxury_van)$|\bv[ -]?class\b|\bv[ -]?(220|250|300)\b/.test(key)) return 'mercedes_v_class';
+  if (/^(range_rover_autobiography|executive_suv)$|\brange rover\b/.test(key)) return 'range_rover_autobiography';
+  if (/^(mercedes_s_class|first_class|business_sedan)$|\bs[ -]?class\b|\bs[ -]?(350|400|450|500|560|580|600|63|65)e?\b/.test(key)) return 'mercedes_s_class';
+  return '';
+}
+
 function openAllocateModal(bookingId) {
   App.allocatingJobId = bookingId;
   const booking = App.bookings.find(b => b.id === bookingId);
@@ -1520,8 +1529,14 @@ function openAllocateModal(bookingId) {
   }
 
   const choiceList = document.querySelector('#modal-allocate .car-choice-list');
-  if (choiceList && App.chauffeurs.length > 0) {
-    choiceList.innerHTML = App.chauffeurs.map(ch => {
+  const bookedClass = allocationVehicleClass(booking.vehicle_class);
+  const matches = App.chauffeurs.filter(ch => {
+    const configured = allocationVehicleClass(ch.vehicle_class);
+    const model = allocationVehicleClass(ch.vehicle_model);
+    return bookedClass && bookedClass === configured && (!model || model === configured);
+  });
+  if (choiceList) {
+    choiceList.innerHTML = matches.map(ch => {
       const iconLbl = ch.vehicle_class === 'mercedes_v_class' ? 'V' : (ch.vehicle_class === 'range_rover_autobiography' ? 'RR' : 'S');
       return `
         <div class="car-choice-btn" onclick="assignVehicle('${escapeHtml(ch.id)}')">
@@ -1533,7 +1548,7 @@ function openAllocateModal(bookingId) {
           <span class="choice-badge">Select ↗</span>
         </div>
       `;
-    }).join('');
+    }).join('') || '<p>No chauffeurs have the booked vehicle class.</p>';
   }
 
   document.getElementById('modal-allocate').style.display = 'flex';
@@ -1553,8 +1568,12 @@ async function assignVehicle(chauffeurId) {
       closeModal('modal-allocate');
       showToast(`Car allocated & customer confirmation sent!`);
       loadData();
+    } else {
+      showToast(data.error || 'Unable to allocate this vehicle.');
     }
-  } catch (err) {}
+  } catch {
+    showToast('Unable to reach Dispatch.');
+  }
 }
 
 function closeModal(modalId) {
@@ -2432,13 +2451,28 @@ async function enableDispatchPush(button, restore = false) {
     }), showToast, '/');
 }
 
-async function testDispatchPush() {
+async function testDispatchPush(button) {
+  const status = document.getElementById('dispatch-phone-test-status');
+  button.disabled = true;
+  status.textContent = 'Checking this device…';
   try {
+    const registration = await navigator.serviceWorker?.getRegistration('/');
+    const subscription = await registration?.pushManager.getSubscription();
+    if (!subscription || window.Notification?.permission !== 'granted') {
+      throw Error('Open Dispatch from your iPhone Home Screen and enable phone notifications first.');
+    }
     const response = await fetch('/api/dispatch/test-push', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({endpoint:subscription.endpoint})
     });
-    showToast(response.ok ? 'Test notification queued for subscribed Dispatch devices.' : 'Phone notifications are unavailable.');
-  } catch (_) { showToast('Could not send the test notification.'); }
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || 'Could not send the test notification.');
+    status.textContent = 'The push service accepted the test for this device. Check Notification Centre.';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 const lastMacAlerts = {};
@@ -2491,6 +2525,8 @@ function updateDispatchAlarm() {
 function shortBookingAlert(alert) {
   const labels = {
     BOOKING_CREATED: 'New booking',
+    CHAUFFEUR_ALLOCATED: 'Chauffeur allocated',
+    CHAUFFEUR_REMOVED: 'Chauffeur removed',
     AMENDMENT_REQUESTED_2H: 'Amendment needs approval',
     CUSTOMER_AMENDMENT_APPROVED: 'Amendment approved'
   };
@@ -2591,5 +2627,50 @@ async function openBookingLog(id) {
   } catch (error) {
     history.textContent = error.message;
     return false;
+  }
+}
+
+
+async function openLiveTracking() {
+  const dialog = document.getElementById('dispatch-live-tracking');
+  const list = document.getElementById('dispatch-live-locations');
+  dialog.showModal();
+  const session = new AbortController();
+  dialog.addEventListener('close', () => session.abort(), {once:true});
+  list.textContent = 'Checking chauffeur locations…';
+  while (!session.signal.aborted) {
+    try {
+      const response = await fetch('/api/dispatch/live-locations', {cache:'no-store', signal:AbortSignal.any([session.signal, AbortSignal.timeout(8000)])});
+      if (!response.ok) throw Error();
+      const {chauffeurs} = await response.json();
+      if (session.signal.aborted) return;
+      const focused = document.activeElement?.dataset.chauffeur;
+      list.replaceChildren(...chauffeurs.map(chauffeur => {
+        const row = document.createElement('li');
+        row.style.marginBlock = '12px';
+        const fresh = chauffeur.updated_at != null;
+        row.append(chauffeur.name + ' · ' + (fresh
+          ? 'Updated ' + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB') +
+            ' (±' + Math.round(chauffeur.accuracy) + ' m) · '
+          : 'Location unavailable'));
+        if (fresh) {
+          const link = document.createElement('a');
+          link.href = 'https://www.google.com/maps/search/?api=1&query=' +
+            encodeURIComponent(chauffeur.latitude + ',' + chauffeur.longitude);
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.dataset.chauffeur = chauffeur.id;
+          link.textContent = 'View on Google Maps';
+          row.append(link);
+        }
+        return row;
+      }));
+      if (!chauffeurs.length) list.textContent = 'No chauffeurs found.';
+      if (focused) Array.from(list.querySelectorAll('a')).find(link => link.dataset.chauffeur === focused)?.focus();
+    } catch {
+      if (session.signal.aborted) return;
+      list.textContent = 'Unable to load chauffeur locations. Retrying…';
+    }
+    await new Promise(resolve => setTimeout(resolve, 8000));
   }
 }

@@ -72,12 +72,17 @@ def notify(message, *, scope="dispatch"):
         worker.submit(deliver, message, scope=scope)
 
 
-def deliver(message, *, scope="dispatch"):
+def deliver(message, *, scope="dispatch", endpoint=None):
     import requests
     from pywebpush import WebPushException, webpush
 
     with closing(db.get_connection()) as conn, requests.Session() as session:
-        subscriptions = conn.execute("SELECT endpoint, subscription FROM dispatch_push_subscriptions WHERE scope = ?", (scope,)).fetchall()
+        subscriptions = conn.execute(
+            "SELECT endpoint, subscription FROM dispatch_push_subscriptions WHERE scope = ?"
+            + (" AND endpoint = ?" if endpoint is not None else ""),
+            (scope,) if endpoint is None else (scope, endpoint),
+        ).fetchall()
+        accepted = 0
         session.max_redirects = 0
         for endpoint, subscription in subscriptions:
             try:
@@ -86,6 +91,7 @@ def deliver(message, *, scope="dispatch"):
                     vapid_private_key=vapid(), vapid_claims={"sub": "mailto:enquiries@gachauffeurs.co.uk"},
                     requests_session=session, headers={"Urgency": "high"}, ttl=900, timeout=5,
                 )
+                accepted += 1
             except WebPushException as exc:
                 status = exc.response.status_code if exc.response is not None else None
                 if status in (404, 410):
@@ -95,3 +101,4 @@ def deliver(message, *, scope="dispatch"):
                     logging.warning("Dispatch push provider returned status %s", status)
             except (requests.RequestException, ValueError):
                 logging.warning("Could not deliver a Dispatch push notification.")
+        return {"registered": len(subscriptions), "accepted": accepted}

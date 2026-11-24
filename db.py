@@ -49,6 +49,16 @@ def init_db():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chauffeur_live_locations (
+        chauffeur_id TEXT PRIMARY KEY REFERENCES chauffeurs(id) ON DELETE CASCADE,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        accuracy REAL NOT NULL,
+        updated_at REAL NOT NULL
+    )
+    """)
+
     cursor.execute("PRAGMA table_info(chauffeurs)")
     existing_ch_cols = [row["name"] for row in cursor.fetchall()]
     ch_cols_to_add = [
