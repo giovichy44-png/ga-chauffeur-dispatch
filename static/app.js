@@ -295,6 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Render cached snapshot in 0ms so the screen is NEVER blank on startup
   hydrateFromLocalCache();
   loadData();
+  enableDispatchPush(document.getElementById('dispatch-phone-push'), true);
 
   // Close any open modal on Escape key
   window.addEventListener('keydown', (e) => {
@@ -305,7 +306,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-refresh every 4 seconds
   setInterval(loadData, 1800);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadData(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) {
+    loadData();
+    enableDispatchPush(document.getElementById('dispatch-phone-push'), true);
+  } });
 });
 
 // Tab Switching
@@ -2420,11 +2424,12 @@ async function downloadCustomerChat() {
   }
 }
 
-async function enableDispatchPush(button) {
-  await GAPhonePush.enable(button, () => fetch('/api/dispatch/push-key'), subscription =>
+async function enableDispatchPush(button, restore = false) {
+  if (!button) return;
+  await GAPhonePush[restore ? 'restore' : 'enable'](button, () => fetch('/api/dispatch/push-key'), subscription =>
     fetch('/api/dispatch/push-subscription', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(subscription)
-    }), showToast);
+    }), showToast, '/');
 }
 
 async function testDispatchPush() {
@@ -2436,11 +2441,33 @@ async function testDispatchPush() {
   } catch (_) { showToast('Could not send the test notification.'); }
 }
 
+const lastMacAlerts = {};
+
+function notifyMacDispatch(alertGroups) {
+  const bridge = window.webkit?.messageHandlers?.dispatchAlerts;
+  if (!bridge) return;
+  const changes = {};
+  for (const [type, items] of Object.entries(alertGroups)) {
+    const previous = lastMacAlerts[type] || [];
+    if (items.some(item => !previous.includes(item))) changes[type] = true;
+    else if (!items.length && previous.length) changes[type] = false;
+    lastMacAlerts[type] = items;
+  }
+  if (Object.keys(changes).length) bridge.postMessage(changes);
+}
+
 function updateDispatchAlarm() {
   const banner = document.getElementById('dispatch-persistent-alerts');
   const updates = App.pendingAlerts;
-  const driverMessages = (App.driverMessages || []).filter(message => message.sender_role === 'DRIVER' && !Number(message.is_read)).length;
+  const unreadChauffeurMessages = (App.driverMessages || []).filter(message => message.sender_role === 'DRIVER' && !Number(message.is_read));
+  const driverMessages = unreadChauffeurMessages.length;
   const customers = App.customerUnread || 0;
+  notifyMacDispatch({
+    booking: updates.map(update => update.key),
+    chauffeur: unreadChauffeurMessages.map(message => message.id),
+    customer: Array.from({length: customers}, (_, index) => index),
+    urgent: App.urgentBookings.map(job => job.confirmation_code || job.id)
+  });
   banner.hidden = !(updates.length || driverMessages || customers);
   const latest = updates[0];
   const heading = document.getElementById('dispatch-alert-heading');

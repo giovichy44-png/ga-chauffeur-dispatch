@@ -24,7 +24,11 @@
       input.focus();
     };
     if (!suggestions) return;
+    let selecting = false;
+    matches.addEventListener('pointerdown', () => { selecting = true; });
+    matches.addEventListener('pointercancel', () => { selecting = false; });
     input.addEventListener('input', () => {
+      selecting = false;
       dismiss();
       const query = input.value.trim();
       if (query.length < 2) return;
@@ -39,15 +43,16 @@
             option.type = 'button';
             const result = item.full_address || [item.title, item.subtitle].filter(Boolean).join(', ');
             option.textContent = result;
-            option.onpointerdown = event => event.preventDefault();
             option.onclick = async () => {
+              selecting = false;
               dismiss();
+              const selection = sequence;
               input.value = result;
               if (item.place_id) {
                 try {
                   const response = await fetch('/api/place-details?' + new URLSearchParams({place_id:item.place_id}));
                   const details = await response.json();
-                  if (input.value !== result) return;
+                  if (selection !== sequence || !input.isConnected) return;
                   if (details.full_address) input.value = details.full_address;
                 } catch (_) {}
               }
@@ -56,13 +61,25 @@
             return option;
           }));
           matches.hidden = !matches.childElementCount;
-        } catch (_) { dismiss(); }
+        } catch (_) { if (request === sequence) dismiss(); }
       }, 250);
     });
     shell.addEventListener('focusout', event => {
-      if (!shell.contains(event.relatedTarget)) dismiss();
+      if (!selecting && !shell.contains(event.relatedTarget)) dismiss();
     });
+    const outsideClick = event => {
+      if (!shell.contains(event.target)) {
+        selecting = false;
+        dismiss();
+        document.removeEventListener('click', outsideClick, true);
+      }
+    };
+    input.addEventListener('focus', () => document.addEventListener('click', outsideClick, true));
     input.addEventListener('keydown', event => { if (event.key === 'Escape') dismiss(); });
+    return () => {
+      dismiss();
+      document.removeEventListener('click', outsideClick, true);
+    };
   }
 
   function mount(container, change = () => {}) {
@@ -72,6 +89,7 @@
     add.textContent = '+ Add stop';
     add.className = 'ga-add-stop';
     container.append(rows, add);
+    const cleanup = new Map();
     const update = () => {
       add.disabled = rows.childElementCount >= 5;
       change();
@@ -94,10 +112,15 @@
       remove.type = 'button';
       remove.textContent = '×';
       remove.setAttribute('aria-label', 'Remove stop');
-      remove.onclick = () => { row.remove(); update(); };
+      remove.onclick = () => {
+        cleanup.get(row)();
+        cleanup.delete(row);
+        row.remove();
+        update();
+      };
       row.append(input, remove);
       rows.append(row);
-      address(input);
+      cleanup.set(row, address(input));
       update();
       if (!value) input.focus();
     }
@@ -105,6 +128,8 @@
     return {
       values: () => Array.from(rows.querySelectorAll('input'), input => input.value.trim()).filter(Boolean),
       set(values) {
+        for (const dispose of cleanup.values()) dispose();
+        cleanup.clear();
         rows.replaceChildren();
         for (const value of values || []) append(value);
         update();
@@ -118,8 +143,8 @@
     .ga-address-field input{box-sizing:border-box;width:100%;min-width:0;padding-right:48px!important}
     .ga-address-field > button,.ga-stop-row > button,.ga-add-stop{color:inherit;background:none;border:1px solid currentColor;border-radius:6px;cursor:pointer;min-height:40px;padding:5px 10px}
     .ga-address-field > button{position:absolute;right:4px;top:2px;border:0;min-width:40px;font-size:21px}
-    .ga-address-results{position:absolute;z-index:30;top:100%;left:0;right:0;padding:4px;background:#171f1b;border:1px solid #6e796f;border-radius:6px;color:white;box-shadow:0 6px 15px #0006}
-    .ga-address-results button{display:block;background:none;border:0;color:inherit;width:100%;text-align:left;padding:11px;cursor:pointer}
+    .ga-address-results{position:absolute;z-index:30;max-height:180px;overflow:auto;top:100%;left:0;right:0;padding:4px;background:#171f1b;border:1px solid #6e796f;border-radius:6px;color:white;box-shadow:0 6px 15px #0006}
+    .ga-address-results button{display:block;background:none;border:0;color:inherit;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere;padding:11px;cursor:pointer}
     .ga-address-results button:focus,.ga-address-results button:hover{background:#324238}
     .ga-stop-row{display:flex;align-items:center;gap:8px;margin:8px 0}
     .ga-stop-row .ga-address-field > button{display:none}

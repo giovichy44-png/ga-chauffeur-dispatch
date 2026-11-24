@@ -1,0 +1,14 @@
+{
+  "London Luton": ["Harrods Aviation — The Omnia, London Luton Airport", "Signature Aviation Terminal 1, London Luton Airport", "Signature Aviation Terminal 2 (Britannia House), London Luton Airport"],
+  "London Stansted": ["Harrods Aviation — The Knightsbridge, London Stansted Airport", "Harrods Aviation — The Brompton, London Stansted Airport", "Inflite Jet Centre, London Stansted Airport", "Universal Aviation, London Stansted Airport"],
+  "Farnborough": ["Farnborough Airport", "Flexjet Terminal, Farnborough Airport", "NetJets, Farnborough Airport"],
+  "London Biggin Hill": ["Biggin Hill Executive Handling, London Biggin Hill Airport", "Jetex, London Biggin Hill Airport"],
+  "RAF Northolt": ["RAF Northolt"],
+  "Denham": ["Denham Aerodrome"],
+  "London City": ["London City Airport Jet Centre"],
+  "London Heathrow": ["Signature Aviation, London Heathrow Airport"],
+  "London Gatwick": ["Signature Aviation, London Gatwick Airport"],
+  "London Southend": ["London Southend Jet Centre"],
+  "London Oxford": ["OxfordJet, London Oxford Airport"],
+  "Other London-area airfields": ["Blackbushe Airport", "London Elstree Aerodrome", "Fairoaks Airport", "Wycombe Air Park"]
+}

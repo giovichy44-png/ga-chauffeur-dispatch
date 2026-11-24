@@ -18,7 +18,7 @@
   const submitBtn = document.querySelector('#booking-submit-btn');
   const reviewConfirmed = document.querySelector('#booking-review-confirmed');
   const query = new URLSearchParams(location.search);
-  let serverQuotes=false, verifiedQuote=null, verifiedKey='';
+  let serverQuotes=false, verifiedQuote=null, verifiedKey='', routeError='';
 
   // Approved Corporate Client Account Emails (No Credit Card Required — Billed by Invoice)
   const CORPORATE_EMAILS = new Set([
@@ -151,7 +151,8 @@
 
   function getAddressVal(id) {
     const input = document.getElementById(id);
-    return (input ? input.value : '').trim();
+    const value = (input ? input.value : '').trim();
+    return window.GABookingAddresses?.canonical(value) ?? value;
   }
 
   // Pre-fill from URL query
@@ -196,9 +197,42 @@
   const chips = document.querySelectorAll('.ga-service-chip');
   const flightGroup = document.querySelector('#booking-flight-group');
 
+  const aviationPanel = document.getElementById('private-aviation-locations');
+  const aviationSelect = document.getElementById('private-aviation-location');
+  let aviationLocationsLoaded = false;
+  const privateAviationLocation = /\b(?:harrods aviation|signature (?:aviation|flight support)|netjets|flexjet|universal aviation|inflite|jetex|jet cent(?:re|er)|oxfordjet|farnborough airport|biggin hill|(?:raf )?northolt|denham (?:aerodrome|airfield)|blackbushe airport|elstree aerodrome|fairoaks airport|wycombe air park)\b/i;
+
+  async function loadAviationLocations() {
+    if (!aviationSelect || aviationLocationsLoaded) return;
+    aviationLocationsLoaded = true;
+    try {
+      const response = await fetch('/private-aviation.json');
+      if (!response.ok) throw Error('Locations unavailable');
+      const airports = await response.json();
+      for (const [airport, locations] of Object.entries(airports)) {
+        const group = document.createElement('optgroup');
+        group.label = airport;
+        for (const location of locations) group.append(new Option(location, location));
+        aviationSelect.append(group);
+      }
+    } catch {
+      aviationLocationsLoaded = false;
+      aviationSelect.options[0].text = 'Enter the pickup address above';
+    }
+  }
+
+  aviationSelect?.addEventListener('change', () => {
+    if (aviationSelect.value) window.GABookingAddresses.setAddress('booking-pickup', aviationSelect.value);
+  });
+  form.elements.pickup?.addEventListener('input', () => {
+    if (aviationSelect) aviationSelect.value = '';
+  });
+
   const onServiceChange = () => {
     const s = form.elements.serviceType.value;
     const isHourly = s === 'Hourly chauffeur service';
+    if (aviationPanel) aviationPanel.hidden = s !== 'Private aviation';
+    if (s === 'Private aviation') loadAviationLocations();
 
     chips.forEach(chip => {
       const match = chip.dataset.service === s || (s.startsWith('Airport') && chip.dataset.service === 'Airport arrival');
@@ -515,11 +549,18 @@
     updateConditionalFlightDisplay();
 
     if (serverQuotes) {
-      verifiedQuote=null; updatePricingAndReview();
+      verifiedQuote=null; routeError='';
+      if(distEl)distEl.textContent='—';
+      if(durEl)durEl.textContent='—';
+      if(locsEl)locsEl.textContent='Checking journey…';
+      updatePricingAndReview();
       await new Promise(resolve=>setTimeout(resolve,450));
       if(requestId!==routeRequestId)return;
       const spec=quoteSpec();
-      if(!spec.pickup||!spec.dropoff)return;
+      if(!spec.pickup||!spec.dropoff){
+        if(locsEl)locsEl.textContent='Enter pickup and destination addresses.';
+        return;
+      }
       try {
         const q=await window.GAServerQuote.get(spec);
         if(requestId!==routeRequestId || window.GAServerQuote.key(spec)!==window.GAServerQuote.key(quoteSpec()))return;
@@ -535,7 +576,12 @@
         if(durEl)durEl.textContent=q.as_directed?spec.hours+' hours':Math.round(q.duration_minutes)+' minutes';
         if(locsEl)locsEl.textContent=spec.pickup+' → '+spec.dropoff;
         updatePricingAndReview();
-      }catch(error){if(requestId===routeRequestId && locsEl)locsEl.textContent=error.message;}
+      }catch(error){
+        if(requestId!==routeRequestId)return;
+        routeError=error.name==='TimeoutError' ? 'The journey quote timed out. Try again.' : error.message;
+        if(locsEl)locsEl.textContent=routeError;
+        updatePricingAndReview();
+      }
       return;
     }
 
@@ -648,11 +694,11 @@
     }
 
     // Airport Parking: £15 (on airport collections / arrivals)
-    let hasParking = isAirportLocation(pVal);
+    let hasParking = isAirportLocation(pVal) && form.elements.serviceType.value !== 'Private aviation' && !privateAviationLocation.test(pVal);
     let parkingFee = hasParking ? 15 : 0;
 
     // Airport Drop-off / Parking: £15 (same £15 parking for airport pickup and drop-off)
-    let hasDropoffCharge = isHeathrowOrAirportDropoff(dVal);
+    let hasDropoffCharge = isHeathrowOrAirportDropoff(dVal) && form.elements.serviceType.value !== 'Private aviation' && !privateAviationLocation.test(dVal);
     let dropoffFee = hasDropoffCharge ? 15 : 0;
 
     // London Congestion Charge: £18 (auto-added if pickup or drop-off in CC zone)
@@ -664,7 +710,7 @@
 
     if(serverQuotes){
       const q=currentQuote();
-      if(!q){if(submitBtn){submitBtn.disabled=true;submitBtn.textContent='Verifying journey price…';}const totalEl=document.querySelector('#review-total-fare');if(totalEl)totalEl.textContent='—';return;}
+      if(!q){if(submitBtn){submitBtn.disabled=!routeError;submitBtn.textContent=routeError?'Retry journey price':'Verifying journey price…';}const totalEl=document.querySelector('#review-total-fare');if(totalEl)totalEl.textContent='—';return;}
       base=q.base_fare;parkingFee=q.parking_fee;dropoffFee=q.dropoff_fee;congestionFee=q.congestion_charge;tax=q.vat_amount;total=q.total_fare;
       hasParking=parkingFee>0;hasDropoffCharge=dropoffFee>0;hasCongestion=congestionFee>0;
       if(submitBtn)submitBtn.disabled=false;
@@ -893,10 +939,19 @@
 
   // Next / Previous Step Buttons
   document.querySelectorAll('.btn-next-step').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.preventDefault();
       const nextStep = parseInt(btn.dataset.next, 10);
       if (validateCurrentStep(currentStep)) {
+        if(currentStep===1 && serverQuotes && !currentQuote()){
+          btn.disabled=true;
+          try {
+            await updateRouteAndMetrics();
+            if(currentStep!==1 || !currentQuote())return;
+          } finally {
+            btn.disabled=false;
+          }
+        }
         setStep(nextStep);
       }
     });
@@ -1010,8 +1065,8 @@
       else base = 165;
     }
 
-    const hasParking = isAirportLocation(pVal);
-    const hasDropoffCharge = isHeathrowOrAirportDropoff(dVal);
+    const hasParking = isAirportLocation(pVal) && form.elements.serviceType.value !== 'Private aviation' && !privateAviationLocation.test(pVal);
+    const hasDropoffCharge = isHeathrowOrAirportDropoff(dVal) && form.elements.serviceType.value !== 'Private aviation' && !privateAviationLocation.test(dVal);
     const hasCongestion = isCongestionLocation(pVal) || isCongestionLocation(dVal);
 
     const parkingFee = hasParking ? 15 : 0;

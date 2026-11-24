@@ -514,7 +514,7 @@
       <strong id="driver-persistent-heading">Attention required</strong>
       <div id="driver-alert-links"></div>
     </section>
-    <button type="button" class="nav-link" onclick="enableChauffeurPush(this)">Enable phone notifications</button>
+    <button type="button" class="nav-link" id="chauffeur-phone-push" onclick="enableChauffeurPush(this)">Enable phone notifications</button>
     <!-- 1. CHAUFFEUR & VERIFIED VEHICLE DETAILS CARD -->
     <section class="card" id="sec-profile">
       <div class="profile-banner">
@@ -590,7 +590,7 @@
 
   <div class="toast-banner" id="driver-toast"></div>
 
-  <script src="/ga-phone-push.js?v=1"></script>
+  <script src="/ga-phone-push.js?v=2"></script>
   <script>
     const DriverApp = {
       token: '',
@@ -736,6 +736,7 @@
         if (!data.chauffeur) return;
 
         DriverApp.chauffeur = data.chauffeur;
+        enableChauffeurPush(document.getElementById('chauffeur-phone-push'), true);
         DriverApp.jobs = data.jobs || [];
         DriverApp.messages = data.messages || [];
         DriverApp.pendingAlerts = data.pending_alerts || [];
@@ -753,13 +754,14 @@
       } catch (err) {}
     }
 
-    async function enableChauffeurPush(button) {
+    async function enableChauffeurPush(button, restore = false) {
+      const token = DriverApp.token;
       const send = (action, subscription) => fetch('/api/driver/push', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({token:DriverApp.token, action, subscription})
+        body:JSON.stringify({token, action, subscription})
       });
-      await GAPhonePush.enable(button, () => send('key'), subscription =>
-        send('subscribe', subscription), showDriverToast, '/driver/');
+      await GAPhonePush[restore ? 'restore' : 'enable'](button, () => send('key'), subscription =>
+        send('subscribe', subscription), showDriverToast, '/driver/', ...(restore ? [token] : []));
     }
 
     function updateDriverAlarm() {

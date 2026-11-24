@@ -8,7 +8,9 @@
   const form = document.querySelector('#booking-form');
   if (!form) return;
 
+  const ONE_HYDE_PARK = 'One Hyde Park, 100 Knightsbridge, London SW1X 7LJ, UK';
   const AIRPORT_SUGGESTIONS = [
+    { keys: ['one hyde park', '1 hyde park', '100 knightsbridge'], name: ONE_HYDE_PARK },
     { keys: ['t5', 'terminal 5', 'heathrow t5', 'lhr t5', 'lhr'], name: 'Heathrow Terminal 5, Wallis Rd, Longford, Hounslow TW6 2GA, UK', lat: 51.4700, lng: -0.4840, category: 'airport' },
     { keys: ['t2', 'terminal 2', 'heathrow t2', 'lhr t2', 'lhr'], name: 'Heathrow Terminal 2, Inner Ring E, Longford, Hounslow TW6 1EW, UK', lat: 51.4696, lng: -0.4506, category: 'airport' },
     { keys: ['t3', 'terminal 3', 'heathrow t3', 'lhr t3', 'lhr'], name: 'Heathrow Terminal 3, Nelson Rd, Longford, Hounslow TW6 1QG, UK', lat: 51.4716, lng: -0.4578, category: 'airport' },
@@ -65,8 +67,7 @@
       for(const item of items){
         const button=document.createElement('button');button.type='button';button.setAttribute('role','option');button.textContent=item.name;
         button.style.cssText='display:block;width:100%;text-align:left;background:white;color:#17201b;border:0;border-bottom:1px solid #eee;padding:12px;cursor:pointer';
-        const selectItem = async(e)=>{
-          if(e && e.type === 'mousedown') e.preventDefault();
+        const selectItem = async ()=>{
           const token=++revision;
           try {
             if(item.prediction){
@@ -77,9 +78,9 @@
               choose(name&&!address.toLowerCase().includes(name.toLowerCase())?name+', '+address:address,
                 place.location?{lat:place.location.lat(),lng:place.location.lng()}:null);
             }else choose(item.name,item.lat!=null?{lat:item.lat,lng:item.lng}:null);
-          } catch {choose(item.name,item.lat!=null?{lat:item.lat,lng:item.lng}:null);}
+          } catch {if(token===revision)choose(item.name,item.lat!=null?{lat:item.lat,lng:item.lng}:null);}
         };
-        button.addEventListener('mousedown',selectItem);
+        button.addEventListener('mousedown', event => event.preventDefault());
         button.addEventListener('click',selectItem);
         list.append(button);
       }
@@ -111,6 +112,10 @@
   }
   window.GABookingAddresses={
     setAddress(id,value){const input=document.getElementById(id);if(!input)return;input.value=value;delete input.dataset.lat;delete input.dataset.lng;input.dispatchEvent(new Event('change',{bubbles:true}));},
+    canonical(value) {
+      return /^(?:(?:one|1) hyde park(?:,|$)|100 knightsbridge(?:,|$))/i.test(value)
+        ? ONE_HYDE_PARK : value;
+    },
     validate(){return ['booking-pickup','booking-destination'].every((id,i)=>i&&form.elements.serviceType?.value==='Hourly chauffeur service'||Boolean(document.getElementById(id)?.value.trim()));}
   };
   window.initBookingAddresses=()=>{

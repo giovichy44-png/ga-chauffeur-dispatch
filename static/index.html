@@ -44,7 +44,7 @@
         <button type="button" class="btn btn-secondary" onclick="switchTab('fleet')" style="font-size: 12px; padding: 7px 11px;">
           🚘 Fleet &amp; Chauffeurs
         </button>
-        <button type="button" class="btn btn-secondary" onclick="enableDispatchPush(this)">Enable phone notifications</button>
+        <button type="button" class="btn btn-secondary" id="dispatch-phone-push" onclick="enableDispatchPush(this)">Enable phone notifications</button>
         <button type="button" class="btn btn-secondary" onclick="openDriverCommsModal()" style="font-size: 12px; padding: 7px 11px; position: relative;" title="Live Chauffeur Messages">
           💬 Chauffeur Messages <span id="badge-driver-msgs" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:10px;margin-left:4px;">0</span>
         </button>
@@ -816,7 +816,7 @@
   <div class="toast-stack" id="toast-stack"></div>
 
   <script src="/journey-stops.js?v=1"></script>
-  <script src="/ga-phone-push.js?v=1"></script>
-  <script src="app.js?v=dispatch-stops-1"></script>
+  <script src="/ga-phone-push.js?v=2"></script>
+  <script src="app.js?v=dispatch-mac-notifications-1"></script>
 </body>
 </html>

@@ -753,6 +753,19 @@ def normalize_vehicle_tier(tier_key):
     tier = str(tier_key).lower().strip()
     return VEHICLE_ALIASES.get(tier, tier if tier in VEHICLE_CONFIGS else "mercedes_s_class")
 
+PRIVATE_AVIATION_LOCATION = re.compile(
+    r"\b(?:harrods aviation|signature (?:aviation|flight support)|netjets|flexjet|"
+    r"universal aviation|inflite|jetex|jet cent(?:re|er)|oxfordjet|"
+    r"farnborough airport|biggin hill(?: airport| executive handling)|(?:raf )?northolt|"
+    r"denham (?:aerodrome|airfield)|blackbushe airport|elstree aerodrome|fairoaks airport|wycombe air park)\b",
+    re.IGNORECASE,
+)
+
+
+def is_private_aviation_location(address):
+    return bool(PRIVATE_AVIATION_LOCATION.search(str(address or "")))
+
+
 def detect_service_type(pickup="", dropoff="", requested_type=None):
     """
     Intelligently detects whether a journey is an Airport arrival, Airport departure,
@@ -760,6 +773,9 @@ def detect_service_type(pickup="", dropoff="", requested_type=None):
     """
     if requested_type and "hourly" in str(requested_type).lower():
         return "Hourly chauffeur service"
+
+    if str(requested_type).lower() == "private aviation" or any(map(is_private_aviation_location, (pickup, dropoff))):
+        return "Private aviation"
 
     text = f"{pickup} {dropoff}".lower()
     airport_kws = [
@@ -816,6 +832,8 @@ def is_airport_arrival_journey(pickup="", service_type=None):
     """
     Detects if the collection point is an Airport (which incurs standard £15.00 parking & meet/greet fee).
     """
+    if str(service_type).lower() == "private aviation" or is_private_aviation_location(pickup):
+        return False
     p_text = str(pickup).lower()
     airport_kws = [
         "heathrow", "lhr", "t5", "t2", "t3", "t4", "terminal 5", "terminal 2", "terminal 3", "terminal 4",
@@ -829,6 +847,8 @@ def is_airport_departure_journey(dropoff="", service_type=None):
     """
     Detects if the destination is an Airport (which incurs standard £7.00 Heathrow / Airport drop-off fee).
     """
+    if str(service_type).lower() == "private aviation" or is_private_aviation_location(dropoff):
+        return False
     d_text = str(dropoff).lower()
     airport_kws = [
         "heathrow", "lhr", "t5", "t2", "t3", "t4", "terminal 5", "terminal 2", "terminal 3", "terminal 4",
@@ -914,11 +934,12 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
     net_fare = round(net_fare, 2)
 
     # Calculate Airport Parking & Meet/Greet (£15.00)
-    has_airport_arrival = is_airport_arrival_journey(pickup, final_type)
+    fee_service = service_type
+    has_airport_arrival = is_airport_arrival_journey(pickup, fee_service)
     parking_fee = 15.0 if has_airport_arrival else 0.0
 
     # Calculate Airport Drop-off / Parking (£15.00 — same £15 parking for pickup and drop-off)
-    has_airport_departure = is_airport_departure_journey(dropoff, final_type)
+    has_airport_departure = is_airport_departure_journey(dropoff, fee_service)
     dropoff_fee = 15.0 if has_airport_departure else 0.0
 
     # Calculate London Congestion Charge (£18.00)

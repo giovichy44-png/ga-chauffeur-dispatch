@@ -1,13 +1,16 @@
 import AppKit
 import WebKit
+import UserNotifications
 
-final class DispatchApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+final class DispatchApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     private let dispatchURL = URL(string: "https://dispatch.gachauffeurs.co.uk/")!
     private var window: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
+        configuration.userContentController.add(self, name: "dispatchAlerts")
+        UNUserNotificationCenter.current().delegate = self
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -29,6 +32,10 @@ final class DispatchApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
+        let notificationsItem = appMenu.addItem(withTitle: "Enable Mac Notifications",
+            action: #selector(enableNotifications), keyEquivalent: "")
+        notificationsItem.target = self
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit GA Dispatch", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
@@ -47,6 +54,59 @@ final class DispatchApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
         webView.load(URLRequest(url: dispatchURL))
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func enableNotifications() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard !granted else { return }
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "Allow GA Dispatch notifications in System Settings"
+                alert.informativeText = "Open Notifications, then choose GA Dispatch."
+                if let window = self.window { alert.beginSheetModal(for: window) }
+            }
+        }
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        let origin = message.frameInfo.securityOrigin
+        guard message.name == "dispatchAlerts", message.frameInfo.isMainFrame,
+              origin.protocol == "https", origin.host == dispatchURL.host,
+              let body = message.body as? [String: Bool] else { return }
+
+        let alerts = [
+            ("booking", "Booking update", "Open GA Dispatch to review the booking."),
+            ("chauffeur", "New chauffeur message", "Open GA Dispatch to read the message."),
+            ("customer", "New customer message", "Open GA Dispatch to read the message."),
+            ("urgent", "Urgent allocation required", "Open GA Dispatch to allocate a chauffeur.")
+        ]
+        let center = UNUserNotificationCenter.current()
+        for (key, title, detail) in alerts {
+            let identifier = "dispatch-" + key
+            guard body[key] == true else {
+                if body[key] == false { center.removeDeliveredNotifications(withIdentifiers: [identifier]) }
+                continue
+            }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = detail
+            content.sound = .default
+            center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list, .sound])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            self.window?.makeKeyAndOrderFront(nil)
+            completionHandler()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
