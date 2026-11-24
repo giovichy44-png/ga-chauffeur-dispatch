@@ -517,7 +517,7 @@
     <button type="button" class="nav-link" id="chauffeur-phone-push" onclick="enableChauffeurPush(this)">Enable phone notifications</button>
     <div>
       <button type="button" class="nav-link" id="driver-location-toggle" aria-pressed="false" onclick="toggleDriverLocation()">Share live location</button>
-      <p id="driver-location-status" role="status" style="margin:4px 0">Share your location with Dispatch while this app is open.</p>
+      <p id="driver-location-status" role="status" style="margin:4px 0">Share your location with Dispatch while this app is visible. Dispatch can see your last position for up to five minutes.</p>
     </div>
     <!-- 1. CHAUFFEUR & VERIFIED VEHICLE DETAILS CARD -->
     <section class="card" id="sec-profile">
@@ -718,14 +718,22 @@
     let driverLocationSession = null;
     let driverLocationRequest = Promise.resolve();
 
+    const locationPreference = () => 'ga_share_location:' + DriverApp.chauffeur?.id;
+
     function sendDriverLocation(payload, token) {
       driverLocationRequest = driverLocationRequest.catch(() => {}).then(async () => {
-        const response = await fetch('/api/driver/location', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({token, ...payload}), keepalive:!payload.sharing,
-          signal:AbortSignal.timeout(8000)
-        });
-        if (!response.ok) throw Error('Unable to update Dispatch.');
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        try {
+          const response = await fetch('/api/driver/location', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({token, ...payload}), keepalive:!payload.sharing,
+            signal:controller.signal
+          });
+          if (!response.ok) throw Error('Unable to update Dispatch.');
+        } finally {
+          clearTimeout(timer);
+        }
       });
       return driverLocationRequest;
     }
@@ -734,50 +742,78 @@
       const session = driverLocationSession;
       driverLocationSession = null;
       clearTimeout(session?.timer);
+      const preference = locationPreference();
+      const wasSharing = localStorage.getItem(preference) === 'yes';
+      localStorage.removeItem(preference);
       const button = document.getElementById('driver-location-toggle');
       button.textContent = 'Share live location';
       button.setAttribute('aria-pressed', 'false');
       document.getElementById('driver-location-status').textContent = message;
-      return session ? sendDriverLocation({sharing:false}, session.token).catch(() => {}) : Promise.resolve();
+      const token = session?.token || DriverApp.token;
+      return token && (session || wasSharing)
+        ? sendDriverLocation({sharing:false}, token).catch(() => {})
+        : Promise.resolve();
     }
 
     function toggleDriverLocation() {
       if (driverLocationSession) return stopDriverLocation();
+      startDriverLocation();
+    }
+
+    function startDriverLocation() {
+      if (driverLocationSession || document.hidden) return;
       const button = document.getElementById('driver-location-toggle');
       const status = document.getElementById('driver-location-status');
-      if (!navigator.geolocation || !DriverApp.token) {
+      if (!navigator.geolocation || !DriverApp.token || !DriverApp.chauffeur?.id) {
         status.textContent = 'Live location is unavailable on this device.';
         return;
       }
-      const session = {token:DriverApp.token};
+      const session = {token:DriverApp.token, sampling:false};
       driverLocationSession = session;
+      localStorage.setItem(locationPreference(), 'yes');
       button.textContent = 'Stop sharing location';
       button.setAttribute('aria-pressed', 'true');
       status.textContent = 'Getting your location…';
-      const sample = () => navigator.geolocation.getCurrentPosition(async ({coords}) => {
-        if (driverLocationSession !== session || document.hidden) return;
-        try {
-          await sendDriverLocation({
-            sharing:true, latitude:coords.latitude, longitude:coords.longitude, accuracy:coords.accuracy
-          }, session.token);
-          if (driverLocationSession === session) status.textContent = 'Sharing live location with Dispatch.';
-        } catch {
-          if (driverLocationSession === session) status.textContent = 'Could not send your location. Retrying…';
-        }
-        if (driverLocationSession === session) session.timer = setTimeout(sample, 20000);
-      }, error => {
-        if (driverLocationSession !== session) return;
-        if (error.code === 1) stopDriverLocation('Location permission was declined.');
-        else {
-          status.textContent = 'Waiting for a GPS fix…';
-          session.timer = setTimeout(sample, 20000);
-        }
-      }, {maximumAge:0, timeout:12000, enableHighAccuracy:true});
-      sample();
+
+      function nextSample() {
+        session.sampling = false;
+        if (driverLocationSession === session && !document.hidden) session.timer = setTimeout(session.sample, 15000);
+      }
+
+      session.sample = () => {
+        clearTimeout(session.timer);
+        if (driverLocationSession !== session || session.sampling || document.hidden) return;
+        session.sampling = true;
+        navigator.geolocation.getCurrentPosition(async ({coords}) => {
+          try {
+            if (driverLocationSession !== session || document.hidden) return;
+            await sendDriverLocation({
+              sharing:true, latitude:coords.latitude, longitude:coords.longitude, accuracy:coords.accuracy
+            }, session.token);
+            if (driverLocationSession === session && !document.hidden) status.textContent = 'Sharing live location with Dispatch.';
+          } catch {
+            if (driverLocationSession === session && !document.hidden) status.textContent = 'Could not send your location. Retrying…';
+          } finally {
+            nextSample();
+          }
+        }, error => {
+          if (driverLocationSession !== session) return;
+          if (error.code === 1 && !document.hidden) stopDriverLocation('Location permission was declined.');
+          else if (!document.hidden) status.textContent = 'Waiting for a GPS fix…';
+          nextSample();
+        }, {maximumAge:5000, timeout:12000, enableHighAccuracy:true});
+      };
+      session.sample();
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && driverLocationSession) stopDriverLocation('Sharing paused. Tap to share again.');
+      if (!driverLocationSession) return;
+      if (document.hidden) {
+        clearTimeout(driverLocationSession.timer);
+        document.getElementById('driver-location-status').textContent = 'Sharing will resume when you return to the chauffeur app.';
+      } else {
+        driverLocationSession.sample();
+      }
     });
 
     async function driverLogout() {
@@ -807,6 +843,7 @@
         if (!data.chauffeur) return;
 
         DriverApp.chauffeur = data.chauffeur;
+        if (localStorage.getItem(locationPreference()) === 'yes') startDriverLocation();
         enableChauffeurPush(document.getElementById('chauffeur-phone-push'), true);
         DriverApp.jobs = data.jobs || [];
         DriverApp.messages = data.messages || [];

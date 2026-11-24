@@ -2675,7 +2675,8 @@ function liveVehicleIcon(maps, tier) {
     ctx.fillRect(left + width - 4, y, 8, 11);
   }
   ctx.beginPath();
-  ctx.roundRect(left, top, width, height, van ? 8 : suv ? 10 : 13);
+  if (ctx.roundRect) ctx.roundRect(left, top, width, height, van ? 8 : suv ? 10 : 13);
+  else ctx.rect(left, top, width, height);
   ctx.fillStyle = van ? '#25b290' : suv ? '#d5a453' : '#93b5fa';
   ctx.fill();
   ctx.strokeStyle = '#fff';
@@ -2683,7 +2684,7 @@ function liveVehicleIcon(maps, tier) {
   ctx.stroke();
   ctx.fillStyle = '#223447';
   ctx.beginPath();
-  ctx.roundRect(left + 5, top + (van ? 14 : 19), width - 10, van ? 52 : 40, 5);
+  ctx.rect(left + 5, top + (van ? 14 : 19), width - 10, van ? 52 : 40);
   ctx.fill();
   ctx.fillStyle = '#dce7ee';
   ctx.fillRect(left + 7, top + 7, 5, 4);
@@ -2708,6 +2709,21 @@ async function openLiveTracking() {
   routeStatus.textContent = '';
   list.textContent = 'Checking chauffeur locations…';
 
+  async function trackingJSON(url, milliseconds) {
+    const request = new AbortController();
+    const cancel = () => request.abort();
+    session.signal.addEventListener('abort', cancel, {once:true});
+    const timeout = setTimeout(cancel, milliseconds);
+    try {
+      const response = await fetch(url, {cache:'no-store', signal:request.signal});
+      if (!response.ok) throw Error('Tracking request failed.');
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
+      session.signal.removeEventListener('abort', cancel);
+    }
+  }
+
   function clearRoute() {
     routeVersion++;
     overlays.forEach(overlay => overlay.setMap(null));
@@ -2730,11 +2746,7 @@ async function openLiveTracking() {
     const version = routeVersion;
     routeStatus.textContent = 'Loading passenger journey…';
     try {
-      const response = await fetch('/api/dispatch/live-route?' + new URLSearchParams({id:key}), {
-        cache:'no-store', signal:AbortSignal.any([session.signal, AbortSignal.timeout(40000)])
-      });
-      if (!response.ok) throw Error();
-      const route = await response.json();
+      const route = await trackingJSON('/api/dispatch/live-route?' + new URLSearchParams({id:key}), 40000);
       if (version !== routeVersion || session.signal.aborted) return;
       const path = route.path.map(([lng,lat]) => ({lat,lng}));
       if (path.length < 2) throw Error();
@@ -2763,11 +2775,7 @@ async function openLiveTracking() {
 
   while (!session.signal.aborted) {
     try {
-      const response = await fetch('/api/dispatch/live-locations', {
-        cache:'no-store', signal:AbortSignal.any([session.signal, AbortSignal.timeout(8000)])
-      });
-      if (!response.ok) throw Error();
-      const {chauffeurs, maps_key:key} = await response.json();
+      const {chauffeurs, maps_key:key} = await trackingJSON('/api/dispatch/live-locations', 8000);
       if (session.signal.aborted) return;
       latest = chauffeurs.filter(chauffeur => chauffeur.updated_at != null);
       if (!map) {
@@ -2795,9 +2803,10 @@ async function openLiveTracking() {
           const existing = markers.get(chauffeur.id);
           if (existing) {
             existing.setPosition(point);
+            existing.setOpacity(chauffeur.location_live ? 1 : .55);
             continue;
           }
-          const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier), title:chauffeur.name, zIndex:10});
+          const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier), title:chauffeur.name, opacity:chauffeur.location_live ? 1 : .55, zIndex:10});
           marker.addListener('click', () => selectVehicle(latest.find(row => row.id === chauffeur.id), true));
           markers.set(chauffeur.id, marker);
         }
@@ -2809,7 +2818,8 @@ async function openLiveTracking() {
           } else map.fitBounds(bounds, 45);
         }
         if (!dispatchMapsDenied) {
-          status.textContent = latest.length ? latest.length + ' sharing live location' : 'No chauffeurs are sharing live location.';
+          const liveCount = latest.filter(chauffeur => chauffeur.location_live).length;
+          status.textContent = liveCount ? liveCount + ' sharing live location' : 'No live updates. Showing recent positions where available.';
         }
       }
       const focused = document.activeElement?.dataset.chauffeur;
@@ -2824,7 +2834,7 @@ async function openLiveTracking() {
         button.textContent = chauffeur.name + ' · ' + tier + (chauffeur.journey_id ? ' · POB' : '');
         button.onclick = () => selectVehicle(chauffeur,true);
         row.append(button, ' ' + (chauffeur.updated_at == null ? 'Location unavailable' :
-          'Updated ' + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB')));
+          (chauffeur.location_live ? 'Updated ' : 'Last seen ') + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB')));
         return row;
       }));
       const selected = latest.find(chauffeur => chauffeur.id === selectedId);

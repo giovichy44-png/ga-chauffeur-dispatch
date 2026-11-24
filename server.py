@@ -1908,7 +1908,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             with db.get_connection() as conn:
                 rows = conn.execute("""
                     SELECT c.id, c.name, c.vehicle_class, l.latitude, l.longitude, l.accuracy,
-                           l.updated_at, b.id AS journey_id, b.confirmation_code AS journey_reference
+                           COALESCE(l.updated_at >= ?, 0) AS location_live, l.updated_at, b.id AS journey_id, b.confirmation_code AS journey_reference
                     FROM chauffeurs c LEFT JOIN chauffeur_live_locations l
                       ON l.chauffeur_id = c.id AND l.updated_at >= ?
                     LEFT JOIN bookings b ON l.updated_at IS NOT NULL AND b.id = (
@@ -1917,7 +1917,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                         ORDER BY updated_at DESC, id DESC LIMIT 1
                     )
                     ORDER BY c.name
-                """, (time.time() - 90,)).fetchall()
+                """, (time.time() - 45, time.time() - 300)).fetchall()
             self.send_json({"chauffeurs": [dict(row) for row in rows],
                             "maps_key": GOOGLE_PLACES_BROWSER_KEY}, cache_control="no-store")
             return
@@ -1929,7 +1929,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     SELECT b.pickup_address, b.dropoff_address, b.stops, b.vehicle_class, b.service_type
                     FROM bookings b JOIN chauffeur_live_locations l ON l.chauffeur_id = b.chauffeur_id
                     WHERE b.id = ? AND b.status IN ('ON_BOARD', 'NEXT_STOP') AND l.updated_at >= ?
-                """, (booking_id, time.time() - 90)).fetchone()
+                """, (booking_id, time.time() - 300)).fetchone()
             if not trip:
                 self.send_json({"error": "No live passenger journey for this vehicle."}, 404)
                 return
