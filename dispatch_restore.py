@@ -80,6 +80,7 @@ def restore(snapshot):
                     conn.execute(f"INSERT INTO {table} ({','.join(columns)}) VALUES ({placeholders})",
                                  [record[field] for field in columns])
                 restored[table] = len(records)
+            dispatch_invoices.migrate_legacy_payments(conn)
             for record in snapshot.get("fleet_assignments", []):
                 if not isinstance(record, dict) or "id" not in record:
                     raise ValueError("Invalid fleet assignment.")

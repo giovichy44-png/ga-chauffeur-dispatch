@@ -21,7 +21,7 @@ def pending(conn, chauffeur_id=None):
         WITH latest AS (
             SELECT b.confirmation_code, MAX(a.id) AS alert_id
             FROM action_logs a JOIN bookings b ON a.booking_id = b.id
-            WHERE a.action IN ({placeholders}) AND b.status NOT IN ('COMPLETED', 'CANCELLED')
+            WHERE a.action IN ({placeholders}) AND b.status NOT IN ('COMPLETED', 'CANCELLED', 'DELETED')
               AND (a.action <> 'ALLOCATION_DUE' OR
                 (b.chauffeur_id IS NULL AND instr(a.details,b.pickup_datetime)>0))
               AND (a.action <> 'CHAUFFEUR_LATE' OR

@@ -77,6 +77,7 @@ def booking_confirmation(booking, amend_url, fare_rows, vehicle_image):
     link_style = ParagraphStyle("amend", fontName="Helvetica-Bold", fontSize=11, leading=15, textColor=colors.white)
     link = Paragraph(f'<a href="{escape(amend_url, quote=True)}" color="#ffffff">Amend booking</a>', link_style)
     body += [Spacer(1, 17), table([[link]], [138], INK), Spacer(1, 12),
+             para("Online cancellation is unavailable within two hours of pickup. Please contact Dispatch on +44 7886 622082 to request cancellation and arrange any applicable cancellation payment.", 9), Spacer(1, 8),
              para("GA Chauffeur Services Limited · enquiries@gachauffeurs.co.uk", 9)]
     document.build(body)
     return output.getvalue()

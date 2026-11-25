@@ -32,3 +32,9 @@ input,textarea,select{font:inherit;color:var(--ink);padding:9px 10px;min-width:0
 #install-invoicing{background:var(--gold);color:var(--ink);border-color:var(--gold)}
 .client-filters{display:grid;grid-template-columns:minmax(200px,1fr) 140px auto;align-items:end;gap:12px;margin-top:16px}
 @media(max-width:600px){.client-filters{grid-template-columns:1fr 1fr}.client-filters label:first-child{grid-column:1/-1}}
+
+#preview-pdf{width:100%;height:70vh;border:1px solid var(--border);border-radius:6px;margin-top:14px;background:#fff}
+#payment-dialog{width:min(92vw,480px);border:1px solid var(--border);border-radius:10px;padding:20px}
+#payment-dialog::backdrop{background:#122019aa}
+#payment-form label{margin:8px 0}
+.invoice-create-actions{position:sticky;bottom:0;background:var(--paper);padding:10px 0;z-index:1}

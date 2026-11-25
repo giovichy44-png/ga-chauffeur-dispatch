@@ -204,6 +204,7 @@ def init_db():
         ("allocation_notice_hours", "INTEGER NOT NULL DEFAULT 2"),
         ("assigned_vehicle_model", "TEXT"),
         ("assigned_vehicle_plate", "TEXT"),
+        ("status_before_delete", "TEXT"),
         ("stops", "TEXT NOT NULL DEFAULT '[]'")
     ]
     for col_name, col_def in cols_to_add:

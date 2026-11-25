@@ -10,8 +10,8 @@
 <link rel="manifest" href="/invoices-app.webmanifest">
 <link rel="apple-touch-icon" sizes="180x180" href="/invoices-icon-180.png">
 <link rel="icon" type="image/png" href="/invoices-icon-192.png">
-<link rel="stylesheet" href="/invoices.css?v=2">
-<script defer src="/invoices.js?v=3"></script>
+<link rel="stylesheet" href="/invoices.css?v=4">
+<script defer src="/invoices.js?v=5"></script>
 </head>
 <body>
 <header>
@@ -24,6 +24,7 @@
     <button data-view="invoices" aria-pressed="true">Invoices</button>
     <button data-view="clients" aria-pressed="false">Clients</button>
     <button data-view="items" aria-pressed="false">Items</button>
+    <button data-view="settings" aria-pressed="false">Payment details</button>
   </nav>
   <p id="message" role="status" aria-live="polite"></p>
   <section id="invoices">
@@ -62,13 +63,44 @@
     </form>
     <div id="item-list"></div>
   </section>
+  <section id="settings" hidden>
+    <form id="payment-settings" class="card">
+      <h2>Payment details</h2>
+      <div class="fields"><label>Account name<input name="account_name"></label><label>Sort code<input name="sort_code"></label>
+      <label>Account number<input name="account_number"></label><label>BIC<input name="bic"></label>
+      <label>IBAN<input name="iban"></label><label>VAT registration<input name="vat_number"></label></div>
+      <label>Optional SumUp or Stripe URL<input name="card_link" type="url" placeholder="Use Dispatch Stripe Checkout if left blank"></label>
+      <label>Import payment details<input type="file" id="payment-details-file" accept="application/json,.json"></label>
+      <div class="actions"><button type="submit">Save payment details</button></div>
+    </form>
+  </section>
+  <section id="invoice-preview" hidden>
+    <div class="card">
+      <h2 id="preview-title">Invoice preview</h2>
+      <div id="preview-actions" class="actions"></div>
+      <iframe id="preview-pdf" title="Invoice PDF"></iframe>
+    </div>
+  </section>
+  <dialog id="payment-dialog">
+    <form id="payment-form" method="dialog">
+      <h2>Record payment or deduction</h2><input type="hidden" name="id">
+      <p id="payment-balance"></p>
+      <label>Type<select name="kind"><option value="payment">Payment received</option><option value="deduction">Deduction</option></select></label>
+      <label>Amount (£)<input name="amount" type="number" min="0.01" step="0.01" required></label>
+      <label>Reference or reason<input name="memo" maxlength="250"></label>
+      <div class="actions"><button type="submit">Record amount</button><button id="payment-cancel" type="button" class="secondary">Cancel</button></div>
+    </form>
+  </dialog>
   <section id="editor" hidden>
     <form class="card" id="invoice-form">
       <h2 id="editor-title">New invoice</h2>
       <input type="hidden" name="id">
       <div class="fields"><label>Bill to<select name="client_id" required></select></label>
       <label>Invoice date<input name="issued" type="date" required></label>
-      <label>Due date<input name="due" type="date" required></label></div>
+      <label>Payment terms<select name="terms_days" required>
+        <option value="0">Same day</option><option value="1">1 day</option><option value="7">7 days</option>
+        <option value="30">30 days</option><option value="custom" hidden>Existing terms</option>
+      </select><small id="invoice-due-label"></small></label><input name="due" type="hidden"></div>
       <h3>Charges</h3>
       <div id="lines"></div>
       <div class="actions"><button id="add-line" type="button" class="secondary">Add line item</button>
@@ -78,7 +110,10 @@
       <label id="vat-field" hidden>VAT rate (%)<input name="vat_percent" type="number" min="0" max="100" step="0.01" value="20"></label></div>
       <p id="total" aria-live="polite"></p>
       <label>Comments and payment instructions<textarea name="comments" maxlength="3000" rows="4"></textarea></label>
-      <div class="actions"><button>Save draft</button><button type="button" class="secondary" data-view="invoices">Back to invoices</button></div>
+      <div class="actions invoice-create-actions">
+        <button type="submit" id="create-invoice">Create invoice and view PDF</button>
+        <button type="button" class="secondary" data-view="invoices">Back to invoices</button>
+      </div><p id="editor-feedback" role="status"></p>
     </form>
   </section>
 </main>

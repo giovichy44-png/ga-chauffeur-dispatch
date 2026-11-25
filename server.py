@@ -23,6 +23,7 @@ import smtplib
 import ssl
 import base64
 import hashlib
+import hmac
 import html
 import ipaddress
 import urllib.request
@@ -44,6 +45,7 @@ import dispatch_restore
 import dispatch_invoices
 import dispatch_fleet
 import booking_pdf
+import invoice_pdf
 import quote_service
 import flight_monitor
 from prepared_pricing.zone_quote import QuoteUnavailable
@@ -245,6 +247,45 @@ def stripe_create_checkout_session(amount_gbp, booking_ref, customer_email, cust
         "session_id": res.get("id"),
         "url": res.get("url")
     }
+
+def invoice_payment_signature(invoice_id):
+    secret = os.environ.get("QUOTE_SIGNING_SECRET") or get_auth_token()
+    return hmac.new(secret.encode(), f"invoice:{invoice_id}".encode(), hashlib.sha256).hexdigest()
+
+
+def invoice_card_url(invoice):
+    if not STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_")) or not invoice["balance_pence"]:
+        return ""
+    invoice_id = invoice["id"]
+    return f"https://dispatch.gachauffeurs.co.uk/invoice-pay?invoice={invoice_id}&key={invoice_payment_signature(invoice_id)}"
+
+
+def settle_invoice_checkout(conn, invoice_id, *, expire=False):
+    row = conn.execute("SELECT checkout_session, checkout_pence FROM invoices WHERE id=?", (invoice_id,)).fetchone()
+    session_id = row["checkout_session"] if row else None
+    if not session_id:
+        return None
+    path = "checkout/sessions/" + urllib.parse.quote(session_id, safe="")
+    session = stripe_api_request(path, method="GET")
+    if session.get("error"):
+        raise ValueError("Stripe payment status could not be verified. Try again before changing the balance.")
+    if session.get("payment_status") == "paid":
+        if (session.get("currency") != "gbp" or session.get("amount_total") != row["checkout_pence"]
+                or session.get("metadata", {}).get("invoice_id") != str(invoice_id)):
+            raise ValueError("Stripe returned a payment requiring review.")
+        dispatch_invoices.record_payment(conn, invoice_id, "payment", row["checkout_pence"],
+                                         "Stripe card payment", "stripe:" + session_id)
+    elif session.get("status") == "open" and expire:
+        expired = stripe_api_request(path + "/expire", method="POST", data={})
+        if expired.get("status") != "expired":
+            raise ValueError("An active Stripe Checkout is still open. Review it before changing the balance.")
+    elif session.get("status") == "open":
+        return session
+    elif session.get("status") != "expired":
+        raise ValueError("This Stripe payment is being processed. Try again shortly.")
+    conn.execute("UPDATE invoices SET checkout_session=NULL, checkout_pence=NULL WHERE id=?", (invoice_id,))
+    return None
+
 
 # Private Dispatch Console Authentication
 DISPATCH_ADMIN_USER = os.environ.get("DISPATCH_ADMIN_USER", "admin")
@@ -1348,6 +1389,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
         {fare_table or '<tr><td>Open hours · Final fare billed after the journey</td></tr>'}
       </table>
       {f'<p style="margin:8px 0 14px;color:#cfd6d1;">{esc(payment)}</p>' if not deferred else ''}
+      <p>Online cancellation is unavailable within two hours of pickup. Please contact Dispatch on +44 7886 622082 to request cancellation and arrange any applicable cancellation payment.</p>
       <p style="margin:0 0 16px;text-align:center;"><a href="{esc(customer_manage_url(booking_ref, customer_email))}" style="display:inline-block;color:#121715;background:#c9b894;border-radius:4px;padding:12px 20px;font-weight:700;text-decoration:none;">Amend booking</a></p>
     </td></tr>
     <tr><td style="padding:14px 16px;text-align:center;border-top:1px solid #49564d;color:#cfd6d1;font-size:12px;">
@@ -1388,7 +1430,7 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
             net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare,
             service_type=service_type, hours_booked=hours_booked, vehicle_tier=vehicle_name
         ))])
-    lines.extend(["", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
+    lines.extend(["", "Online cancellation is unavailable within two hours of pickup. Please contact Dispatch on +44 7886 622082 to request cancellation and arrange any applicable cancellation payment.", "", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
                   "GA Chauffeur Services Limited", COMPANY_PHONE, FROM_EMAIL, COMPANY_WEBSITE])
     return "\n".join(lines)
 
@@ -1934,6 +1976,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
 
+        if path == "/invoice-pay":
+            self.handle_invoice_payment_page(query)
+            return
+
         # Check authentication for private endpoints
         if not is_public_request("GET", path):
             if not check_auth(self.headers, query):
@@ -1967,21 +2013,33 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/dispatch/invoices":
             with db.get_connection() as conn:
                 result = {table: [dict(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY id DESC")]
-                          for table in dispatch_invoices.TABLES}
+                          for table in ("invoice_clients", "invoice_items")}
+                rows = conn.execute("""SELECT i.*, b.status AS booking_status,
+                                      b.confirmation_code AS booking_reference FROM invoices i
+                                      LEFT JOIN bookings b ON b.id=i.booking_id ORDER BY i.id DESC""").fetchall()
+                result["invoices"] = [dispatch_invoices.annotate(conn, row) for row in rows]
+                result["payment_details"] = dispatch_invoices.preferences(conn)
             result["today"] = dispatch_invoices.today().isoformat()
             self.send_json(result, cache_control="no-store")
             return
 
-        invoice_print = re.fullmatch(r"/api/dispatch/invoices/([0-9]+)/print", path)
+        invoice_print = re.fullmatch(r"/api/dispatch/invoices/([0-9]+)/(print|pdf)", path)
         if invoice_print:
             with db.get_connection() as conn:
                 row = conn.execute("SELECT * FROM invoices WHERE id=?", (invoice_print[1],)).fetchone()
-            if not row:
+                invoice = dispatch_invoices.annotate(conn, row) if row else None
+                settings = dispatch_invoices.preferences(conn)
+            if not invoice:
                 self.send_json({"error": "Invoice not found."}, 404)
                 return
-            body = dispatch_invoices.markup(dict(row), printable=True).encode("utf-8")
+            link = settings.get("card_link") or invoice_card_url(invoice)
+            is_pdf = invoice_print[2] == "pdf"
+            body = invoice_pdf.build(invoice, settings, link) if is_pdf else dispatch_invoices.markup(
+                invoice, printable=True, payment_details=settings, card_link=link).encode("utf-8")
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", "application/pdf" if is_pdf else "text/html; charset=utf-8")
+            if is_pdf:
+                self.send_header("Content-Disposition", f'inline; filename="{dispatch_invoices.number(invoice["id"])}.pdf"')
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
@@ -2637,7 +2695,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             try:
                 if operation == "send":
                     invoice_id = int(payload.get("id") or 0)
-                    sent, message = dispatch_invoices.deliver(db.get_connection, invoice_id, send_smtp_email)
+                    sent, message = dispatch_invoices.deliver(db.get_connection, invoice_id, send_smtp_email, invoice_pdf.build, invoice_card_url)
                     self.send_json({"success": True} if sent else {"error": message}, 200 if sent else 409)
                     return
                 with db.get_connection() as conn:
@@ -2654,12 +2712,25 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                         if not updated.rowcount:
                             raise ValueError("Client not found.")
                     elif operation == "save":
+                        conn.execute("BEGIN IMMEDIATE")
+                        if payload.get("id"):
+                            settle_invoice_checkout(conn, int(payload["id"]), expire=True)
                         invoice_id = dispatch_invoices.manual_invoice(conn, payload)
-                    elif operation == "paid":
+                    elif operation == "preferences":
+                        dispatch_invoices.save_preferences(conn, payload)
+                        invoice_id = None
+                    elif operation == "sync-payment":
+                        conn.execute("BEGIN IMMEDIATE")
                         invoice_id = int(payload.get("id") or 0)
-                        updated = conn.execute("UPDATE invoices SET paid=1 WHERE id=? AND delivery='sent'", (invoice_id,))
-                        if not updated.rowcount:
-                            raise ValueError("Only a sent invoice can be marked paid.")
+                        settle_invoice_checkout(conn, invoice_id)
+                    elif operation == "payment":
+                        conn.execute("BEGIN IMMEDIATE")
+                        invoice_id = int(payload.get("id") or 0)
+                        invoice_guard = conn.execute("SELECT checkout_session FROM invoices WHERE id=?", (invoice_id,)).fetchone()
+                        if invoice_guard and invoice_guard["checkout_session"]:
+                            settle_invoice_checkout(conn, invoice_id, expire=True)
+                        dispatch_invoices.record_payment(conn, invoice_id, payload.get("kind"),
+                                                         dispatch_invoices.pence(payload.get("amount")), payload.get("memo"))
                     else:
                         self.send_json({"error": "Invalid invoice operation."}, 404)
                         return
@@ -2713,6 +2784,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             response, status = customer_chat.handle(payload, dispatch=True)
             self.send_json(response, status)
             return
+
+        booking_mutation = re.fullmatch(r"/api/bookings/([^/]+)/(allocate|action|edit|send-confirmation|capture|payment-link|manual-auth|request-invoice)", path)
+        if booking_mutation:
+            with db.get_connection() as conn:
+                deleted = conn.execute("SELECT 1 FROM bookings WHERE status='DELETED' AND (id=? OR confirmation_code=?)",
+                                       (booking_mutation[1], booking_mutation[1])).fetchone()
+            if deleted:
+                self.send_json({"error": "Restore this booking before making changes."}, 409)
+                return
 
         if path == "/api/flight-monitor":
             conn=db.get_connection()
@@ -2784,8 +2864,24 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_manual_card_auth(booking_id, payload)
             return
 
-        if path.startswith("/api/bookings/") and path.endswith("/delete"):
-            self.send_json({"error": "Booking records are kept in history. Cancel the job to close it."}, 409)
+        if path.startswith("/api/bookings/") and path.endswith(("/delete", "/restore")):
+            booking_id = path.split("/")[3]
+            restoring = path.endswith("/restore")
+            with db.get_connection() as conn:
+                if restoring:
+                    result = conn.execute("""UPDATE bookings SET status=status_before_delete, status_before_delete=NULL
+                        WHERE id=? AND status='DELETED' AND status_before_delete IS NOT NULL""", (booking_id,))
+                else:
+                    result = conn.execute("""UPDATE bookings SET status_before_delete=status, status='DELETED'
+                        WHERE id=? AND chauffeur_id IS NULL AND status IN ('PENDING','CONFIRMED','CANCELLED')
+                        AND COALESCE(stripe_payment_intent_id,'')=''
+                        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.booking_id=bookings.id
+                            AND (i.delivery NOT IN ('draft','review','failed') OR i.checkout_session IS NOT NULL
+                                OR EXISTS (SELECT 1 FROM invoice_payments WHERE invoice_id=i.id)))""", (booking_id,))
+            if result.rowcount:
+                self.send_json({"success": True})
+            else:
+                self.send_json({"error": "Only unallocated jobs without a Stripe payment, an issued invoice, or an invoice payment can be deleted." if not restoring else "This booking could not be restored."}, 409)
             return
 
         if path.endswith("/edit"):
@@ -3068,6 +3164,70 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def handle_invoice_payment_page(self, query):
+        identity = (query.get("invoice") or [""])[0]
+        signature = (query.get("key") or [""])[0]
+        if not re.fullmatch(r"[0-9]{1,12}", identity) or not hmac.compare_digest(
+                signature.encode(), invoice_payment_signature(identity).encode()):
+            self.send_json({"error": "Invoice payment link is invalid."}, 404)
+            return
+        invoice_id = int(identity)
+        try:
+            with db.get_connection() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute("SELECT * FROM invoices WHERE id=? AND delivery='sent'", (invoice_id,)).fetchone()
+                if not row:
+                    self.send_json({"error": "Invoice not available for payment."}, 404)
+                    return
+                existing = settle_invoice_checkout(conn, invoice_id)
+                invoice = dispatch_invoices.annotate(conn, row)
+                self.maybe_begin_invoice_checkout(conn, invoice, existing, query)
+        except ValueError as error:
+            self.send_json({"error": str(error)}, 409)
+
+    def maybe_begin_invoice_checkout(self, conn, invoice, existing, query):
+        due = invoice["balance_pence"]
+        target = invoice_card_url(invoice)
+        if due and target and query.get("start") == ["1"]:
+            session = existing
+            if not session:
+                invoice_id = invoice["id"]
+                code = dispatch_invoices.number(invoice_id)
+                session = stripe_api_request("checkout/sessions", method="POST", data={
+                    "mode":"payment", "payment_method_types[0]":"card",
+                    "success_url":target + "&complete=1", "cancel_url":target,
+                    "customer_email":invoice["client_email"], "metadata[invoice_id]":str(invoice_id),
+                    "line_items[0][quantity]":"1", "line_items[0][price_data][currency]":"gbp",
+                    "line_items[0][price_data][unit_amount]":str(due),
+                    "line_items[0][price_data][product_data][name]":f"GA Chauffeurs invoice {code}",
+                })
+                if not session.get("id") or not session.get("url"):
+                    raise ValueError("Card payment is temporarily unavailable. Bank transfer details are on the invoice.")
+                conn.execute("UPDATE invoices SET checkout_session=?,checkout_pence=? WHERE id=?", (session["id"], due, invoice_id))
+                conn.commit()
+            url = session.get("url", "")
+            if urlparse(url).hostname != "checkout.stripe.com":
+                raise ValueError("Stripe did not return a valid checkout link.")
+            self.send_response(303)
+            self.send_header("Location", url)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        code = dispatch_invoices.number(invoice["id"])
+        message = f"Balance due {dispatch_invoices.pounds(due)}" if due else "This invoice is paid."
+        button = f'<p><a href="{html.escape(target + "&start=1", quote=True)}">Continue to Stripe</a></p>' if target else ""
+        body = f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<meta name="referrer" content="no-referrer"><title>GA Chauffeurs · {code}</title>
+<main style="font:18px system-ui;max-width:540px;margin:40px auto;padding:20px;color:#17211c">
+<img width="185" style="background:#17211c;padding:10px" src="/assets/ga-logo.png" alt="GA Chauffeur Services">
+<h1>Invoice {code}</h1><p>{message}</p>{button}</main>""".encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
@@ -3498,6 +3658,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.log_booking_action(conn, booking_id, None, "BOOKING_CREATED",
                                 "Customer · " + payload["customer_name"] if source == "WEBSITE_GACHAUFFEURS" else "Dispatch account",
                                 "Booking created and confirmation email processed.")
+
+        saved_booking = dict(cursor.execute("SELECT * FROM bookings WHERE id=?", (booking_id,)).fetchone())
+        if saved_booking["total_fare"] or saved_booking["service_type"] == "Open hours chauffeur service":
+            dispatch_invoices.from_booking(conn, saved_booking)
 
         conn.commit()
         conn.close()
@@ -3975,9 +4139,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM bookings
-            WHERE UPPER(REPLACE(confirmation_code, '-', '')) = ?
+            WHERE status <> 'DELETED' AND (UPPER(REPLACE(confirmation_code, '-', '')) = ?
                OR UPPER(confirmation_code) = ?
-               OR UPPER(id) = ?
+               OR UPPER(id) = ?)
         """, (code_nodash, code_raw, code_raw))
         row = cursor.fetchone()
         conn.close()
@@ -4039,9 +4203,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM bookings
-            WHERE UPPER(REPLACE(confirmation_code, '-', '')) = ?
+            WHERE status <> 'DELETED' AND (UPPER(REPLACE(confirmation_code, '-', '')) = ?
                OR UPPER(confirmation_code) = ?
-               OR UPPER(id) = ?
+               OR UPPER(id) = ?)
         """, (code_nodash, code_raw, code_raw))
         row = cursor.fetchone()
         if not row:
@@ -4432,6 +4596,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         <input type="text" id="mb-notes" placeholder="Nameboard, child seat, or instructions">
       </div>
 
+      <p>Online cancellation is unavailable within two hours of pickup. Contact Dispatch to request cancellation and arrange any applicable cancellation payment.</p>
       <button type="submit" class="btn" id="mb-submit-btn">Save &amp; Update Booking</button>
       <div style="text-align:center;margin-top:12px;font-size:12.5px;color:#aab5ae;">
         Need immediate assistance? Call our 24/7 Dispatch Desk: <a href="tel:+447886622082" style="color:#c9b894;font-weight:bold;">+44 7886 622082</a>
@@ -4806,7 +4971,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         invoice = None
         if action == "COMPLETED":
             final_booking = dict(cursor.execute("SELECT * FROM bookings WHERE id=?", (booking_id,)).fetchone())
-            invoice = dispatch_invoices.from_booking(conn, final_booking)
+            invoice = dispatch_invoices.from_booking(conn, final_booking, completed=True)
 
         conn.commit()
         conn.close()
@@ -4814,8 +4979,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         result = {"success": True, "action": action, "booking_status": new_booking_status, "details": details}
         if invoice:
             result["invoice_number"] = dispatch_invoices.number(invoice[0])
-            if invoice[1]:
-                result["invoice_sent"], _ = dispatch_invoices.deliver(db.get_connection, invoice[0], send_smtp_email)
+            result["invoice_sent"] = False
         if arrival_email:
             arrival_id, recipient, subject, markup, text = arrival_email
             delivered, _ = send_smtp_email(recipient, subject, markup, text)
@@ -5297,7 +5461,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if existing and vehicle_tier_key(existing["vehicle_class"]) != vehicle_class:
                 active_jobs = cursor.execute("""
                     SELECT vehicle_class FROM bookings
-                    WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED', 'DROPPED_OFF')
+                    WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED', 'DELETED', 'DROPPED_OFF')
                 """, (ch_id,)).fetchall()
                 if any(vehicle_tier_key(job["vehicle_class"]) != vehicle_class for job in active_jobs):
                     conn.close()
@@ -5358,7 +5522,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "theme_color": "#121715",
             "orientation": "portrait-primary",
             "icons": [
-                {"src": "/chauffeur-touch-v2.png", "sizes": "180x180", "type": "image/png", "purpose": "any"},
+                {"src": "/driver-icon-180.png?v=ga-original-1", "sizes": "180x180", "type": "image/png", "purpose": "any"},
                 {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
                 {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
             ]
@@ -5422,7 +5586,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                    COALESCE(assigned_vehicle_model, ?) AS vehicle_model,
                    COALESCE(assigned_vehicle_plate, ?) AS license_plate
             FROM bookings
-            WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED')
+            WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED', 'DELETED')
             ORDER BY pickup_datetime ASC
         """, (ch["vehicle_model"], ch["license_plate"], ch["id"])).fetchall()]
         messages = [dict(r) for r in reversed(cursor.execute("""

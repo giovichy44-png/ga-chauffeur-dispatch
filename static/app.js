@@ -495,6 +495,8 @@ function renderJobsList() {
   const queryClean = query.replace(/[\s\-]/g, '');
 
   const filtered = App.bookings.filter(b => {
+    if (App.activeFilter === 'DELETED') return b.status === 'DELETED';
+    if (b.status === 'DELETED') return false;
     // When typing in the search bar, search across ALL bookings including History automatically!
     if (query) {
       const refClean = (b.confirmation_code || '').toLowerCase().replace(/[\s\-]/g, '');
@@ -539,7 +541,7 @@ function renderJobsList() {
   });
 
   // Update badge count
-  const activeCount = App.bookings.filter(b => b.status !== 'COMPLETED' && b.status !== 'CANCELLED').length;
+  const activeCount = App.bookings.filter(b => !['COMPLETED', 'CANCELLED', 'DELETED'].includes(b.status)).length;
   const badgeEl = document.getElementById('badge-active-count');
   const mBadgeEl = document.getElementById('m-jobs-count');
   if (badgeEl) badgeEl.textContent = activeCount;
@@ -715,6 +717,27 @@ async function toggleAllocationReminder(id) {
   } catch (error) { showToast(error.message); }
 }
 
+async function changeBookingArchive(id, action) {
+  if (action === 'delete' && !confirm('Move this booking to Deleted jobs? You can restore it there.')) return;
+  try {
+    const response = await fetch('/api/bookings/' + encodeURIComponent(id) + '/' + action, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || 'Could not update this booking.');
+    await loadData();
+    showToast(action === 'restore' ? 'Booking restored.' : 'Booking moved to Deleted jobs.');
+  } catch (error) { showToast(error.message); }
+}
+
+function duplicateBooking(id) {
+  const booking = App.bookings.find(row => row.id === id);
+  if (!booking) return;
+  switchTab('new-booking');
+  document.getElementById('simple-intake-form').dispatchEvent(new CustomEvent('duplicate-booking', {detail:booking}));
+  document.getElementById('f-datetime').focus();
+}
+
 function runDispatchJobAction(bookingId, select) {
   const action = select.value;
   select.value = '';
@@ -724,6 +747,9 @@ function runDispatchJobAction(bookingId, select) {
       if (confirm('Remove the chauffeur and leave this booking unallocated?')) inlineAllocateVehicle(id, 'UNALLOCATE');
     },
     edit: openEditBookingModal,
+    duplicate: duplicateBooking,
+    delete: id => changeBookingArchive(id, "delete"),
+    restore: id => changeBookingArchive(id, "restore"),
     email: sendBookingConfirmationEmail,
     invoice: requestTaxInvoice,
     voucher: viewVoucher,
@@ -844,7 +870,9 @@ function renderCdsDispatchTable(filtered) {
             <option value="">Actions</option>
             <option value="allocate">Allocate chauffeur and vehicle</option>
             ${b.chauffeur_id ? '<option value="unallocate">Remove chauffeur (leave unallocated)</option>' : ''}
-            <option value="edit">Edit booking</option>
+            ${b.status === 'DELETED' ? '<option value="restore">Restore booking</option>' : `<option value="edit">Edit booking</option>
+            <option value="duplicate">Duplicate booking</option>
+            <option value="delete">Delete test booking</option>`}
             <option value="email">Send confirmation email</option>
             <option value="invoice">Request tax invoice</option>
             <option value="voucher">View voucher</option>
@@ -932,6 +960,8 @@ function renderCdsDispatchTable(filtered) {
                 <span>£${fareVal} GBP</span>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+                <button type="button" class="excel-act-btn" onclick="duplicateBooking('${b.id}')">Duplicate booking</button>
+                <button type="button" class="excel-act-btn" onclick="changeBookingArchive('${b.id}', '${b.status === 'DELETED' ? 'restore' : 'delete'}')">${b.status === 'DELETED' ? 'Restore booking' : 'Delete test booking'}</button>
                 <button type="button" class="excel-act-btn gold" onclick="openEditBookingModal('${b.id}')">✏️ Edit Booking</button>
                 <button type="button" class="excel-act-btn" onclick="sendBookingConfirmationEmail('${b.id}')">✉️ Send Confirmation</button>
                 <button type="button" class="excel-act-btn" onclick="viewVoucher('${b.id}')">Voucher</button>
@@ -2052,6 +2082,33 @@ function initForm() {
       hours: duration === 'open' ? '0' : duration, stops: JSON.stringify(intakeStops.values())};
   }
 
+  form.addEventListener('duplicate-booking', ({detail: booking}) => {
+    form.reset();
+    const fields = {name:'customer_name', title:'customer_title', phone:'customer_phone', email:'customer_email',
+      pickup:'pickup_address', dropoff:'dropoff_address', vehicle:'vehicle_class', flight:'flight_number',
+      passengers:'passenger_count', 'large-cases':'large_cases', 'medium-cases':'medium_cases',
+      'hand-luggage':'hand_luggage', notes:'special_requests'};
+    for (const [field, key] of Object.entries(fields)) {
+      const input = document.getElementById('f-' + field);
+      if (booking[key] != null) input.value = booking[key];
+    }
+    const service = booking.service_type || '';
+    if (/hour|directed/i.test(service)) serviceSelect.value = 'Hourly chauffeur service';
+    else if (/arrival/i.test(service)) serviceSelect.value = 'Airport arrival';
+    else if (/departure/i.test(service)) serviceSelect.value = 'Airport departure';
+    else serviceSelect.value = 'Point-to-point transfer';
+    hoursSelect.value = /open hours/i.test(service) ? 'open' : String(booking.hours_booked || 0);
+    const pickup = String(booking.pickup_datetime || '').replace(' ', 'T').slice(0,16);
+    const nextDay = new Date(pickup + 'Z');
+    if (Number.isFinite(nextDay.getTime())) {
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+      dtInput.value = nextDay.toISOString().slice(0,16);
+    } else dtInput.value = '';
+    document.getElementById('f-test-no-charge').checked = false;
+    intakeStops.set(bookingStops(booking.stops));
+    updatePricePreview();
+  });
+
   async function updatePricePreview() {
     const id = ++previewRequest;
     const spec = journeySpec();
@@ -2946,6 +3003,13 @@ async function openLiveTracking() {
             center:{lat:51.5074,lng:-0.1278}, zoom:12, mapTypeId:'roadmap',
             mapTypeControl:false, streetViewControl:false, fullscreenControl:false,
             styles:[
+              {elementType:'geometry', stylers:[{color:'#e9e7de'}]},
+              {featureType:'water', elementType:'geometry', stylers:[{color:'#9cc7d2'}]},
+              {featureType:'poi.park', elementType:'geometry', stylers:[{color:'#bcd4b9'}]},
+              {featureType:'road', elementType:'geometry.fill', stylers:[{color:'#ffffff'}]},
+              {featureType:'road.highway', elementType:'geometry.fill', stylers:[{color:'#e4c491'}]},
+              {elementType:'labels.text.fill', stylers:[{color:'#293637'}]},
+              {elementType:'labels.text.stroke', stylers:[{color:'#f5f3ea'}]},
               {featureType:'poi.business', stylers:[{visibility:'off'}]},
               {featureType:'transit', stylers:[{visibility:'off'}]},
               {featureType:'administrative', elementType:'geometry.stroke', stylers:[{visibility:'off'}]}

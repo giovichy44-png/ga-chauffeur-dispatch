@@ -23,7 +23,7 @@ async function api(operation, data) {
 }
 
 function show(view) {
-  for (const name of ['invoices','clients','items','editor']) $(name).hidden = view !== name;
+  for (const name of ['invoices','clients','items','editor','settings','invoice-preview']) $(name).hidden = view !== name;
   document.querySelectorAll('nav [data-view]').forEach(button =>
     button.setAttribute('aria-pressed', String(button.dataset.view === view)));
   notice('');
@@ -57,39 +57,62 @@ function entry(title, summary, actions) {
   return row;
 }
 
+function canSend(invoice) {
+  return ['draft','failed','queued'].includes(invoice.delivery) &&
+    (!invoice.booking_id || invoice.booking_status === 'COMPLETED');
+}
+
+function openPayment(invoice) {
+  fill($('payment-form'), {id:invoice.id});
+  $('payment-balance').textContent = 'Outstanding balance ' + money(invoice.balance_pence);
+  $('payment-form').elements.amount.max = (invoice.balance_pence / 100).toFixed(2);
+  $('payment-dialog').showModal();
+}
+
+async function sendInvoice(invoice) {
+  if (!invoice.client_email) throw Error('Add a billing email before sending.');
+  if (!confirm('Send invoice ' + code(invoice.id) + ' to ' + invoice.client_email + '?')) return;
+  await api('send', {id:invoice.id});
+  await load();
+  const updated = state.invoices.find(row => row.id === invoice.id);
+  if (!$('invoice-preview').hidden && updated) previewInvoice(updated);
+  notice('Invoice emailed with its PDF.');
+}
+
+function previewInvoice(invoice) {
+  show('invoice-preview');
+  $('preview-title').textContent = code(invoice.id) + ' · ' + invoice.client_name;
+  const pdf = '/api/dispatch/invoices/' + invoice.id + '/pdf';
+  $('preview-pdf').src = pdf + '?v=' + Date.now();
+  const download = document.createElement('a');
+  download.href = pdf;
+  download.target = '_blank';
+  download.rel = 'noopener';
+  download.textContent = 'Open PDF in new tab';
+  const controls = [download, button('Back to invoices', () => show('invoices'))];
+  if (canSend(invoice)) controls.push(button('Send invoice', () => sendInvoice(invoice)));
+  if (['draft','failed','review'].includes(invoice.delivery)) controls.push(button('Edit invoice', () => editInvoice(invoice)));
+  if (invoice.balance_pence > 0) controls.push(button('Record payment or deduction', () => openPayment(invoice)));
+  if (invoice.checkout_session) controls.push(button('Refresh card status', async () => {
+    await api('sync-payment', {id:invoice.id});
+    await load();
+    previewInvoice(state.invoices.find(row => row.id === invoice.id));
+  }));
+  $('preview-actions').replaceChildren(...controls);
+}
+
 function renderInvoices() {
   const search = $('search').value.toLowerCase().trim();
   const invoices = state.invoices.filter(invoice =>
-    [code(invoice.id), invoice.client_name, statusOf(invoice)].join(' ').toLowerCase().includes(search));
+    [code(invoice.id), invoice.client_name, invoice.booking_reference, statusOf(invoice)].join(' ').toLowerCase().includes(search));
   $('invoice-list').replaceChildren(...invoices.map(invoice => {
-    const preview = document.createElement('a');
-    preview.href = '/api/dispatch/invoices/' + invoice.id + '/print';
-    preview.target = '_blank';
-    preview.rel = 'noopener';
-    preview.textContent = 'Preview / PDF';
-    const controls = [preview];
-    if (['draft','failed','review'].includes(invoice.delivery) && !invoice.paid) {
-      controls.push(button('Edit', () => editInvoice(invoice)));
-    }
-    if (['draft','failed','queued'].includes(invoice.delivery)) {
-      controls.push(button(invoice.delivery === 'failed' ? 'Retry email' : 'Send email', async () => {
-        if (!invoice.client_email) throw Error('Add a billing email before sending.');
-        if (!confirm('Send invoice ' + code(invoice.id) + ' to ' + invoice.client_email + '?')) return;
-        try {
-          await api('send', {id:invoice.id});
-          notice('Invoice emailed.');
-        } finally { await load(); }
-      }));
-    }
-    if (invoice.delivery === 'sent' && !invoice.paid) {
-      controls.push(button('Mark paid', async () => {
-        await api('paid', {id:invoice.id});
-        await load();
-        notice('Invoice marked paid.');
-      }));
-    }
+    const controls = [button('View PDF', () => previewInvoice(invoice))];
+    if (['draft','failed','review'].includes(invoice.delivery)) controls.push(button('Edit', () => editInvoice(invoice)));
+    if (invoice.balance_pence > 0) controls.push(button('Record payment', () => openPayment(invoice)));
+    const journeyStatus = invoice.booking_id && invoice.booking_status !== 'COMPLETED' ? 'Awaiting journey completion' : '';
     return entry(code(invoice.id) + ' · ' + invoice.client_name,
-      [statusOf(invoice), money(invoice.total_pence), 'Due ' + invoice.due].join(' · '), controls);
+      [statusOf(invoice), journeyStatus, invoice.booking_reference, 'Balance ' + money(invoice.balance_pence),
+        'Due ' + invoice.due].filter(Boolean).join(' · '), controls);
   }));
   if (!invoices.length) $('invoice-list').textContent = search ? 'No invoices match.' : 'No invoices yet.';
 }
@@ -183,6 +206,17 @@ function updateTotal() {
   $('total').textContent = 'Subtotal ' + money(subtotal) + (vat ? ' · VAT ' + money(tax) : '') + ' · Total ' + money(net + tax);
 }
 
+function updateDueDate() {
+  const issued = form.elements.issued.value;
+  const terms = form.elements.terms_days.value;
+  if (issued && terms !== 'custom') {
+    const due = new Date(issued + 'T00:00:00Z');
+    due.setUTCDate(due.getUTCDate() + Number(terms));
+    form.elements.due.value = due.toISOString().slice(0, 10);
+  }
+  $('invoice-due-label').textContent = form.elements.due.value ? 'Due ' + form.elements.due.value : '';
+}
+
 function editInvoice(invoice = {}) {
   if (!state.today) return;
   show('editor');
@@ -192,6 +226,11 @@ function editInvoice(invoice = {}) {
     due:invoice.due || state.today, comments:invoice.comments, discount:(invoice.discount_pence || 0) / 100,
     vat_percent:invoice.vat_percent || 20
   });
+  const days = invoice.issued ? (Date.parse(invoice.due) - Date.parse(invoice.issued)) / 86400000 : 0;
+  form.elements.terms_days.value = [0,1,7,30].includes(days) ? String(days) : 'custom';
+  updateDueDate();
+  $('editor-feedback').textContent = '';
+  $('create-invoice').textContent = invoice.id ? 'Save and view PDF' : 'Create invoice and view PDF';
   $('editor-title').textContent = invoice.id ? 'Edit ' + code(invoice.id) : 'New invoice';
   $('include-vat').checked = Number(invoice.vat_percent) > 0 || Boolean(invoice.vat_pence);
   $('lines').replaceChildren();
@@ -204,9 +243,9 @@ function submit(target, operation, values, after) {
     event.preventDefault();
     event.submitter.disabled = true;
     try {
-      await api(operation, values(new FormData(target)));
+      const result = await api(operation, values(new FormData(target)));
       await load();
-      after();
+      after(result);
     } catch (error) {
       notice(error.message);
     } finally {
@@ -238,7 +277,10 @@ $('catalog').onchange = event => {
   event.target.value = '';
 };
 document.querySelectorAll('[data-view]').forEach(control => {
-  control.onclick = () => show(control.dataset.view);
+  control.onclick = () => {
+    show(control.dataset.view);
+    if (control.dataset.view === 'settings') fill($('payment-settings'), state.payment_details || {});
+  };
 });
 for (const type of ['client','item']) {
   const target = $(type + '-form');
@@ -247,10 +289,51 @@ for (const type of ['client','item']) {
     notice(type === 'client' ? 'Client saved.' : 'Item saved.');
   });
 }
-submit(form, 'save', data => ({...Object.fromEntries(data), items:lines()}), () => {
-  show('invoices');
-  notice('Draft saved. Open the preview or send the invoice from the list.');
+form.elements.terms_days.onchange = updateDueDate;
+form.elements.issued.onchange = updateDueDate;
+form.oninvalid = () => { $('editor-feedback').textContent = 'Complete the highlighted fields to create your invoice.'; };
+form.addEventListener('invalid', form.oninvalid, true);
+form.onsubmit = async event => {
+  event.preventDefault();
+  const submitter = $('create-invoice');
+  submitter.disabled = true;
+  $('editor-feedback').textContent = '';
+  try {
+    const data = Object.fromEntries(new FormData(form));
+    if (data.terms_days === 'custom') delete data.terms_days;
+    const saved = await api('save', {...data, items:lines()});
+    form.elements.id.value = saved.id;
+    await load();
+    previewInvoice(state.invoices.find(row => row.id === saved.id));
+  } catch (error) {
+    $('editor-feedback').textContent = error.message;
+  } finally { submitter.disabled = false; }
+};
+$('payment-cancel').onclick = () => $('payment-dialog').close();
+submit($('payment-form'), 'payment', data => Object.fromEntries(data), () => {
+  const id = $('payment-form').elements.id.value;
+  $('payment-dialog').close();
+  const invoice = state.invoices.find(row => String(row.id) === id);
+  if (invoice && !$('invoice-preview').hidden) previewInvoice(invoice);
+  notice('Amount recorded.');
 });
+$('payment-details-file').addEventListener('change', async event => {
+  const input = event.currentTarget;
+  try {
+    const data = JSON.parse(await input.files[0].text());
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error();
+    const form = $('payment-settings');
+    for (const field of ['account_name','sort_code','account_number','bic','iban','vat_number','card_link']) {
+      if (typeof data[field] === 'string') form.elements[field].value = data[field];
+    }
+    notice('Payment details loaded. Save to apply them to invoices.');
+  } catch (_) {
+    notice('Choose a valid payment details JSON file.');
+  } finally {
+    input.value = '';
+  }
+});
+submit($('payment-settings'), 'preferences', data => Object.fromEntries(data), () => notice('Payment details saved.'));
 $('client-import').onsubmit = async event => {
   event.preventDefault();
   event.submitter.disabled = true;
