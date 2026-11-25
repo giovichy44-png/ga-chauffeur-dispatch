@@ -2658,38 +2658,88 @@ function loadDispatchMaps(key) {
   return dispatchMapsLoad;
 }
 
-function liveVehicleIcon(maps, tier) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 96;
-  const ctx = canvas.getContext('2d');
+function drawTrackingVehicle(ctx, tier) {
   const van = tier === 'mercedes_v_class';
   const suv = tier === 'range_rover_autobiography';
-  const width = van ? 41 : suv ? 38 : 32;
-  const left = (64 - width) / 2;
-  const top = van ? 6 : 10;
-  const height = van ? 84 : 76;
-  ctx.fillStyle = '#12181b';
-  for (const y of [top + 13, top + height - 22]) {
-    ctx.fillRect(left - 4, y, 8, 11);
-    ctx.fillRect(left + width - 4, y, 8, 11);
+  const width = van ? 22 : suv ? 21 : 18;
+  const length = van ? 43 : suv ? 39 : 41;
+  const nose = van ? 18 : suv ? 16 : 11;
+  const tail = van ? 19 : suv ? 17 : 12;
+  ctx.fillStyle = '#17191d';
+  for (const y of [-length + 15, length - 24]) {
+    ctx.fillRect(-width - 4, y, 8, 12);
+    ctx.fillRect(width - 4, y, 8, 12);
   }
   ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(left, top, width, height, van ? 8 : suv ? 10 : 13);
-  else ctx.rect(left, top, width, height);
-  ctx.fillStyle = van ? '#25b290' : suv ? '#d5a453' : '#93b5fa';
+  ctx.moveTo(-nose, -length);
+  ctx.quadraticCurveTo(-width, -length + 4, -width, -length + 14);
+  ctx.lineTo(-width, length - 14);
+  ctx.quadraticCurveTo(-width, length - 2, -tail, length);
+  ctx.lineTo(tail, length);
+  ctx.quadraticCurveTo(width, length - 2, width, length - 14);
+  ctx.lineTo(width, -length + 14);
+  ctx.quadraticCurveTo(width, -length + 4, nose, -length);
+  ctx.closePath();
+  const paint = ctx.createLinearGradient(-width, 0, width, 0);
+  paint.addColorStop(0, '#414850');
+  paint.addColorStop(.3, '#171a1f');
+  paint.addColorStop(.75, '#090b0e');
+  paint.addColorStop(1, '#555e68');
+  ctx.fillStyle = paint;
   ctx.fill();
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#f4f5f6';
   ctx.stroke();
-  ctx.fillStyle = '#223447';
+
+  const cabinTop = van ? -24 : suv ? -21 : -15;
+  ctx.fillStyle = '#293d4e';
   ctx.beginPath();
-  ctx.rect(left + 5, top + (van ? 14 : 19), width - 10, van ? 52 : 40);
+  ctx.moveTo(-width + 6, cabinTop + 10);
+  ctx.lineTo(-width + 8, cabinTop);
+  ctx.lineTo(width - 8, cabinTop);
+  ctx.lineTo(width - 6, cabinTop + 10);
+  ctx.lineTo(width - 6, van ? 34 : 25);
+  ctx.lineTo(-width + 6, van ? 34 : 25);
+  ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#dce7ee';
-  ctx.fillRect(left + 7, top + 7, 5, 4);
-  ctx.fillRect(left + width - 12, top + 7, 5, 4);
-  return {url:canvas.toDataURL(), scaledSize:new maps.Size(32,48), anchor:new maps.Point(16,24)};
+  ctx.fillStyle = '#171c23';
+  ctx.fillRect(-width + 8, cabinTop + 12, width * 2 - 16, van ? 33 : 18);
+  ctx.fillStyle = '#dbedf7';
+  ctx.fillRect(-nose, -length + 4, 7, 3);
+  ctx.fillRect(nose - 7, -length + 4, 7, 3);
+  ctx.fillStyle = '#ef5e55';
+  ctx.fillRect(-tail, length - 6, 7, 3);
+  ctx.fillRect(tail - 7, length - 6, 7, 3);
+}
+
+function liveVehicleIcon(maps, tier, heading) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 112;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(56, 56);
+  if (heading != null) {
+    ctx.rotate(heading * Math.PI / 180);
+    ctx.beginPath();
+    ctx.moveTo(0, -55);
+    ctx.lineTo(5, -47);
+    ctx.lineTo(-5, -47);
+    ctx.closePath();
+    ctx.fillStyle = '#1672ff';
+    ctx.fill();
+  }
+  drawTrackingVehicle(ctx, tier);
+  return {url:canvas.toDataURL(), scaledSize:new maps.Size(56,56), anchor:new maps.Point(28,28)};
+}
+
+function trackingBearing(from, to) {
+  const radians = Math.PI / 180;
+  const a = from.lat * radians;
+  const b = to.lat * radians;
+  const delta = (to.lng - from.lng) * radians;
+  const east = Math.sin(delta) * Math.cos(b);
+  const north = Math.cos(a) * Math.sin(b) - Math.sin(a) * Math.cos(b) * Math.cos(delta);
+  const metres = Math.hypot(east, north) * 6371000;
+  return {metres, degrees:(Math.atan2(east, north) / radians + 360) % 360};
 }
 
 async function openLiveTracking() {
@@ -2701,6 +2751,8 @@ async function openLiveTracking() {
   const container = document.getElementById('dispatch-live-map');
   const session = new AbortController();
   const markers = new Map();
+  const streets = new Map();
+  let geocoder;
   let maps, map, selectedId, routeKey, routeVersion = 0, overlays = [], framed = false;
   let latest = [];
   dialog.showModal();
@@ -2722,6 +2774,22 @@ async function openLiveTracking() {
       clearTimeout(timeout);
       session.signal.removeEventListener('abort', cancel);
     }
+  }
+
+  function lookupStreet(chauffeur, point) {
+    if (!maps.Geocoder) return;
+    const previous = streets.get(chauffeur.id);
+    const now = Date.now();
+    if (previous && (now - previous.when < 25000 || (previous.road && trackingBearing(previous.point, point).metres < 30))) return;
+    const request = {point, when:now, road:previous?.road};
+    streets.set(chauffeur.id, request);
+    geocoder ||= new maps.Geocoder();
+    geocoder.geocode({location:point, region:'uk'})
+      .then(({results}) => {
+        if (session.signal.aborted || streets.get(chauffeur.id) !== request) return;
+        request.road = results.flatMap(result => result.address_components || [])
+          .find(component => component.types.includes('route'))?.long_name;
+      }).catch(() => {});
   }
 
   function clearRoute() {
@@ -2770,14 +2838,14 @@ async function openLiveTracking() {
   dialog.addEventListener('close', () => {
     session.abort();
     clearRoute();
-    markers.forEach(marker => marker.setMap(null));
+    markers.forEach(({marker}) => marker.setMap(null));
   }, {once:true});
 
   while (!session.signal.aborted) {
     try {
       const {chauffeurs, maps_key:key} = await trackingJSON('/api/dispatch/live-locations', 8000);
       if (session.signal.aborted) return;
-      latest = chauffeurs.filter(chauffeur => chauffeur.updated_at != null);
+      latest = chauffeurs.filter(chauffeur => chauffeur.location_live);
       if (!map) {
         try {
           maps = await loadDispatchMaps(key);
@@ -2790,10 +2858,11 @@ async function openLiveTracking() {
       if (map) {
         const bounds = new maps.LatLngBounds();
         const ids = new Set(latest.map(chauffeur => chauffeur.id));
-        for (const [id, marker] of markers) {
+        for (const [id, {marker}] of markers) {
           if (!ids.has(id)) {
             marker.setMap(null);
             markers.delete(id);
+            streets.delete(id);
           }
         }
         for (const chauffeur of latest) {
@@ -2801,14 +2870,21 @@ async function openLiveTracking() {
           bounds.extend(point);
           const tier = allocationVehicleClass(chauffeur.vehicle_class);
           const existing = markers.get(chauffeur.id);
+          let heading = chauffeur.heading ?? existing?.heading;
           if (existing) {
-            existing.setPosition(point);
-            existing.setOpacity(chauffeur.location_live ? 1 : .55);
-            continue;
+            const movement = trackingBearing(existing.point, point);
+            if (chauffeur.heading == null && movement.metres >= Math.max(12, chauffeur.accuracy || 0)) heading = movement.degrees;
+            existing.marker.setPosition(point);
+            if (heading !== existing.heading || tier !== existing.tier) existing.marker.setIcon(liveVehicleIcon(maps,tier,heading));
+            if (movement.metres >= Math.max(12, chauffeur.accuracy || 0)) existing.point = point;
+            existing.heading = heading;
+            existing.tier = tier;
+          } else {
+            const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier,heading), title:chauffeur.name, zIndex:10});
+            marker.addListener('click', () => selectVehicle(latest.find(row => row.id === chauffeur.id), true));
+            markers.set(chauffeur.id, {marker, point, heading, tier});
           }
-          const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier), title:chauffeur.name, opacity:chauffeur.location_live ? 1 : .55, zIndex:10});
-          marker.addListener('click', () => selectVehicle(latest.find(row => row.id === chauffeur.id), true));
-          markers.set(chauffeur.id, marker);
+          lookupStreet(chauffeur, point);
         }
         if (!framed && latest.length) {
           framed = true;
@@ -2818,12 +2894,11 @@ async function openLiveTracking() {
           } else map.fitBounds(bounds, 45);
         }
         if (!dispatchMapsDenied) {
-          const liveCount = latest.filter(chauffeur => chauffeur.location_live).length;
-          status.textContent = liveCount ? liveCount + ' sharing live location' : 'No live updates. Showing recent positions where available.';
+          status.textContent = latest.length ? latest.length + ' sharing live location' : 'No chauffeurs are sharing live location.';
         }
       }
       const focused = document.activeElement?.dataset.chauffeur;
-      list.replaceChildren(...chauffeurs.map(chauffeur => {
+      list.replaceChildren(...latest.map(chauffeur => {
         const row = document.createElement('li');
         const button = document.createElement('button');
         button.type = 'button';
@@ -2831,10 +2906,15 @@ async function openLiveTracking() {
         button.disabled = chauffeur.updated_at == null || !map;
         button.dataset.chauffeur = chauffeur.id;
         const tier = ({mercedes_v_class:'V-Class',mercedes_s_class:'S-Class',range_rover_autobiography:'Range Rover'})[allocationVehicleClass(chauffeur.vehicle_class)] || 'Vehicle';
-        button.textContent = chauffeur.name + ' · ' + tier + (chauffeur.journey_id ? ' · POB' : '');
+        const job = {ASSIGNED:'Allocated', ACCEPTED:'Accepted', EN_ROUTE:'En route', ARRIVED:'At pickup', ON_BOARD:'Passenger on board', NEXT_STOP:'Passenger on board'};
+        button.textContent = [chauffeur.name, tier, job[chauffeur.job_status] || 'No active job'].join(' · ');
         button.onclick = () => selectVehicle(chauffeur,true);
-        row.append(button, ' ' + (chauffeur.updated_at == null ? 'Location unavailable' :
-          (chauffeur.location_live ? 'Updated ' : 'Last seen ') + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB')));
+        const heading = markers.get(chauffeur.id)?.heading;
+        const direction = heading == null ? '' : ['N','NE','E','SE','S','SW','W','NW'][Math.round(heading / 45) % 8];
+        row.append(button, ' ' + [
+          chauffeur.journey_reference, streets.get(chauffeur.id)?.road, direction && 'Heading ' + direction,
+          'Updated ' + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB')
+        ].filter(Boolean).join(' · '));
         return row;
       }));
       const selected = latest.find(chauffeur => chauffeur.id === selectedId);
@@ -2844,7 +2924,7 @@ async function openLiveTracking() {
     } catch {
       if (session.signal.aborted) return;
       status.textContent = 'Unable to refresh chauffeur locations. Retrying…';
-      markers.forEach(marker => marker.setMap(null));
+      markers.forEach(({marker}) => marker.setMap(null));
       markers.clear();
       clearRoute();
       list.replaceChildren();

@@ -1907,17 +1907,22 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/dispatch/live-locations":
             with db.get_connection() as conn:
                 rows = conn.execute("""
-                    SELECT c.id, c.name, c.vehicle_class, l.latitude, l.longitude, l.accuracy,
-                           COALESCE(l.updated_at >= ?, 0) AS location_live, l.updated_at, b.id AS journey_id, b.confirmation_code AS journey_reference
-                    FROM chauffeurs c LEFT JOIN chauffeur_live_locations l
+                    SELECT c.id, c.name, c.vehicle_class, l.latitude, l.longitude, l.accuracy, l.heading,
+                           1 AS location_live, l.updated_at, b.status AS job_status,
+                           CASE WHEN b.status IN ('ON_BOARD', 'NEXT_STOP') THEN b.id END AS journey_id,
+                           b.confirmation_code AS journey_reference
+                    FROM chauffeurs c JOIN chauffeur_live_locations l
                       ON l.chauffeur_id = c.id AND l.updated_at >= ?
-                    LEFT JOIN bookings b ON l.updated_at IS NOT NULL AND b.id = (
+                    LEFT JOIN bookings b ON b.id = (
                         SELECT id FROM bookings
-                        WHERE chauffeur_id = c.id AND status IN ('ON_BOARD', 'NEXT_STOP')
-                        ORDER BY updated_at DESC, id DESC LIMIT 1
+                        WHERE chauffeur_id = c.id AND status IN ('ASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP')
+                        ORDER BY CASE status
+                            WHEN 'ON_BOARD' THEN 0 WHEN 'NEXT_STOP' THEN 0
+                            WHEN 'ARRIVED' THEN 1 WHEN 'EN_ROUTE' THEN 2 ELSE 3 END,
+                            updated_at DESC, id DESC LIMIT 1
                     )
                     ORDER BY c.name
-                """, (time.time() - 45, time.time() - 300)).fetchall()
+                """, (time.time() - 45,)).fetchall()
             self.send_json({"chauffeurs": [dict(row) for row in rows],
                             "maps_key": GOOGLE_PLACES_BROWSER_KEY}, cache_control="no-store")
             return
@@ -2439,11 +2444,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 if stop:
                     conn.execute("DELETE FROM chauffeur_live_locations WHERE chauffeur_id = ?", (chauffeur["id"],))
                 else:
+                    heading = payload.get("heading")
+                    if type(heading) not in (int, float) or not 0 <= heading < 360:
+                        heading = None
                     conn.execute("""
-                        INSERT INTO chauffeur_live_locations VALUES (?, ?, ?, ?, ?)
+                        INSERT INTO chauffeur_live_locations
+                            (chauffeur_id, latitude, longitude, accuracy, updated_at, heading)
+                        VALUES (?, ?, ?, ?, ?, ?)
                         ON CONFLICT(chauffeur_id) DO UPDATE SET latitude=excluded.latitude,
-                            longitude=excluded.longitude, accuracy=excluded.accuracy, updated_at=excluded.updated_at
-                    """, (chauffeur["id"], *coordinates, time.time()))
+                            longitude=excluded.longitude, accuracy=excluded.accuracy,
+                            updated_at=excluded.updated_at, heading=excluded.heading
+                    """, (chauffeur["id"], *coordinates, time.time(), heading))
             self.send_json({"success": True}, cache_control="no-store")
             return
 

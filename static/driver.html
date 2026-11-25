@@ -788,7 +788,8 @@
           try {
             if (driverLocationSession !== session || document.hidden) return;
             await sendDriverLocation({
-              sharing:true, latitude:coords.latitude, longitude:coords.longitude, accuracy:coords.accuracy
+              sharing:true, latitude:coords.latitude, longitude:coords.longitude, accuracy:coords.accuracy,
+              heading:coords.speed > 1 ? coords.heading : null
             }, session.token);
             if (driverLocationSession === session && !document.hidden) status.textContent = 'Sharing live location with Dispatch.';
           } catch {

@@ -55,9 +55,13 @@ def init_db():
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         accuracy REAL NOT NULL,
-        updated_at REAL NOT NULL
+        updated_at REAL NOT NULL,
+        heading REAL
     )
     """)
+
+    if "heading" not in {row["name"] for row in cursor.execute("PRAGMA table_info(chauffeur_live_locations)")}:
+        cursor.execute("ALTER TABLE chauffeur_live_locations ADD COLUMN heading REAL")
 
     cursor.execute("PRAGMA table_info(chauffeurs)")
     existing_ch_cols = [row["name"] for row in cursor.fetchall()]
