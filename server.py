@@ -1013,16 +1013,11 @@ def broadcast_event(event_type, data):
     pushes = {
         "booking_created": "New booking",
         "booking_updated": "Booking details changed",
-        "chauffeur_allocated": "Chauffeur allocated",
-        "chauffeur_removed": "Chauffeur allocation removed",
         "amendment_requested": "Customer requested a booking amendment",
-        "confirmation_resent": "Booking confirmation sent",
     }
     notice = pushes.get(event_type)
     if event_type == "driver_message" and data.get("sender_role") == "DRIVER":
         notice = "You have a new message from the chauffeur"
-    if event_type == "live_action_executed":
-        notice = "Chauffeur update: " + data["action"].replace("_", " ").capitalize()
     if notice:
         dispatch_push.notify(notice)
     if event_type in ("booking_updated", "amendment_requested", "chauffeur_allocated"):
@@ -2560,6 +2555,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if not check_auth(self.headers):
                 self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                 return
+
+        if path == "/api/dispatch/allocation-reminder":
+            if not isinstance(payload, dict) or payload.get("hours") not in (2, 6):
+                self.send_json({"error": "Choose a 2-hour or 6-hour reminder."}, 400)
+                return
+            with db.get_connection() as conn:
+                updated = conn.execute("UPDATE bookings SET allocation_notice_hours=? WHERE id=?",
+                                       (payload["hours"], str(payload.get("id") or "")))
+            self.send_json({"success": True} if updated.rowcount else {"error": "Booking not found."},
+                           200 if updated.rowcount else 404)
+            return
 
         if path.startswith("/api/dispatch/fleet/"):
             self.handle_split_fleet(path.rsplit("/", 1)[-1], payload)
@@ -5785,6 +5791,26 @@ def run_server(port=PORT):
 
     ticker_thread = threading.Thread(target=telemetry_ticker, daemon=True)
     ticker_thread.start()
+
+    def monitor_pickup_alerts():
+        key = os.environ.get("GOOGLE_MAPS_SERVER_KEY")
+        def live_eta(row):
+            if not key or None in (row["pickup_lat"], row["pickup_lng"]):
+                return None
+            try:
+                return quote_service.zone.traffic_minutes((row["latitude"], row["longitude"]),
+                                                          (row["pickup_lat"], row["pickup_lng"]), key)
+            except (OSError, KeyError, ValueError):
+                return None
+        while True:
+            try:
+                for reference, details in booking_alerts.pickup_alerts(datetime.now(timezone.utc), live_eta):
+                    dispatch_push.notify(f"{reference} · {details}")
+            except Exception as error:
+                print("[Pickup alerts] " + type(error).__name__, flush=True)
+            time.sleep(60)
+
+    threading.Thread(target=monitor_pickup_alerts, daemon=True).start()
 
     def keep_render_awake():
         """Send periodic external HTTP requests through the public domain so Render's edge proxy never spins down the service."""

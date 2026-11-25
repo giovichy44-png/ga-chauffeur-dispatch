@@ -105,6 +105,22 @@ def geocode(address,key):
         raise QuoteUnavailable('Google Geocoding status: '+status)
     return address_location(address, data.get('results', []))
 
+def traffic_minutes(origin, destination, key):
+    def waypoint(point):
+        lat, lng = point
+        return {"location": {"latLng": {"latitude": lat, "longitude": lng}}}
+    body = {"origin": waypoint(origin), "destination": waypoint(destination),
+            "travelMode": "DRIVE", "routingPreference": "TRAFFIC_AWARE"}
+    request = urllib.request.Request(
+        "https://routes.googleapis.com/directions/v2:computeRoutes",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "X-Goog-Api-Key": key,
+                 "X-Goog-FieldMask": "routes.duration"})
+    with urllib.request.urlopen(request, timeout=8) as response:
+        routes = json.load(response).get("routes", [])
+    return float(routes[0]["duration"].rstrip("s")) / 60 if routes else None
+
+
 def driving_route(pickup,dropoff,key,*,stops=(),tracking=False):
     """Geometry, metrics and endpoint surcharge all derive from verified addresses."""
     def endpoint(address, label):

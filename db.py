@@ -201,6 +201,7 @@ def init_db():
         ("stripe_payment_intent_id", "TEXT"),
         ("stripe_customer_id", "TEXT"),
         ("pending_amendment", "TEXT"),
+        ("allocation_notice_hours", "INTEGER NOT NULL DEFAULT 2"),
         ("assigned_vehicle_model", "TEXT"),
         ("assigned_vehicle_plate", "TEXT"),
         ("stops", "TEXT NOT NULL DEFAULT '[]'")

@@ -21,7 +21,6 @@ const App = {
   audioCtx: null,
   initialLoadDone: false,
   knownBookingIds: new Set(),
-  knownStatusMap: new Map(),
   knownBookingDetails: new Map(),
   pendingAlerts: [],
   urgentBookings: [],
@@ -171,9 +170,9 @@ function isBookingUnallocated(b) {
 function getBookingUrgency(b) {
   if (!isBookingUnallocated(b)) return null;
   const mins = getMinutesUntilPickup(b.pickup_datetime);
-  if (mins === null) return null;
+  if (mins === null || mins <= -120) return null;
   if (mins <= 60) return 'CRITICAL_1H';
-  if (mins > 60 && mins <= 120) return 'WARNING_2H';
+  if (mins > 60 && mins <= (b.allocation_notice_hours || 2) * 60) return 'WARNING_2H';
   return null;
 }
 
@@ -194,11 +193,7 @@ function checkLiveNotificationsAndUrgency(newBookings) {
         playNewBookingSound();
         showToast(`🔔 NEW BOOKING ${b.confirmation_code}: ${b.customer_name} (${b.pickup_datetime})`);
       } else {
-        const prevStatus = App.knownStatusMap.get(b.id);
-        if (prevStatus && prevStatus !== b.status) {
-          playStatusBlipSound();
-          showToast(`🚘 Live Status ${b.confirmation_code}: ${b.customer_name} → ${b.status.replace('_', ' ')}`);
-        } else if (App.knownBookingDetails.get(b.id) !== bookingDetailsSignature(b)) {
+        if (App.knownBookingDetails.get(b.id) !== bookingDetailsSignature(b)) {
           playStatusBlipSound();
           showToast(`Booking updated ${b.confirmation_code}`);
         }
@@ -207,7 +202,6 @@ function checkLiveNotificationsAndUrgency(newBookings) {
   }
 
   App.knownBookingIds = new Set(newBookings.map(b => b.id));
-  App.knownStatusMap = new Map(newBookings.map(b => [b.id, b.status]));
   App.knownBookingDetails = new Map(newBookings.map(b => [b.id, bookingDetailsSignature(b)]));
   App.initialLoadDone = true;
 
@@ -707,6 +701,20 @@ function toggleExpandBookingRow(bookingId, evt) {
   renderJobsList();
 }
 
+async function toggleAllocationReminder(id) {
+  const booking = App.bookings.find(row => row.id === id);
+  if (!booking) return;
+  const hours = booking.allocation_notice_hours === 6 ? 2 : 6;
+  try {
+    const response = await fetch('/api/dispatch/allocation-reminder', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id, hours})
+    });
+    if (!response.ok) throw Error('Could not update the allocation reminder.');
+    await loadData();
+    showToast('Allocation reminder set to ' + hours + ' hours before pickup.');
+  } catch (error) { showToast(error.message); }
+}
+
 function runDispatchJobAction(bookingId, select) {
   const action = select.value;
   select.value = '';
@@ -721,6 +729,7 @@ function runDispatchJobAction(bookingId, select) {
     voucher: viewVoucher,
     customerChat: id => openCustomerChat(App.bookings.find(b => b.id === id)?.confirmation_code),
     audit: openBookingLog,
+    allocationReminder: toggleAllocationReminder,
     amend: id => resolveCustomerAmendment(id, 'APPROVE')
   };
   if (action.startsWith('status:')) {
@@ -840,6 +849,7 @@ function renderCdsDispatchTable(filtered) {
             <option value="invoice">Request tax invoice</option>
             <option value="voucher">View voucher</option>
             <option value="customerChat">Customer messages</option>
+            <option value="allocationReminder">Use ${b.allocation_notice_hours === 6 ? 2 : 6}-hour allocation reminder</option>
             <option value="audit">Booking log</option>
             ${pendingAmendObj ? '<option value="amend">Approve customer amendment</option>' : ''}
             <optgroup label="Update status">
@@ -2546,8 +2556,8 @@ function updateDispatchAlarm() {
 function shortBookingAlert(alert) {
   const labels = {
     BOOKING_CREATED: 'New booking',
-    CHAUFFEUR_ALLOCATED: 'Chauffeur allocated',
-    CHAUFFEUR_REMOVED: 'Chauffeur removed',
+    ALLOCATION_DUE: 'Allocation reminder',
+    CHAUFFEUR_LATE: 'Chauffeur may be late',
     AMENDMENT_REQUESTED_2H: 'Amendment needs approval',
     CUSTOMER_AMENDMENT_APPROVED: 'Amendment approved'
   };
@@ -2558,7 +2568,21 @@ function shortBookingAlert(alert) {
 
 async function reviewDispatchAlert() {
   const alert = App.pendingAlerts[0];
-  if (!alert || !await openBookingLog(alert.booking_id || alert.confirmation_code)) return;
+  if (!alert) return;
+  const job = App.bookings.find(row => row.id === alert.booking_id);
+  if (job) {
+    switchTab('jobs');
+    const search = document.getElementById('jobs-search-input');
+    if (search) search.value = '';
+    document.querySelector('.pill-btn[data-filter="ALL"]')?.click();
+    setJobsViewMode('GRID');
+    App.expandedBookingIds.add(job.id);
+    renderJobsList();
+    const control = Array.from(document.querySelectorAll('.dispatch-expand-button'))
+      .find(button => button.textContent.includes(job.confirmation_code));
+    control?.scrollIntoView({block:'center'});
+    control?.focus({preventScroll:true});
+  }
   const keys = [alert.key];
   try {
     const response = await fetch('/api/dispatch/ack-alerts', {
