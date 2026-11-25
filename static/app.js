@@ -2008,6 +2008,11 @@ function initForm() {
     total.textContent = '—';
     sub.textContent = '';
     if (!spec.pickup || !spec.dropoff) return;
+    if (!spec.vehicle) {
+      total.textContent = 'Select Vehicle';
+      sub.textContent = 'Choose S-Class, V-Class, or Range Rover above to calculate exact fare';
+      return;
+    }
     if (spec.service.startsWith('Open hours')) {
       title.textContent = 'Open hours';
       total.textContent = 'Billed after the journey';
@@ -2034,6 +2039,11 @@ function initForm() {
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!vSelect || !vSelect.value) {
+        alert('Please select a vehicle before creating the booking.');
+        if (vSelect) vSelect.focus();
+        return;
+      }
       const submitBtn = document.getElementById('btn-submit-booking');
       submitBtn.disabled = true;
       submitBtn.textContent = 'Creating Job & Sending Email...';

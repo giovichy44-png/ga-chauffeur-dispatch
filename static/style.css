@@ -778,17 +778,19 @@ button, input, textarea, select {
 }
 
 .form-group-grid.two-col {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .form-group-grid.three-col {
-  grid-template-columns: 1fr 1fr 1.2fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.3fr);
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .field label {
@@ -800,13 +802,19 @@ button, input, textarea, select {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 12px 14px;
   color: var(--text-white);
   font-size: 14px;
+  text-overflow: ellipsis;
   transition: all 0.2s ease;
 }
 

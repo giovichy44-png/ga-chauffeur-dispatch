@@ -416,11 +416,17 @@
         gMap = new google.maps.Map(mapEl, {
           center: { lat: 51.5074, lng: -0.1278 }, // Central London
           zoom: 11,
-          mapTypeId: google.maps.MapTypeId.HYBRID, // Green Satellite Imagery + Street Names + Labels
+          minZoom: 5,
+          maxZoom: 19,
+          restriction: {
+            latLngBounds: { north: 61.0, south: 49.5, west: -8.6, east: 2.5 },
+            strictBounds: false
+          },
+          mapTypeId: google.maps.MapTypeId.ROADMAP, // Live road map showing green free-flowing roads & live traffic
           mapTypeControl: true,
           mapTypeControlOptions: {
             style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-            mapTypeIds: [google.maps.MapTypeId.HYBRID, google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE]
+            mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.HYBRID, google.maps.MapTypeId.SATELLITE]
           },
           streetViewControl: false,
           fullscreenControl: true,
@@ -497,11 +503,19 @@
     };
   }
 
+  function isValidUkCoord(lat, lng) {
+    return typeof lat === 'number' && typeof lng === 'number' &&
+           Number.isFinite(lat) && Number.isFinite(lng) &&
+           lat >= 49.5 && lat <= 61.0 && lng >= -8.6 && lng <= 2.5;
+  }
+
   function updatePins(pCoords, dCoords, bounds) {
     if (!gMap || !window.google || !window.google.maps) return;
 
-    if (pCoords) {
-      const posA = new google.maps.LatLng(pCoords.lat, pCoords.lng);
+    const pLat = typeof pCoords?.lat === 'function' ? pCoords.lat() : Number(pCoords?.lat);
+    const pLng = typeof pCoords?.lng === 'function' ? pCoords.lng() : Number(pCoords?.lng);
+    if (isValidUkCoord(pLat, pLng)) {
+      const posA = new google.maps.LatLng(pLat, pLng);
       if (!pickupMarker) {
         pickupMarker = new google.maps.Marker({
           position: posA,
@@ -518,14 +532,16 @@
       pickupMarker.setMap(null);
     }
 
-    if (dCoords) {
-      const posB = new google.maps.LatLng(dCoords.lat, dCoords.lng);
+    const dLat = typeof dCoords?.lat === 'function' ? dCoords.lat() : Number(dCoords?.lat);
+    const dLng = typeof dCoords?.lng === 'function' ? dCoords.lng() : Number(dCoords?.lng);
+    if (isValidUkCoord(dLat, dLng)) {
+      const posB = new google.maps.LatLng(dLat, dLng);
       if (!dropoffMarker) {
         dropoffMarker = new google.maps.Marker({
           position: posB,
           map: gMap,
           title: 'Drop-off Destination',
-          icon: getPinIcon('B', '#b45309', '#f59e0b')
+          icon: getPinIcon('B', '#1d4ed8', '#2563eb')
         });
       } else {
         dropoffMarker.setPosition(posB);
@@ -569,11 +585,13 @@
         if(requestId!==routeRequestId || window.GAServerQuote.key(spec)!==window.GAServerQuote.key(quoteSpec()))return;
         verifiedQuote=q;verifiedKey=window.GAServerQuote.key(spec);
         journeyDistanceMiles=q.distance_miles;journeyDurationMinutes=Math.round(q.duration_minutes);
-        if(gMap && q.path.length){
-          const path=q.path.map(([lng,lat])=>({lat,lng}));
-          drawBookingRoute(path);
-          const bounds=new google.maps.LatLngBounds();path.forEach(p=>bounds.extend(p));
-          updatePins(q.pickup_location,q.dropoff_location,bounds);gMap.fitBounds(bounds,40);
+        if(gMap && q.path && q.path.length){
+          const path=q.path.map(([lng,lat])=>({lat:Number(lat),lng:Number(lng)})).filter(pt=>isValidUkCoord(pt.lat,pt.lng));
+          if(path.length){
+            drawBookingRoute(path);
+            const bounds=new google.maps.LatLngBounds();path.forEach(p=>bounds.extend(p));
+            updatePins(q.pickup_location,q.dropoff_location,bounds);gMap.fitBounds(bounds,40);
+          }
         }
         if(distEl)distEl.textContent=q.as_directed?'As directed':q.distance_miles.toFixed(1)+' miles';
         if(durEl)durEl.textContent=q.as_directed?spec.hours+' hours':Math.round(q.duration_minutes)+' minutes';
@@ -622,9 +640,11 @@
       try {
         const { Route } = await google.maps.importLibrary('routes');
         if (requestId !== routeRequestId) return;
+        const originQuery = /\buk\b/i.test(pVal) ? pVal : `${pVal}, UK`;
+        const destQuery = /\buk\b/i.test(dVal) ? dVal : `${dVal}, UK`;
         const { routes } = await Route.computeRoutes({
-          origin: pVal,
-          destination: dVal,
+          origin: originQuery,
+          destination: destQuery,
           travelMode: 'DRIVING',
           fields: ['path', 'distanceMeters', 'durationMillis']
         });
@@ -632,18 +652,22 @@
         const route = routes?.[0];
         if (!route?.path?.length) throw new Error('No driving route found');
 
-        drawBookingRoute(route.path);
+        const cleanPath = route.path
+          .map(pt => ({
+            lat: typeof pt.lat === 'function' ? pt.lat() : Number(pt.lat),
+            lng: typeof pt.lng === 'function' ? pt.lng() : Number(pt.lng)
+          }))
+          .filter(pt => isValidUkCoord(pt.lat, pt.lng));
+        if (!cleanPath.length) throw new Error('Route outside UK bounds');
+
+        drawBookingRoute(cleanPath);
 
         const bounds = new google.maps.LatLngBounds();
-        route.path.forEach(point => bounds.extend(point));
+        cleanPath.forEach(point => bounds.extend(point));
 
-        const startPt = route.path[0];
-        const endPt = route.path[route.path.length - 1];
-        updatePins(
-          { lat: startPt.lat, lng: startPt.lng },
-          { lat: endPt.lat, lng: endPt.lng },
-          bounds
-        );
+        const startPt = cleanPath[0];
+        const endPt = cleanPath[cleanPath.length - 1];
+        updatePins(startPt, endPt, bounds);
 
         gMap.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
 
@@ -906,6 +930,10 @@
     }
 
     if (step === 2) {
+      if (!form.elements.vehicle?.value) {
+        alert('Please select a vehicle to continue.');
+        return false;
+      }
       return true;
     }
 
@@ -1319,6 +1347,10 @@
   // Initialize
   syncDateTime();
   onServiceChange();
-  selectVehicle('Mercedes-Benz S-Class');
+  if (query.has('vehicle')) {
+    selectVehicle(query.get('vehicle'));
+  } else {
+    selectVehicle('');
+  }
   setStep(1);
 })();

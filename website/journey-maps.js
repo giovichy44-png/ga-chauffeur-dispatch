@@ -61,7 +61,10 @@
             if(requestId!==revision)return;
             const path=q.path.map(([lng,lat])=>({lat,lng}));
             if(!path.length)throw Error('No driving route');
-            overlays=[new google.maps.Polyline({map,path,strokeColor:'#344b41',strokeWeight:5})];
+            overlays=[
+              new google.maps.Polyline({map,path,strokeColor:'#ffffff',strokeWeight:9,strokeOpacity:1,zIndex:10}),
+              new google.maps.Polyline({map,path,strokeColor:'#1768ff',strokeWeight:6,strokeOpacity:1,zIndex:11})
+            ];
             const bounds=new google.maps.LatLngBounds();path.forEach(point=>bounds.extend(point));map.fitBounds(bounds,40);
             status.textContent=q.distance_miles.toFixed(1)+' miles · approximately '+Math.ceil(q.duration_minutes)+' minutes';return;
           }
@@ -69,7 +72,7 @@
           if (requestId !== revision || !active) return;
           const result = routes?.[0];
           if (!result?.path?.length) throw new Error('No route');
-          overlays = result.createPolylines({polylineOptions:{strokeColor:'#344b41',strokeWeight:5}});
+          overlays = result.createPolylines({polylineOptions:{strokeColor:'#1768ff',strokeWeight:6}});
           overlays.forEach(line => line.setMap(map));
           const bounds = new google.maps.LatLngBounds();
           result.path.forEach(point => bounds.extend(point));
@@ -129,7 +132,8 @@
         const maps = await google.maps.importLibrary('maps');
         ({Route} = await google.maps.importLibrary('routes'));
         mapElement.hidden=false;
-        map=new maps.Map(mapElement,{center:{lat:51.5074,lng:-0.1278},zoom:10,mapTypeControl:false});
+        map=new maps.Map(mapElement,{center:{lat:51.5074,lng:-0.1278},zoom:10,minZoom:5,maxZoom:19,restriction:{latLngBounds:{north:61.0,south:49.5,west:-8.6,east:2.5},strictBounds:false},mapTypeId:google.maps.MapTypeId.ROADMAP,mapTypeControl:false});
+        const traffic=new google.maps.TrafficLayer();traffic.setMap(map);
         mapAvailable=true; await route();
       } catch(error) { mapAvailable=false; status.textContent='Route preview is unavailable. Please contact us to confirm your journey.'; }
 

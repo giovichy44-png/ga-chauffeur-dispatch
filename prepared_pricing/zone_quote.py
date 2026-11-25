@@ -75,6 +75,14 @@ def address_location(address, results):
         matches[(round(point["lat"], 5), round(point["lng"], 5))] = point
     if len(matches) == 1:
         return next(iter(matches.values()))
+    if matches:
+        first_pt = next(iter(matches.values()))
+        if 49.5 <= first_pt.get("lat", 0) <= 61.0 and -8.6 <= first_pt.get("lng", 0) <= 2.5:
+            return first_pt
+    for candidate in results:
+        point = (candidate.get("geometry") or {}).get("location") or {}
+        if 49.5 <= point.get("lat", 0) <= 61.0 and -8.6 <= point.get("lng", 0) <= 2.5:
+            return point
     raise QuoteUnavailable("Choose the matching property or airport terminal from the address suggestions.")
 
 
