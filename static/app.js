@@ -1750,8 +1750,8 @@ function initForm() {
     clearTimeout(previewTimer);
     ++previewRequest;
     previewTimer = setTimeout(updatePricePreview, 350);
-  });
-  editStops = GAJourneyStops.mount(document.getElementById('dispatch-edit-stops'));
+  }, {inputClass:'dispatch-intake-address', numbered:true});
+  editStops = GAJourneyStops.mount(document.getElementById('dispatch-edit-stops'), undefined, {inputClass:'dispatch-edit-address', numbered:true});
   for (const id of ['eb-pickup', 'eb-dropoff']) GAJourneyStops.address(document.getElementById(id));
   const dtInput = document.getElementById('f-datetime');
   const vSelect = document.getElementById('f-vehicle');
@@ -1989,7 +1989,7 @@ function initForm() {
       if (wrapHours) wrapHours.style.display = isHourly ? 'block' : 'none';
       const lblDrop = document.getElementById('lbl-dropoff');
       if (lblDrop) {
-        lblDrop.textContent = isHourly ? 'Disposal Destination (e.g. As directed)' : 'Destination / Drop-off Location *';
+        lblDrop.textContent = isHourly ? 'Final destination (or As directed)' : 'Destination / Drop-off Location *';
       }
       if (isHourly && dInput && !dInput.value) {
         dInput.value = 'As directed';
@@ -2057,6 +2057,7 @@ function initForm() {
     const title = document.getElementById('fare-service-title');
     total.textContent = '—';
     sub.textContent = '';
+    title.textContent = spec.service;
     if (!spec.pickup || !spec.dropoff) return;
     if (!spec.vehicle) {
       total.textContent = 'Select Vehicle';

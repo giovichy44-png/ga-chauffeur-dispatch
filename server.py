@@ -29,6 +29,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, parse_qs
@@ -1073,7 +1074,7 @@ def _get_ssl_context():
                 pass
     return ssl.create_default_context()
 
-def send_smtp_email(to_email, subject, html_content, text_content="", reply_to=None):
+def send_smtp_email(to_email, subject, html_content, text_content="", reply_to=None, *, pdf_attachment=None):
     res_key = get_configured_resend_key()
     from_addr = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
     last_error = ""
@@ -1090,6 +1091,10 @@ def send_smtp_email(to_email, subject, html_content, text_content="", reply_to=N
             }
             if reply_to:
                 req_data["reply_to"] = reply_to
+            if pdf_attachment:
+                filename, pdf = pdf_attachment
+                req_data["attachments"] = [{"filename": filename, "content": base64.b64encode(pdf).decode("ascii"),
+                                            "content_type": "application/pdf"}]
             req = urllib.request.Request(
                 "https://api.resend.com/emails",
                 data=json.dumps(req_data).encode("utf-8"),
@@ -1112,7 +1117,14 @@ def send_smtp_email(to_email, subject, html_content, text_content="", reply_to=N
     smtp_pass = os.environ.get("SMTP_PASS", SMTP_PASS).strip()
     if smtp_host and smtp_user and smtp_pass:
         try:
-            msg = MIMEMultipart("alternative")
+            alternatives = MIMEMultipart("alternative")
+            msg = MIMEMultipart("mixed") if pdf_attachment else alternatives
+            if pdf_attachment:
+                msg.attach(alternatives)
+                filename, pdf = pdf_attachment
+                part = MIMEApplication(pdf, _subtype="pdf")
+                part.add_header("Content-Disposition", "attachment", filename=filename)
+                msg.attach(part)
             msg["Subject"] = subject
             msg["From"] = f"{COMPANY_NAME} <{from_addr}>"
             msg["To"] = to_email
@@ -1120,9 +1132,9 @@ def send_smtp_email(to_email, subject, html_content, text_content="", reply_to=N
                 msg["Reply-To"] = reply_to
 
             if text_content:
-                msg.attach(MIMEText(text_content, "plain"))
+                alternatives.attach(MIMEText(text_content, "plain", "utf-8"))
             if html_content:
-                msg.attach(MIMEText(html_content, "html"))
+                alternatives.attach(MIMEText(html_content, "html", "utf-8"))
 
             server = smtplib.SMTP(smtp_host, SMTP_PORT, timeout=10)
             server.starttls()
@@ -1271,8 +1283,11 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     else:
         driver_details = f'<p style="margin:0;"><strong>{esc(vehicle["name"])}</strong><br>Your chauffeur details will follow.</p>'
 
-    stop_details = "".join(f'<p style="margin:4px 0;"><strong>Stop {i}</strong> · {esc(stop)}</p>'
-                           for i, stop in enumerate(stops, 1))
+    legs, wait_return = journey_stops.confirmation_legs(pickup_addr, dropoff_addr, stops)
+    stop_details = "".join(
+        f'<p style="margin:0 0 12px;"><strong style="color:#c9b894;">{esc(label)}</strong><br>{esc(address)}</p>'
+        for label, address in legs
+    )
     flight_details = f'<p style="margin:12px 0 0;"><strong style="color:#c9b894;">Flight number</strong><br>{esc(flight)}</p>' if flight else ""
     notes = f'<p style="margin:12px 0 0;"><strong style="color:#c9b894;">Special requests</strong><br>{esc(special_requests)}</p>' if special_requests else ""
     if payment_status == "CORPORATE_INVOICE" or "CORPORATE" in str(card_brand or "").upper():
@@ -1291,6 +1306,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     <tr><td style="padding:18px 16px;text-align:center;border-bottom:1px solid #c9b894;">
       <div style="color:#c9b894;font:26px Georgia,serif;">GA Chauffeur Services</div>
       <div style="margin-top:4px;">Booking confirmation · <strong>{esc(booking_ref)}</strong></div>
+      {'<div style="color:#c9b894;margin-top:5px;">Wait and return</div>' if wait_return else ''}
     </td></tr>
     <tr><td style="padding:18px 16px;">
       <p style="margin:0 0 14px;">Dear {esc(customer_name)},</p>
@@ -1302,7 +1318,6 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
       <div style="margin-bottom:14px;padding:14px;background:#121715;border:1px solid #49564d;border-radius:6px;">
         <p style="margin:0 0 12px;"><strong style="color:#c9b894;">Pickup</strong><br>{esc(confirmation_pickup(pickup_addr))}<br>{esc(pickup_time)}</p>
         {stop_details}
-        <p style="margin:0;"><strong style="color:#c9b894;">Destination</strong><br>{esc(dropoff_addr)}</p>
         {flight_details}{notes}
       </div>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:12px;background:#121715;border:1px solid #49564d;border-radius:6px;">
@@ -1333,8 +1348,11 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
                       f"Registration: {chauffeur.get('license_plate', '')}", ""])
     else:
         lines.extend([vehicle_name, "Your chauffeur details will follow.", ""])
-    lines.extend([f"Pickup: {confirmation_pickup(pickup_addr)}", pickup_time, f"Destination: {dropoff_addr}"])
-    lines[-1:-1] = [f"Stop {i}: {stop}" for i, stop in enumerate(stops, 1)]
+    legs, wait_return = journey_stops.confirmation_legs(pickup_addr, dropoff_addr, stops)
+    if wait_return:
+        lines.extend(["Wait and return", ""])
+    lines.extend([f"Pickup: {confirmation_pickup(pickup_addr)}", pickup_time])
+    lines.extend(f"{label}: {address}" for label, address in legs)
     if flight:
         lines.append(f"Flight number: {flight}")
     if special_requests:
@@ -1975,13 +1993,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 pickup = quote_service.normalize_address(trip["pickup_address"])
                 dropoff = quote_service.normalize_address(trip["dropoff_address"])
                 stops = [quote_service.normalize_address(stop) for stop in journey_stops.load(trip["stops"])]
-                stops, return_stop = journey_stops.split_return_stop(pickup, stops)
-                is_return = trip["status"] == "NEXT_STOP" and bool(return_stop)
+                if dropoff.casefold() == "as directed":
+                    return_stop = None
+                else:
+                    stops, return_stop = journey_stops.split_return_stop(pickup, stops)
+                is_return = trip["status"] == "NEXT_STOP" and bool(return_stop) and dropoff.casefold() != "as directed"
                 if trip["status"] == "EN_ROUTE":
                     origin = {"lat": trip["latitude"], "lng": trip["longitude"]}
                     destination, stops = pickup, []
                 elif is_return:
                     origin, destination, stops = dropoff, return_stop, []
+                elif dropoff.casefold() == "as directed" and stops:
+                    origin, destination = pickup, stops[-1]
+                    stops = stops[:-1]
                 else:
                     origin, destination = pickup, dropoff
                 route = quote_service.zone.driving_route(origin, destination,
@@ -2187,7 +2211,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": str(error)}, 422)
             except Exception as error:
                 print(f"Route quote failure: {type(error).__name__}", file=sys.stderr, flush=True)
-                self.send_json({"error": "We could not verify this driving route. Please try again."}, 503)
+                self.send_json({"error": "The route service is temporarily unavailable. Try again in a moment."}, 503)
             return
 
         if path == "/api/quote":
@@ -2958,9 +2982,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.close()
         self.send_json({"bookings": rows, "count": len(rows)})
 
-    def handle_booking_confirmation_pdf(self, booking_id):
-        with db.get_connection() as conn:
-            row = conn.execute("""
+    def booking_pdf_attachment(self, conn, booking_id):
+        row = conn.execute("""
                 SELECT b.*, c.name AS chauffeur_name, c.phone AS chauffeur_phone,
                        COALESCE(b.assigned_vehicle_model, c.vehicle_model) AS vehicle_model,
                        COALESCE(b.assigned_vehicle_plate, c.license_plate) AS license_plate
@@ -2968,8 +2991,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 WHERE b.id=?
             """, (booking_id,)).fetchone()
         if not row:
-            self.send_json({"error": "Booking not found."}, 404)
-            return
+            raise LookupError("Booking not found.")
         booking = dict(row)
         chauffeur = {"vehicle_model": booking["vehicle_model"]} if booking["chauffeur_name"] else None
         vehicle = confirmation_vehicle(chauffeur, booking["vehicle_class"])
@@ -2983,9 +3005,25 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             booking, customer_manage_url(reference, booking["customer_email"]), fares,
             (vehicle.get("image_url") or "missing").rsplit("/", 1)[-1])
         filename_reference = re.sub(r"[^a-zA-Z0-9-]", "", reference) or "GA"
+        return f"{filename_reference}-confirmation.pdf", body
+
+    def send_customer_confirmation(self, conn, booking_id, recipient, subject, markup, text):
+        try:
+            attachment = self.booking_pdf_attachment(conn, booking_id)
+        except (LookupError, OSError, ValueError) as error:
+            return False, f"Could not prepare the booking confirmation PDF: {error}"
+        return send_smtp_email(recipient, subject, markup, text, pdf_attachment=attachment)
+
+    def handle_booking_confirmation_pdf(self, booking_id):
+        try:
+            with db.get_connection() as conn:
+                filename, body = self.booking_pdf_attachment(conn, booking_id)
+        except LookupError:
+            self.send_json({"error": "Booking not found."}, 404)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "application/pdf")
-        self.send_header("Content-Disposition", f'attachment; filename="{filename_reference}-confirmation.pdf"')
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -3344,7 +3382,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             stops=stops,
         )
 
-        send_success, delivery_note = send_smtp_email(payload["customer_email"], email_subject, html_email, plain_text_email)
+        send_success, delivery_note = self.send_customer_confirmation(conn, booking_id, payload["customer_email"], email_subject, html_email, plain_text_email)
         owner_inbox = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
         owner_subject = f"🚨 NEW BOOKING {code}: {payload['customer_name']} — {payload['pickup_datetime']} ({vehicle_name}) [£{total_fare:.2f}]"
         owner_html = build_owner_booking_alert_html(
@@ -3554,6 +3592,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         cnf_email_id = f"CNF-{random.randint(1000, 9999)}"
         email_subject = f"Chauffeur Assigned: {chauffeur_first_name(chauffeur)} - {booking['confirmation_code']}"
         html_email = build_luxury_email_html(
+            stops=journey_stops.load(booking.get("stops")),
             booking_ref=booking['confirmation_code'],
             customer_name=booking['customer_name'],
             pickup_addr=booking['pickup_address'],
@@ -3577,6 +3616,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             payment_status=booking.get('payment_status')
         )
         plain_text_email = build_luxury_email_text(
+            stops=journey_stops.load(booking.get("stops")),
+            service_type=booking["service_type"],
             booking_ref=booking['confirmation_code'], customer_name=booking['customer_name'],
             pickup_addr=booking['pickup_address'], dropoff_addr=booking['dropoff_address'],
             pickup_dt=booking['pickup_datetime'], vehicle_name=booking['vehicle_class'],
@@ -3587,7 +3628,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             customer_email=booking['customer_email']
         )
 
-        send_success, _ = send_smtp_email(booking["customer_email"], email_subject, html_email, plain_text_email)
+        send_success, _ = self.send_customer_confirmation(conn, booking["id"], booking["customer_email"], email_subject, html_email, plain_text_email)
 
         cursor.execute("""
         INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
@@ -3852,7 +3893,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             chauffeur=chauffeur_dict, customer_email=recipient
         )
 
-        ok, note = send_smtp_email(recipient, subject, html_body, text_body)
+        ok, note = self.send_customer_confirmation(conn, real_id, recipient, subject, html_body, text_body)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cnf_id = f"CNF-{uuid.uuid4().hex}"
         cursor.execute("""
@@ -4362,7 +4403,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     </section>
   </div>
 
-  <script src="/journey-stops.js?v=1"></script>
+  <script src="/journey-stops.js?v=2"></script>
   <script>
     const amendmentStops = GAJourneyStops.mount(document.getElementById('mb-stops'));
     for (const id of ['mb-pu', 'mb-do']) GAJourneyStops.address(document.getElementById(id));
@@ -4923,6 +4964,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         veh_name = VEHICLE_CONFIGS[norm_veh]["name"]
         email_subject = f"Booking Confirmation: {code} - GA Chauffeur Services Limited"
         html_email = build_luxury_email_html(
+            stops=journey_stops.load(booking.get("stops")),
             booking_ref=code,
             customer_name=booking.get("customer_name", ""),
             pickup_addr=booking.get("pickup_address", ""),
@@ -4953,6 +4995,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             payment_status="PRE_AUTHORIZED"
         )
         plain_text_email = build_luxury_email_text(
+            stops=journey_stops.load(booking.get("stops")),
+            customer_email=booking["customer_email"],
             booking_ref=code,
             customer_name=booking.get("customer_name", ""),
             pickup_addr=booking.get("pickup_address", ""),
@@ -4980,7 +5024,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             distance_mi=booking.get("estimated_distance_mi", 0.0)
         )
         if booking.get("customer_email"):
-            send_smtp_email(booking["customer_email"], email_subject, html_email, plain_text_email)
+            self.send_customer_confirmation(conn, booking["id"], booking["customer_email"], email_subject, html_email, plain_text_email)
         owner_inbox = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
         owner_html = build_owner_booking_alert_html(
             booking_ref=code,
@@ -5556,6 +5600,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if conf["channel"] == "EMAIL":
             b_row = cursor.execute("SELECT * FROM bookings WHERE id = ?", (conf["booking_id"],)).fetchone()
             html_body = ""
+            attach_confirmation = False
             if b_row:
                 booking = dict(b_row)
                 ch_row = None
@@ -5563,8 +5608,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (booking["chauffeur_id"],)).fetchone()
                 if conf["subject"].startswith("Your chauffeur has arrived") and ch_row:
                     _, html_body, conf["content"] = build_arrival_email(booking, dict(ch_row))
-                else:
+                elif re.match(r"(Booking Confirmation:|Chauffeur Assigned:)", conf["subject"], re.I):
+                    current_chauffeur = dict(ch_row) if ch_row else None
+                    if current_chauffeur:
+                        current_chauffeur["vehicle_model"] = booking.get("assigned_vehicle_model") or current_chauffeur["vehicle_model"]
+                        current_chauffeur["license_plate"] = booking.get("assigned_vehicle_plate") or current_chauffeur["license_plate"]
+                    attach_confirmation = True
                     html_body = build_luxury_email_html(
+                        stops=journey_stops.load(booking.get("stops")),
                         booking_ref=booking["confirmation_code"],
                         customer_name=booking["customer_name"],
                         pickup_addr=booking["pickup_address"],
@@ -5579,7 +5630,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                         large_cases=booking.get("large_cases", 0),
                         medium_cases=booking.get("medium_cases", 0),
                         hand_luggage=booking.get("hand_luggage", 0),
-                        chauffeur=dict(ch_row) if ch_row else None,
+                        chauffeur=current_chauffeur,
                         flight=booking.get("flight_number"),
                         parking_fee=booking.get("parking_fee", 0),
                         dropoff_fee=booking.get("dropoff_fee", 0),
@@ -5596,7 +5647,20 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                         payment_status=booking.get("payment_status", "PRE_AUTHORIZED")
                     )
 
-            ok, delivery_note = send_smtp_email(conf["recipient"], resent_subject, html_body, conf["content"])
+
+                    conf["content"] = build_luxury_email_text(
+                        booking["confirmation_code"], booking["customer_name"], booking["pickup_address"],
+                        booking["dropoff_address"], booking["pickup_datetime"], booking["vehicle_class"],
+                        booking["fare_amount"], booking["vat_amount"], booking["total_fare"],
+                        service_type=booking["service_type"], chauffeur=current_chauffeur,
+                        flight=booking.get("flight_number"), special_requests=booking.get("special_requests"),
+                        parking_fee=booking["parking_fee"], dropoff_fee=booking["dropoff_fee"],
+                        congestion_charge=booking["congestion_charge"], customer_email=booking["customer_email"],
+                        stops=journey_stops.load(booking.get("stops")))
+            if attach_confirmation:
+                ok, delivery_note = self.send_customer_confirmation(conn, booking["id"], conf["recipient"], resent_subject, html_body, conf["content"])
+            else:
+                ok, delivery_note = send_smtp_email(conf["recipient"], resent_subject, html_body, conf["content"])
             send_status = "DELIVERED" if ok else "FAILED"
 
         cursor.execute("""

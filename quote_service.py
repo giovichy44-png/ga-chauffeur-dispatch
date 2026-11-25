@@ -45,13 +45,15 @@ def inputs(data,normalize):
         stops = [normalize_address(stop) for stop in journey_stops.validate(json.loads(raw_stops) if isinstance(raw_stops, str) else raw_stops)]
     except ValueError as error:
         raise zone.QuoteUnavailable(str(error)) from error
-    if stops and dropoff.lower() == 'as directed':
-        raise zone.QuoteUnavailable('Enter a destination after the last stop.')
+    if dropoff.lower() == 'as directed' and service not in ('Hourly chauffeur service', 'Open hours chauffeur service'):
+        raise zone.QuoteUnavailable('Choose hourly service to leave the final destination open.')
     return dict(pickup=pickup,dropoff=dropoff,vehicle=vehicle,service=service,hours=hours,stops=stops)
 
 def issue(data,normalize,tariff,client, *, preview=False):
     if (not enabled() and not preview) or not ready(): raise zone.QuoteUnavailable('Verified journey quotes are not available yet.')
     spec=inputs(data,normalize);now=time.time()
+    hourly = spec['service'] in ('Hourly chauffeur service', 'Open hours chauffeur service')
+    priced_stops = [] if hourly else spec['stops']
     with _lock:
         # Bound both per-client and total spend; trust socket address, not supplied forwarding headers.
         for key in list(_limits):
@@ -60,16 +62,20 @@ def issue(data,normalize,tariff,client, *, preview=False):
             start,count=_limits.get(key,(now,0))
             if count>=cap: raise zone.QuoteUnavailable('Too many quote requests. Please wait a minute.')
             _limits[key]=(start,count+1)
-        cache_key=(spec['pickup'],spec['dropoff'],tuple(spec['stops']))
+        cache_key=(spec['pickup'],spec['dropoff'],tuple(priced_stops))
         cached=_cache.get(cache_key)
         if cached and cached[0]>now: route=cached[1]
         else: route=None
     if route is None:
         key=os.environ['GOOGLE_MAPS_SERVER_KEY']
-        if spec['dropoff'].lower()=='as directed' and spec['service'] in ('Hourly chauffeur service', 'Open hours chauffeur service'):
-            p=zone.geocode(spec['pickup'],key)
-            route=dict(path=[],distance_miles=0,duration_minutes=0,pickup_location=p,dropoff_location=p,congestion_charge=zone.surcharge(p,p),as_directed=True)
-        else: route=zone.driving_route(spec['pickup'],spec['dropoff'],key,stops=spec['stops']) if spec['stops'] else zone.driving_route(spec['pickup'],spec['dropoff'],key)
+        if spec['dropoff'].lower() == 'as directed':
+            pickup = zone.geocode(spec['pickup'], key)
+            route = dict(path=[], distance_miles=0, duration_minutes=0, pickup_location=pickup,
+                         dropoff_location=pickup, congestion_charge=zone.surcharge(pickup, pickup), as_directed=True)
+        elif priced_stops:
+            route = zone.driving_route(spec['pickup'], spec['dropoff'], key, stops=priced_stops)
+        else:
+            route = zone.driving_route(spec['pickup'], spec['dropoff'], key)
         with _lock:
             _cache[cache_key]=(now+300,route)
             while len(_cache)>200: _cache.popitem(last=False)
@@ -100,5 +106,5 @@ def issue(data,normalize,tariff,client, *, preview=False):
 def accept(payload,normalize):
     if not ready(): raise zone.QuoteUnavailable('Verified journey quotes are not available yet.')
     token=payload.get('quote_token','')
-    if not isinstance(token,str) or len(token)>16000: raise zone.QuoteUnavailable('Refresh your journey quote.')
+    if not isinstance(token,str) or len(token)>65536: raise zone.QuoteUnavailable('Refresh your journey quote.')
     return zone.verify_quote(token,os.environ['QUOTE_SIGNING_SECRET'],inputs(payload,normalize))

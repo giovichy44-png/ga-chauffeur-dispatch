@@ -130,37 +130,60 @@ def driving_route(pickup,dropoff,key,*,stops=(),tracking=False):
             raise QuoteUnavailable(f"{label}: {error}") from error
     p = pickup if tracking and isinstance(pickup, dict) else endpoint(pickup, "Collection point")
     d = endpoint(dropoff, "Destination")
-    body={'origin':{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},'destination':{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}},'travelMode':'DRIVE','routingPreference':'TRAFFIC_AWARE','polylineEncoding':'GEO_JSON_LINESTRING'}
-    locations=[endpoint(address, f"Stop {i}") for i, address in enumerate(stops, 1)]
-    via=[{'location':{'latLng':{'latitude':point['lat'],'longitude':point['lng']}}} for point in locations]
-    if via:
-        body['intermediates']=via
-    try:
-        request=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring'})
-        with urllib.request.urlopen(request,timeout=15) as response: data=json.load(response)
-    except Exception:
-        body['routingPreference']='TRAFFIC_UNAWARE'
-        request=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.polyline.geoJsonLinestring'})
-        with urllib.request.urlopen(request,timeout=15) as response: data=json.load(response)
-    routes=data.get('routes',[])
-    if not routes: raise QuoteUnavailable('No driving route is available.')
-    route=routes[0];path=route['polyline']['geoJsonLinestring']['coordinates']
+    locations = [endpoint(address, f"Stop {i}") for i, address in enumerate(stops, 1)]
+
+    def totals_for(points, *, geometry, fallback=False):
+        def waypoint(point):
+            return {"location": {"latLng": {"latitude": point["lat"], "longitude": point["lng"]}}}
+        path, metres, seconds = [], 0, 0
+        fields = "routes.distanceMeters,routes.duration"
+        if geometry:
+            fields += ",routes.polyline.geoJsonLinestring"
+        # Google accepts 25 intermediate waypoints per request. Adjacent batches share an endpoint.
+        for start in range(0, len(points) - 1, 26):
+            batch = points[start:start + 27]
+            body = {"origin": waypoint(batch[0]), "destination": waypoint(batch[-1]), "travelMode": "DRIVE",
+                    "routingPreference": "TRAFFIC_AWARE"}
+            if len(batch) > 2:
+                body["intermediates"] = [waypoint(point) for point in batch[1:-1]]
+            if geometry:
+                body["polylineEncoding"] = "GEO_JSON_LINESTRING"
+            for preference in (("TRAFFIC_AWARE", "TRAFFIC_UNAWARE") if fallback else ("TRAFFIC_AWARE",)):
+                body["routingPreference"] = preference
+                request = urllib.request.Request(
+                    "https://routes.googleapis.com/directions/v2:computeRoutes", data=json.dumps(body).encode(),
+                    headers={"Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": fields})
+                try:
+                    with urllib.request.urlopen(request, timeout=15) as response:
+                        data = json.load(response)
+                    break
+                except (OSError, ValueError):
+                    if preference == "TRAFFIC_UNAWARE" or not fallback:
+                        raise
+            routes = data.get("routes", [])
+            if not routes:
+                raise QuoteUnavailable("No driving route was found. Check the pickup, destination and any stops.")
+            route = routes[0]
+            if geometry:
+                segment = route["polyline"]["geoJsonLinestring"]["coordinates"]
+                path.extend(segment[1:] if path and segment and path[-1] == segment[0] else segment)
+            metres += route.get("distanceMeters", 0)
+            seconds += float(route.get("duration", "0s").rstrip("s"))
+        return path, metres / 1609.344, seconds / 60
+
+    points = [p, *locations, d]
+    path, oneway_miles, oneway_minutes = totals_for(points, geometry=True, fallback=True)
     if tracking:
         return dict(path=path, pickup_location=p, dropoff_location=d, stop_locations=locations)
-    if len(path)<3: raise QuoteUnavailable('A complete road route could not be verified.')
-    oneway_miles=route['distanceMeters']/1609.344
-    oneway_minutes=float(route['duration'].rstrip('s'))/60
-    b2b_miles=oneway_miles*2.0
-    b2b_minutes=oneway_minutes*2.0
+    if len(path) < 3:
+        raise QuoteUnavailable("A complete road route could not be verified. Check the addresses or try again.")
+    b2b_miles = oneway_miles * 2.0
+    b2b_minutes = oneway_minutes * 2.0
     try:
-        b2b_body={'origin':{'location':{'latLng':{'latitude':HYDE_PARK_CORNER['lat'],'longitude':HYDE_PARK_CORNER['lng']}}},'destination':{'location':{'latLng':{'latitude':HYDE_PARK_CORNER['lat'],'longitude':HYDE_PARK_CORNER['lng']}}},'intermediates':[{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},*via,{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}}],'travelMode':'DRIVE','routingPreference':'TRAFFIC_AWARE'}
-        b2b_req=urllib.request.Request('https://routes.googleapis.com/directions/v2:computeRoutes',data=json.dumps(b2b_body).encode(),headers={'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':'routes.distanceMeters,routes.duration'})
-        with urllib.request.urlopen(b2b_req,timeout=15) as b2b_resp: b2b_data=json.load(b2b_resp)
-        b2b_routes=b2b_data.get('routes',[])
-        if b2b_routes and b2b_routes[0].get('distanceMeters'):
-            b2b_miles=b2b_routes[0]['distanceMeters']/1609.344
-            b2b_minutes=float(b2b_routes[0]['duration'].rstrip('s'))/60
-    except Exception:
+        _, base_miles, base_minutes = totals_for([HYDE_PARK_CORNER, *points, HYDE_PARK_CORNER], geometry=False)
+        if base_miles:
+            b2b_miles, b2b_minutes = base_miles, base_minutes
+    except (OSError, KeyError, ValueError, QuoteUnavailable):
         pass
     return {'path':path,'distance_miles':oneway_miles,'duration_minutes':oneway_minutes,'base_to_base_miles':b2b_miles,'base_to_base_minutes':b2b_minutes,'pickup_location':p,'dropoff_location':d,'congestion_charge':18 if any(in_zone(point) for point in (p,*locations,d)) else 0}
 

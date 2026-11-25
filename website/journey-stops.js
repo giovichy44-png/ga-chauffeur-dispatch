@@ -82,7 +82,9 @@
     };
   }
 
-  function mount(container, change = () => {}) {
+  let stopFieldCounter = 0;
+
+  function mount(container, change = () => {}, {inputClass, numbered = false} = {}) {
     const rows = document.createElement('div');
     const add = document.createElement('button');
     add.type = 'button';
@@ -91,15 +93,26 @@
     container.append(rows, add);
     const cleanup = new Map();
     const update = () => {
-      add.disabled = rows.childElementCount >= 5;
+      if (numbered) [...rows.children].forEach((row, index) => {
+        const label = row.querySelector('label');
+        label.textContent = 'Stop ' + (index + 1);
+        row.querySelector('input').setAttribute('aria-label', label.textContent + ' address');
+      });
       change();
     };
     function append(value = '') {
-      if (rows.childElementCount >= 5) return;
       const row = document.createElement('div');
       row.className = 'ga-stop-row';
       const input = document.createElement('input');
       input.type = 'text';
+      if (inputClass) input.className = inputClass;
+      if (numbered) {
+        const label = document.createElement('label');
+        input.id = (container.id || 'journey-stops') + '-' + ++stopFieldCounter;
+        label.htmlFor = input.id;
+        row.append(label);
+        row.classList.add('ga-stop-numbered');
+      }
       input.placeholder = 'Stop address';
       input.setAttribute('aria-label', 'Stop address');
       input.autocomplete = 'off';
@@ -148,6 +161,12 @@
     .ga-address-results button:focus,.ga-address-results button:hover{background:#324238}
     .ga-stop-row{display:flex;align-items:center;gap:8px;margin:8px 0}
     .ga-stop-row .ga-address-field > button{display:none}
+    .ga-stop-numbered{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;row-gap:4px;margin:0 0 12px}
+    .ga-stop-numbered label{grid-column:1/-1;color:var(--gold,#c9b894);font-size:11px;text-transform:uppercase}
+    .ga-stop-numbered > button{border:0;font-size:21px}
+    .ga-stop-numbered .ga-address-field{grid-column:1/-1;grid-row:2}
+    .ga-stop-numbered .ga-address-field > button{display:none}
+    .ga-stop-numbered > button{position:relative;grid-column:2;grid-row:2;margin-right:4px}
     .ga-add-stop{margin:6px 0 12px}`;
   document.head.append(style);
   window.GAJourneyStops = {mount, address};

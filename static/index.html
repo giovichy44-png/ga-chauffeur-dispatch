@@ -20,6 +20,8 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/chauffeur-touch-v2.png">
   <link rel="icon" type="image/png" href="/chauffeur-touch-v2.png">
 <style>
+  .dispatch-edit-address {width:100%;background:#0d1210;border:1px solid var(--border);color:#fff;padding:8px 10px;border-radius:4px;font:inherit;font-size:13px;margin-top:3px;}
+  .dispatch-intake-address {width:100%;background:#151f1a;border:1px solid var(--border);color:#fff;padding:12px 14px;border-radius:5px;font:inherit;}
   #dispatch-live-tracking {
     margin-bottom: 1rem; padding: .75rem; color: #f0e9db; background: #1b231f;
     border: 1px solid #39473f; border-radius: 12px;
@@ -575,11 +577,11 @@
         </div>
         <div>
           <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Collection / Pickup Address *</label>
-          <input type="text" id="eb-pickup" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          <input type="text" id="eb-pickup" required class="dispatch-edit-address">
         </div>
         <div>
           <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Drop-off Destination *</label>
-          <input type="text" id="eb-dropoff" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+          <input type="text" id="eb-dropoff" required class="dispatch-edit-address">
         </div>
         <div id="dispatch-edit-stops"></div>
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
@@ -808,8 +810,8 @@
   <!-- Toast Notification Container -->
   <div class="toast-stack" id="toast-stack"></div>
 
-  <script src="/journey-stops.js?v=1"></script>
+  <script src="/journey-stops.js?v=2"></script>
   <script src="/ga-phone-push.js?v=2"></script>
-  <script src="app.js?v=dispatch-pickup-alerts-1"></script>
+  <script src="app.js?v=dispatch-return-confirmation-1"></script>
 </body>
 </html>

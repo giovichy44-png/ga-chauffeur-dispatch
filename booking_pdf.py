@@ -8,7 +8,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from journey_stops import load, split_return_stop
+from journey_stops import confirmation_legs, load
 
 ASSETS = Path(__file__).parent / "website" / "assets"
 INK = colors.HexColor("#17211c")
@@ -39,19 +39,17 @@ def booking_confirmation(booking, amend_url, fare_rows, vehicle_image):
         return result
 
     width = document.width
+    destination = " · ".join(filter(None, (booking["dropoff_address"], booking.get("dropoff_unit"))))
+    legs, wait_return = confirmation_legs(booking["pickup_address"], destination, load(booking.get("stops")))
+    service = "Wait and return" if wait_return else booking["service_type"]
     logo = Image(str(ASSETS / "ga-logo.png"), width=180, height=53.3)
     logo.hAlign = "LEFT"
     header = table([[logo], [para("Booking confirmation", 29, colors.white, "Times-Roman")],
-                    [para(f"{booking['confirmation_code']} · {booking['service_type']}", 11, GOLD)]], [width], INK)
+                    [para(f"{booking['confirmation_code']} · {service}", 11, GOLD)]], [width], INK)
     pickup = " · ".join(filter(None, (booking["pickup_address"], booking.get("pickup_unit"))))
-    destination = " · ".join(filter(None, (booking["dropoff_address"], booking.get("dropoff_unit"))))
-    stops, return_stop = split_return_stop(booking["pickup_address"], load(booking.get("stops")))
     itinerary = [[para("YOUR JOURNEY", 9, INK, "Helvetica-Bold"), para(booking["formatted_pickup"], 10)]]
     itinerary.append([para("Collection"), para(pickup)])
-    itinerary.extend([para(f"Stop {index}"), para(stop)] for index, stop in enumerate(stops, 1))
-    itinerary.append([para("Destination"), para(destination)])
-    if return_stop:
-        itinerary.append([para("Return stop"), para(return_stop)])
+    itinerary.extend([para(label), para(address)] for label, address in legs)
     if booking.get("flight_number"):
         itinerary.append([para("Flight"), para(booking["flight_number"])])
 

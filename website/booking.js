@@ -20,6 +20,43 @@
   const query = new URLSearchParams(location.search);
   let serverQuotes=false, verifiedQuote=null, verifiedKey='', routeError='';
 
+  const quoteNotice = document.createElement('aside');
+  quoteNotice.className = 'booking-quote-notice';
+  quoteNotice.hidden = true;
+  const quoteReason = document.createElement('p');
+  quoteReason.setAttribute('role', 'status');
+  const quoteAction = document.createElement('button');
+  quoteAction.type = 'button';
+  quoteNotice.append(quoteReason, quoteAction);
+  form.prepend(quoteNotice);
+
+  function showQuoteProblem(message) {
+    routeError = message;
+    quoteNotice.hidden = !message;
+    quoteReason.textContent = message;
+    if (!message) return;
+    const stop = message.match(/^Stop ([0-9]+):/i);
+    const target = /^Collection point:/i.test(message) ? '#booking-pickup'
+      : /^Destination:/i.test(message) ? '#booking-destination'
+      : /hours|duration/i.test(message) ? '#booking-duration select'
+      : null;
+    const editable = Boolean(stop || target || /address|choose|no driving route|complete road route/i.test(message));
+    quoteAction.textContent = editable ? 'Edit journey details' : 'Retry quote';
+    quoteAction.onclick = async () => {
+      if (!editable) {
+        try {
+          const config = await window.GAServerQuote.config;
+          serverQuotes = Boolean(config.server_quotes);
+          return updateRouteAndMetrics();
+        } catch(error) { showQuoteProblem(error.message); return; }
+      }
+      setStep(1);
+      const field = stop ? document.querySelectorAll('#web-stops input')[Number(stop[1]) - 1]
+        : form.querySelector(target || '#booking-pickup');
+      field?.focus();
+    };
+  }
+
   // Approved Corporate Client Account Emails (No Credit Card Required — Billed by Invoice)
   const CORPORATE_EMAILS = new Set([
     'makiko.thomas@suntory.com',
@@ -70,7 +107,7 @@
       hours: duration === 'open' ? '0' : duration, stops: JSON.stringify(stops.values())};
   }
   function currentQuote(){return verifiedQuote && verifiedKey===window.GAServerQuote.key(quoteSpec()) && verifiedQuote.expires>Date.now()/1000+10 ? verifiedQuote:null;}
-  window.GAServerQuote?.config.then(config=>{serverQuotes=Boolean(config.server_quotes);if(serverQuotes)updateRouteAndMetrics();}).catch(()=>{});
+  window.GAServerQuote?.config.then(config=>{serverQuotes=Boolean(config.server_quotes);if(serverQuotes)updateRouteAndMetrics();}).catch(error=>showQuoteProblem(error.message));
 
 
   // 4 Streamlined Steps
@@ -568,7 +605,7 @@
     updateConditionalFlightDisplay();
 
     if (serverQuotes) {
-      verifiedQuote=null; routeError='';
+      verifiedQuote=null; showQuoteProblem('');
       if(distEl)distEl.textContent='—';
       if(durEl)durEl.textContent='—';
       if(locsEl)locsEl.textContent='Checking journey…';
@@ -599,7 +636,7 @@
         updatePricingAndReview();
       }catch(error){
         if(requestId!==routeRequestId)return;
-        routeError=error.name==='TimeoutError' ? 'The journey quote timed out. Try again.' : error.message;
+        showQuoteProblem(error.message);
         if(locsEl)locsEl.textContent=routeError;
         updatePricingAndReview();
       }
@@ -749,7 +786,7 @@
 
     if (serverQuotes) {
       const spec=quoteSpec(), key=window.GAServerQuote.key(spec);
-      [[sPrice,'mercedes_s_class'],[vPrice,'mercedes_v_class'],[rPrice,'range_rover_autobiography']].forEach(async([el,vehicle])=>{if(!el)return;el.textContent='Verifying…';try{const q=await window.GAServerQuote.get({...spec,vehicle});if(window.GAServerQuote.key(quoteSpec())===key)el.textContent=spec.service.startsWith('Open hours')?'Billed after the journey':'£'+q.total_fare.toFixed(2);}catch(e){el.textContent='Quote unavailable';}});
+      [[sPrice,'mercedes_s_class'],[vPrice,'mercedes_v_class'],[rPrice,'range_rover_autobiography']].forEach(async([el,vehicle])=>{if(!el)return;el.textContent='Verifying…';try{const q=await window.GAServerQuote.get({...spec,vehicle});if(window.GAServerQuote.key(quoteSpec())===key)el.textContent=spec.service.startsWith('Open hours')?'Billed after the journey':'£'+q.total_fare.toFixed(2);}catch(e){if(window.GAServerQuote.key(quoteSpec())===key)el.textContent=e.message;}});
     } else if (isHourly) {
       if (sPrice) sPrice.textContent = `£340.00`;
       if (vPrice) vPrice.textContent = `£380.00`;
@@ -1068,7 +1105,7 @@
     try {
       const config=await window.GAServerQuote.config;
       serverQuotes=Boolean(config.server_quotes);
-      if(serverQuotes&&!currentQuote()){await updateRouteAndMetrics();if(!currentQuote())throw Error('Please verify your route and price before booking.');return;}
+      if(serverQuotes&&!currentQuote()){await updateRouteAndMetrics();if(!currentQuote())throw Error(routeError || 'Enter a pickup and destination before requesting a quote.');return;}
     }catch(error){status.style.display='block';status.textContent=error.message;return;}
     const data = Object.fromEntries(new FormData(form));
     const isHourly = data.serviceType === 'Hourly chauffeur service';
