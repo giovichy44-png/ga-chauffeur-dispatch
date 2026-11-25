@@ -20,6 +20,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/chauffeur-touch-v2.png">
   <link rel="icon" type="image/png" href="/chauffeur-touch-v2.png">
 <style>
+  .passenger-name-fields{display:grid;grid-template-columns:minmax(90px,115px) minmax(0,1fr);gap:8px;align-items:end}
   .dispatch-edit-address {width:100%;background:#0d1210;border:1px solid var(--border);color:#fff;padding:8px 10px;border-radius:4px;font:inherit;font-size:13px;margin-top:3px;}
   .dispatch-intake-address {width:100%;background:#151f1a;border:1px solid var(--border);color:#fff;padding:12px 14px;border-radius:5px;font:inherit;}
   #dispatch-live-tracking {
@@ -238,8 +239,10 @@
             <!-- Customer Details -->
             <div class="form-group-grid two-col">
               <div class="field">
-                <label>Passenger Full Name *</label>
-                <input type="text" id="f-name" required placeholder="e.g. Lord Henry Cavendish">
+                <div class="passenger-name-fields">
+                  <label for="f-title">Title (optional)<select id="f-title" autocomplete="honorific-prefix"><option value="">Title</option><option>Mr</option><option>Mrs</option><option>Ms</option><option>Miss</option><option>Dr</option><option>Mx</option></select></label>
+                  <label for="f-name">Passenger full name *<input type="text" id="f-name" required autocomplete="name"></label>
+                </div>
               </div>
               <div class="field">
                 <label>Mobile Phone (for chauffeur SMS) *</label>
@@ -559,8 +562,10 @@
             </select>
           </div>
           <div>
-            <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Passenger Full Name *</label>
-            <input type="text" id="eb-name" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
+            <div class="passenger-name-fields">
+              <label for="eb-title">Title (optional)<select id="eb-title" class="dispatch-edit-address" autocomplete="honorific-prefix"><option value="">Title</option><option>Mr</option><option>Mrs</option><option>Ms</option><option>Miss</option><option>Dr</option><option>Mx</option></select></label>
+              <label for="eb-name">Passenger full name *<input type="text" id="eb-name" required class="dispatch-edit-address" autocomplete="name"></label>
+            </div>
           </div>
           <div>
             <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Phone Number *</label>
@@ -812,6 +817,6 @@
 
   <script src="/journey-stops.js?v=2"></script>
   <script src="/ga-phone-push.js?v=2"></script>
-  <script src="app.js?v=dispatch-return-confirmation-1"></script>
+  <script src="app.js?v=dispatch-passenger-title-1"></script>
 </body>
 </html>

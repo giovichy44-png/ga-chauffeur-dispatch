@@ -1011,7 +1011,9 @@ function openEditBookingModal(bookingId) {
   const rawDt = String(b.pickup_datetime || '').trim().replace(' ', 'T').slice(0, 16);
   document.getElementById('eb-datetime').value = rawDt;
   document.getElementById('eb-vehicle').value = b.vehicle_class || 'mercedes_s_class';
-  document.getElementById('eb-name').value = b.customer_name || '';
+  const nameParts = (b.customer_name || '').match(/^(Mr|Mrs|Ms|Miss|Dr|Mx)\.?\s+(.+)$/i);
+  document.getElementById('eb-title').value = nameParts ? nameParts[1][0].toUpperCase() + nameParts[1].slice(1).toLowerCase() : '';
+  document.getElementById('eb-name').value = nameParts ? nameParts[2] : (b.customer_name || '');
   document.getElementById('eb-phone').value = b.customer_phone || '';
   document.getElementById('eb-email').value = b.customer_email || '';
   document.getElementById('eb-flight').value = b.flight_number || '';
@@ -1035,6 +1037,7 @@ async function submitEditBooking(e) {
     pickup_datetime: document.getElementById('eb-datetime').value.replace('T', ' '),
     vehicle_class: document.getElementById('eb-vehicle').value,
     customer_name: document.getElementById('eb-name').value,
+    customer_title: document.getElementById('eb-title').value,
     customer_phone: document.getElementById('eb-phone').value,
     customer_email: document.getElementById('eb-email').value,
     flight_number: document.getElementById('eb-flight').value,
@@ -2101,6 +2104,7 @@ function initForm() {
 
       const payload = {
         customer_name: document.getElementById('f-name').value,
+        customer_title: document.getElementById('f-title').value,
         customer_phone: document.getElementById('f-phone').value,
         customer_email: document.getElementById('f-email').value,
         service_type: journeySpec().service,

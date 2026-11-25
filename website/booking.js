@@ -1163,6 +1163,7 @@
 
     const payload = {
       customer_name: data.name,
+      customer_title: data.customer_title,
       name: data.name,
       customer_email: data.email,
       email: data.email,

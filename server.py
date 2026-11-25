@@ -1217,7 +1217,17 @@ def chauffeur_first_name(chauffeur):
     return (str(chauffeur.get("name") or "").split() or ["Chauffeur"])[0]
 
 
-def confirmation_fare(net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare):
+def passenger_display_name(value, title):
+    name = str(value or "").strip()
+    titles = {"mr": "Mr", "mrs": "Mrs", "ms": "Ms", "miss": "Miss", "dr": "Dr", "mx": "Mx"}
+    selected = titles.get(str(title or "").strip().rstrip(".").casefold())
+    if selected and name:
+        name = re.sub(r"^(Mr|Mrs|Ms|Miss|Dr|Mx)\.?\s+", "", name, flags=re.I)
+        return f"{selected} {name}"
+    return name
+
+
+def confirmation_fare(net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare, *, service_type="", hours_booked=0, vehicle_tier=None):
     base = float(net_fare if net_fare is not None else 165)
     parking = float(parking_fee or 0)
     dropoff = float(dropoff_fee or 0)
@@ -1225,7 +1235,15 @@ def confirmation_fare(net_fare, parking_fee, dropoff_fee, congestion_charge, vat
     subtotal = round(base + parking + dropoff + congestion, 2)
     tax = round((base + parking + dropoff) * .20, 2) if vat_amt is None else float(vat_amt)
     total = round(subtotal + tax, 2) if total_fare is None else float(total_fare)
-    rows = [("Base journey fare", base)]
+    label = "Base journey fare"
+    hours = int(hours_booked or 0)
+    if hours > 0 and "hourly" in service_type.casefold():
+        tariff = VEHICLE_CONFIGS[normalize_vehicle_tier(vehicle_tier)]["hourly_rate"]
+        if abs(base - hours * tariff) < 0.005:
+            label = f"Hourly chauffeur service · {hours} hours × £{tariff:,.2f}/hour"
+        else:
+            label = f"Hourly chauffeur service · {hours} hours at £{base / hours:,.2f}/hour average"
+    rows = [(label, base)]
     if parking + dropoff:
         rows.append(("Airport parking", parking + dropoff))
     if congestion:
@@ -1259,7 +1277,8 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     pickup_time, _ = format_pickup_and_dropoff_times(pickup_dt)
     deferred = service_type == "Open hours chauffeur service"
     fare_rows = () if deferred else confirmation_fare(net_fare if net_fare is not None else fare_amt, parking_fee,
-                                  dropoff_fee, congestion_charge, vat_amt, total_fare)
+                                  dropoff_fee, congestion_charge, vat_amt, total_fare, service_type=service_type,
+                                  hours_booked=hours_booked, vehicle_tier=vehicle_tier)
     fare_table = "".join(
         f'<tr><td style="padding:6px 8px 6px 0;">{label}</td>'
         f'<td align="right" style="white-space:nowrap;font-weight:{"700" if label == "Total" else "400"};'
@@ -1361,7 +1380,8 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
         lines.extend(["", "Open hours · Final fare billed after the journey."])
     else:
         lines.extend(["", *(f"{label}: £{amount:,.2f}" for label, amount in confirmation_fare(
-            net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare
+            net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare,
+            service_type=service_type, hours_booked=hours_booked, vehicle_tier=vehicle_name
         ))])
     lines.extend(["", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
                   "GA Chauffeur Services Limited", COMPANY_PHONE, FROM_EMAIL, COMPANY_WEBSITE])
@@ -2999,7 +3019,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         booking["formatted_pickup"], _ = format_pickup_and_dropoff_times(booking["pickup_datetime"])
         fares = () if booking["service_type"] == "Open hours chauffeur service" else confirmation_fare(
             booking["fare_amount"], booking["parking_fee"], booking["dropoff_fee"],
-            booking["congestion_charge"], booking["vat_amount"], booking["total_fare"])
+            booking["congestion_charge"], booking["vat_amount"], booking["total_fare"],
+            service_type=booking["service_type"], hours_booked=booking["hours_booked"],
+            vehicle_tier=booking["vehicle_class"])
         reference = booking["confirmation_code"]
         body = booking_pdf.booking_confirmation(
             booking, customer_manage_url(reference, booking["customer_email"]), fares,
@@ -3063,6 +3085,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         # Normalize field names to accept both dispatch schema and website form submissions
         if "customer_name" not in payload and "name" in payload:
             payload["customer_name"] = payload["name"]
+        if payload.get("customer_title"):
+            payload["customer_name"] = passenger_display_name(payload.get("customer_name"), payload["customer_title"])
         if "customer_phone" not in payload and "phone" in payload:
             payload["customer_phone"] = payload["phone"]
         if "customer_email" not in payload and "email" in payload:
@@ -3593,6 +3617,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         email_subject = f"Chauffeur Assigned: {chauffeur_first_name(chauffeur)} - {booking['confirmation_code']}"
         html_email = build_luxury_email_html(
             stops=journey_stops.load(booking.get("stops")),
+            hours_booked=booking.get("hours_booked", 0),
             booking_ref=booking['confirmation_code'],
             customer_name=booking['customer_name'],
             pickup_addr=booking['pickup_address'],
@@ -3617,6 +3642,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         )
         plain_text_email = build_luxury_email_text(
             stops=journey_stops.load(booking.get("stops")),
+            hours_booked=booking.get("hours_booked", 0),
             service_type=booking["service_type"],
             booking_ref=booking['confirmation_code'], customer_name=booking['customer_name'],
             pickup_addr=booking['pickup_address'], dropoff_addr=booking['dropoff_address'],
@@ -3705,7 +3731,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         real_id = booking["id"]
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        customer_name = str(payload.get("customer_name", booking.get("customer_name", ""))).strip()
+        customer_name = passenger_display_name(payload.get("customer_name", booking.get("customer_name")),
+                                               payload.get("customer_title"))
         customer_phone = str(payload.get("customer_phone", booking.get("customer_phone", ""))).strip()
         customer_email = str(payload.get("customer_email", booking.get("customer_email", ""))).strip()
         pickup_datetime = str(payload.get("pickup_datetime", booking.get("pickup_datetime", ""))).strip().replace("T", " ")
@@ -5652,7 +5679,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                         booking["confirmation_code"], booking["customer_name"], booking["pickup_address"],
                         booking["dropoff_address"], booking["pickup_datetime"], booking["vehicle_class"],
                         booking["fare_amount"], booking["vat_amount"], booking["total_fare"],
-                        service_type=booking["service_type"], chauffeur=current_chauffeur,
+                        service_type=booking["service_type"], chauffeur=current_chauffeur, hours_booked=booking["hours_booked"],
                         flight=booking.get("flight_number"), special_requests=booking.get("special_requests"),
                         parking_fee=booking["parking_fee"], dropoff_fee=booking["dropoff_fee"],
                         congestion_charge=booking["congestion_charge"], customer_email=booking["customer_email"],
