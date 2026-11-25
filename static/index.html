@@ -21,25 +21,20 @@
   <link rel="icon" type="image/png" href="/chauffeur-touch-v2.png">
 <style>
   #dispatch-live-tracking {
-    box-sizing: border-box; width: min(92rem, calc(100% - 2rem)); max-width: 100%;
-    max-height: 92vh; overflow: auto; padding: 0 1rem 1rem;
-    background: #1b231f; color: #f0e9db; border: 1px solid #847759; border-radius: 12px;
+    margin-bottom: 1rem; padding: .75rem; color: #f0e9db; background: #1b231f;
+    border: 1px solid #39473f; border-radius: 12px;
   }
   .dispatch-tracking-header {
-    display: flex; align-items: center; justify-content: space-between; gap: .75rem;
-    position: sticky; top: 0; z-index: 20; padding: .75rem 0; background: #1b231f;
+    display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .4rem;
   }
-  .dispatch-tracking-header h2 { margin: 0; }
+  .dispatch-tracking-header h2 { margin: 0; font-size: 1.2rem; }
   .dispatch-tracking-header button { min-height: 44px; }
-  #dispatch-live-map { height: clamp(280px, 65vh, 800px); border-radius: 8px; background: #27352e; }
+  #dispatch-live-map { height: clamp(240px, 44dvh, 520px); border-radius: 8px; background: #e9ece7; }
+  #dispatch-map-status, #dispatch-route-status { margin: .4rem 0; font-size: .875rem; }
+  #dispatch-live-locations { display: flex; flex-wrap: wrap; gap: .5rem 1rem; list-style: none; padding: 0; }
+  #dispatch-live-locations:empty, #dispatch-route-status:empty { display: none; }
   @media (max-width: 600px) {
-    #dispatch-live-tracking {
-      inset: 0; margin: 0; width: 100%; height: 100%; max-height: 100%; border: 0; border-radius: 0;
-      padding-bottom: max(1rem, env(safe-area-inset-bottom));
-    }
-    .dispatch-tracking-header { padding-top: max(.75rem, env(safe-area-inset-top)); }
-    .dispatch-tracking-header h2 { font-size: 1.125rem; }
-    #dispatch-live-map { height: 50vh; height: 50dvh; }
+    #dispatch-live-map { height: clamp(220px, 38dvh, 380px); }
   }
 </style>
 </head>
@@ -67,7 +62,7 @@
         <button type="button" class="btn btn-secondary" onclick="switchTab('fleet')" style="font-size: 12px; padding: 7px 11px;">
           🚘 Fleet &amp; Chauffeurs
         </button>
-        <button type="button" class="btn btn-secondary" onclick="openLiveTracking()">Live Tracking</button>
+        <button type="button" class="btn btn-secondary" id="live-tracking-toggle" aria-controls="dispatch-live-tracking" aria-expanded="false" onclick="openLiveTracking()">Live Tracking</button>
         <button type="button" class="btn btn-secondary" id="dispatch-phone-push" onclick="enableDispatchPush(this)">Enable phone notifications</button>
         <button type="button" class="btn btn-secondary" onclick="openDriverCommsModal()" style="font-size: 12px; padding: 7px 11px; position: relative;" title="Live Chauffeur Messages">
           💬 Chauffeur Messages <span id="badge-driver-msgs" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:10px;margin-left:4px;">0</span>
@@ -148,6 +143,16 @@
     <section class="tab-content active" id="pane-jobs">
       <div class="content-container wide-sheet">
         
+        <section id="dispatch-live-tracking" hidden aria-labelledby="dispatch-tracking-title">
+          <div class="dispatch-tracking-header">
+            <h2 id="dispatch-tracking-title">Live chauffeur tracking</h2>
+            <button type="button" class="btn btn-secondary" onclick="closeLiveTracking()" aria-label="Hide live tracking">Hide map</button>
+          </div>
+          <p id="dispatch-map-status" role="status">Loading Google Maps…</p>
+          <div id="dispatch-live-map" aria-label="Google map of live chauffeur locations"></div>
+          <p id="dispatch-route-status" role="status"></p>
+          <ul id="dispatch-live-locations" aria-label="Chauffeur locations"></ul>
+        </section>
         <!-- Filter Bar -->
         <div class="jobs-filter-bar" style="margin-bottom: 12px;">
           <div class="filter-pills">
@@ -624,36 +629,7 @@
       </div>
       <div class="modal-body">
         <div id="modal-job-summary" class="job-summary-pill"></div>
-        <p style="font-size: 13px; color: #a1a1aa; margin: 12px 0 16px;">Tap which car will carry out this journey:</p>
-
-        <div class="car-choice-list">
-          <div class="car-choice-btn" onclick="assignVehicle('GA-CHF-01')">
-            <div class="choice-icon">S</div>
-            <div class="choice-info">
-              <strong>Mercedes-Benz S-Class Saloon</strong>
-              <span>Reg: HN76GYG • Up to 4 Passengers</span>
-            </div>
-            <span class="choice-badge">Select ↗</span>
-          </div>
-
-          <div class="car-choice-btn" onclick="assignVehicle('GA-CHF-02')">
-            <div class="choice-icon">V</div>
-            <div class="choice-info">
-              <strong>Mercedes-Benz V-Class MPV</strong>
-              <span>Reg: LR74EOG • 6-Seater Luxury Cabin</span>
-            </div>
-            <span class="choice-badge">Select ↗</span>
-          </div>
-
-          <div class="car-choice-btn" onclick="assignVehicle('GA-CHF-03')">
-            <div class="choice-icon">RR</div>
-            <div class="choice-info">
-              <strong>Range Rover Autobiography LWB</strong>
-              <span>Reg: UKZ 454 • Luxury 4x4 SUV</span>
-            </div>
-            <span class="choice-badge">Select ↗</span>
-          </div>
-        </div>
+        <div class="car-choice-list"></div>
       </div>
     </div>
   </div>
@@ -731,7 +707,8 @@
             <input type="text" id="fm-model" placeholder="Vehicle Model (e.g. Mercedes-Benz S-Class) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
             <input type="text" id="fm-plate" placeholder="Reg Plate (e.g. HN76GYG) *" required style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
             <input type="text" id="fm-pco" placeholder="PCO Licence / Badge Ref (e.g. TFL-PCO-948210)" style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
-            <input type="text" id="fm-pin" placeholder="4-Digit Chauffeur App PIN (e.g. 1234)" maxlength="8" style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
+            <label for="fm-call-sign">Call sign <input type="text" id="fm-call-sign" class="dispatch-job-action" placeholder="Automatic" maxlength="8" autocapitalize="characters"></label>
+            <input type="password" id="fm-pin" placeholder="Set chauffeur password" minlength="8" maxlength="64" autocomplete="new-password" style="background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px;">
           </div>
           <label for="fm-bag-capacity" class="jobs-sort-label">Vehicle luggage capacity
             <input id="fm-bag-capacity" type="number" min="0" step="1" inputmode="numeric" class="dispatch-job-action" placeholder="Vehicle default">
@@ -843,17 +820,7 @@
   <div class="toast-stack" id="toast-stack"></div>
 
   <script src="/journey-stops.js?v=1"></script>
-  <dialog id="dispatch-live-tracking">
-    <div class="dispatch-tracking-header">
-      <h2>Live chauffeur tracking</h2>
-      <form method="dialog"><button class="btn btn-secondary" aria-label="Close live tracking and return to jobs">Close</button></form>
-    </div>
-    <p id="dispatch-map-status" role="status">Loading Google Maps…</p>
-    <div id="dispatch-live-map" aria-label="Google map of live chauffeur locations"></div>
-    <p id="dispatch-route-status" role="status"></p>
-    <ul id="dispatch-live-locations" aria-label="Chauffeur locations"></ul>
-  </dialog>
   <script src="/ga-phone-push.js?v=2"></script>
-  <script src="app.js?v=dispatch-fast-map-1"></script>
+  <script src="app.js?v=dispatch-tracking-workspace-1"></script>
 </body>
 </html>

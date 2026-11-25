@@ -488,16 +488,16 @@
       <div class="eyebrow">Verified Chauffeur Portal</div>
       <h2 style="font-family:Georgia,serif;font-weight:normal;font-size:22px;color:#fff;margin-bottom:8px;">Chauffeur Sign In</h2>
       <p style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.45;">
-        Enter your vehicle registration plate (or mobile number) and your 4-digit chauffeur PIN provided by GA Dispatch.
+        Enter your GA call sign and password.
       </p>
       <div id="driver-login-err" style="display:none;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;padding:10px;border-radius:6px;font-size:12.5px;margin-bottom:14px;"></div>
       <form onsubmit="submitDriverLogin(event)">
         <div class="input-field">
-          <label>Vehicle Registration Plate or Mobile Phone</label>
-          <input type="text" id="dl-identifier" placeholder="e.g. HN76GYG or +44 7886 622082" required autocomplete="username">
+          <label for="dl-identifier">Call sign</label>
+          <input type="text" id="dl-identifier" placeholder="GA1" autocapitalize="characters" required autocomplete="username">
         </div>
         <div class="input-field">
-          <label>4-Digit Chauffeur PIN</label>
+          <label for="dl-pin">Password</label>
           <input type="password" id="dl-pin" placeholder="••••" required autocomplete="current-password">
         </div>
         <button type="submit" style="width:100%;background:var(--gold);color:#121715;border:none;padding:14px;border-radius:6px;font-weight:800;font-size:14px;cursor:pointer;">
@@ -1057,6 +1057,7 @@
               </div>
             </div>
 
+            ${b.vehicle_model ? `<p class="job-vehicle">${esc(b.vehicle_model)} · ${esc(b.license_plate || '')}</p>` : ''}
             <div class="route-box">
               <div class="route-point">
                 <div class="route-head">

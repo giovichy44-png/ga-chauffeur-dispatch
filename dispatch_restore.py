@@ -8,7 +8,7 @@ import db
 TABLES = ("bookings", "confirmations", "action_logs", "driver_messages", "customer_chat_messages", "alert_receipts")
 FLEET_FIELDS = ("id", "name", "phone", "avatar", "rating", "trips_count", "vehicle_model", "vehicle_class",
                 "license_plate", "passenger_capacity", "luggage_capacity", "status", "lat", "lng", "current_zone",
-                "email", "pco_license", "docs_verified")
+                "email", "pco_license", "docs_verified", "call_sign")
 
 
 def restore(snapshot):
@@ -37,6 +37,7 @@ def restore(snapshot):
                 conn.execute(f"INSERT INTO chauffeurs ({','.join(columns)},driver_token) VALUES ({placeholders},?) "
                              f"ON CONFLICT(id) DO UPDATE SET {updates}",
                              [*[record[name] for name in columns], secrets.token_urlsafe(24)])
+            db.assign_missing_call_signs(conn)
             for table in TABLES:
                 fields = [row["name"] for row in conn.execute(f"PRAGMA table_info({table})")]
                 records = snapshot.get(table, snapshot.get("actions", []) if table == "action_logs" else [])

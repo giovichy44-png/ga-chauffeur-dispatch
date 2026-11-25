@@ -8,6 +8,7 @@ Enquiries Email: enquiries@gachauffeurs.co.uk
 Fleet: Mercedes-Benz S-Class, Mercedes-Benz V-Class, Range Rover Autobiography LWB
 """
 
+import secrets
 import sys
 import os
 import json
@@ -1907,7 +1908,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/dispatch/live-locations":
             with db.get_connection() as conn:
                 rows = conn.execute("""
-                    SELECT c.id, c.name, c.vehicle_class, l.latitude, l.longitude, l.accuracy, l.heading,
+                    SELECT c.id, c.name, c.call_sign, COALESCE(b.vehicle_class, c.vehicle_class) AS vehicle_class, l.latitude, l.longitude, l.accuracy, l.heading,
                            1 AS location_live, l.updated_at, b.status AS job_status,
                            CASE WHEN b.status IN ('EN_ROUTE', 'ON_BOARD', 'NEXT_STOP') THEN b.id END AS journey_id,
                            b.confirmation_code AS journey_reference
@@ -2794,8 +2795,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT b.*,
-                   c.name as chauffeur_name, c.phone as chauffeur_phone,
-                   c.vehicle_model, c.license_plate, c.rating as chauffeur_rating,
+                   c.name as chauffeur_name, c.call_sign AS chauffeur_call_sign, c.phone as chauffeur_phone,
+                   COALESCE(b.assigned_vehicle_model, c.vehicle_model) AS vehicle_model,
+               COALESCE(b.assigned_vehicle_plate, c.license_plate) AS license_plate, c.rating as chauffeur_rating,
                    c.lat as chauffeur_lat, c.lng as chauffeur_lng
             FROM bookings b
             LEFT JOIN chauffeurs c ON b.chauffeur_id = c.id
@@ -2843,8 +2845,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         sql = """
         SELECT b.*,
-               c.name as chauffeur_name, c.phone as chauffeur_phone,
-               c.vehicle_model, c.license_plate, c.rating as chauffeur_rating,
+               c.name as chauffeur_name, c.call_sign AS chauffeur_call_sign, c.phone as chauffeur_phone,
+               COALESCE(b.assigned_vehicle_model, c.vehicle_model) AS vehicle_model,
+               COALESCE(b.assigned_vehicle_plate, c.license_plate) AS license_plate, c.rating as chauffeur_rating,
                c.lat as chauffeur_lat, c.lng as chauffeur_lng
         FROM bookings b
         LEFT JOIN chauffeurs c ON b.chauffeur_id = c.id
@@ -2868,8 +2871,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         cursor = conn.cursor()
         cursor.execute("""
         SELECT b.*,
-               c.name as chauffeur_name, c.phone as chauffeur_phone,
-               c.vehicle_model, c.license_plate, c.rating as chauffeur_rating,
+               c.name as chauffeur_name, c.call_sign AS chauffeur_call_sign, c.phone as chauffeur_phone,
+               COALESCE(b.assigned_vehicle_model, c.vehicle_model) AS vehicle_model,
+               COALESCE(b.assigned_vehicle_plate, c.license_plate) AS license_plate, c.rating as chauffeur_rating,
                c.lat as chauffeur_lat, c.lng as chauffeur_lng
         FROM bookings b
         LEFT JOIN chauffeurs c ON b.chauffeur_id = c.id
@@ -3356,6 +3360,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         chauffeur_id = payload.get("chauffeur_id")
         conn = db.get_connection()
         cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")
 
         cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
         booking = cursor.fetchone()
@@ -3370,7 +3375,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             if booking.get("chauffeur_id"):
                 cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ? AND active_booking_id = ?", (booking["chauffeur_id"], booking_id))
-            cursor.execute("UPDATE bookings SET chauffeur_id = NULL, status = 'PENDING', updated_at = ? WHERE id = ?", (now_str, booking_id))
+            cursor.execute("UPDATE bookings SET chauffeur_id = NULL, assigned_vehicle_model = NULL, assigned_vehicle_plate = NULL, status = 'PENDING', updated_at = ? WHERE id = ?", (now_str, booking_id))
             self.log_booking_action(conn, booking_id, booking.get("chauffeur_id"), "CHAUFFEUR_REMOVED",
                                     "Dispatch account", "Chauffeur removed from booking.")
             conn.commit()
@@ -3391,6 +3396,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             model = vehicle_tier_key(candidate["vehicle_model"])
             return configured == booked_tier and model in (None, configured)
 
+        vehicle_id = payload.get("vehicle_id")
+        if vehicle_id is not None and (not isinstance(vehicle_id, str) or not vehicle_id):
+            conn.close()
+            self.send_json({"error": "Choose a fleet vehicle."}, 400)
+            return
+
         if not chauffeur_id or chauffeur_id == "auto":
             available = cursor.execute("""
                 SELECT * FROM chauffeurs WHERE status = 'AVAILABLE'
@@ -3408,13 +3419,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 self.send_json({"error": "Chauffeur not found"}, 404)
                 return
-            if not matches_vehicle(chauffeur):
-                conn.close()
-                self.send_json({"error": f"Choose a chauffeur with a {VEHICLE_CONFIGS[booked_tier]['name']}."}, 409)
-                return
 
+        vehicle = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (vehicle_id,)).fetchone() if vehicle_id else chauffeur
+        if not vehicle or not matches_vehicle(vehicle) or not vehicle["license_plate"]:
+            conn.close()
+            self.send_json({"error": f"Choose a fleet vehicle in the booked class: {VEHICLE_CONFIGS[booked_tier]['name']}."}, 409)
+            return
         chauffeur = dict(chauffeur)
+        chauffeur.update({field: vehicle[field] for field in ("vehicle_model", "license_plate", "vehicle_class")})
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        booking_status = booking["status"] if booking["chauffeur_id"] == chauffeur_id else "ASSIGNED"
 
         if booking["chauffeur_id"] and booking["chauffeur_id"] != chauffeur_id:
             cursor.execute("""
@@ -3429,8 +3443,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         """, (booking_id, chauffeur_id))
 
         cursor.execute("""
-        UPDATE bookings SET chauffeur_id = ?, status = 'ASSIGNED', updated_at = ? WHERE id = ?
-        """, (chauffeur_id, now_str, booking_id))
+        UPDATE bookings SET chauffeur_id = ?, assigned_vehicle_model = ?, assigned_vehicle_plate = ?,
+                            status = ?, updated_at = ? WHERE id = ?
+        """, (chauffeur_id, chauffeur["vehicle_model"], chauffeur["license_plate"], booking_status, now_str, booking_id))
 
         cnf_email_id = f"CNF-{random.randint(1000, 9999)}"
         email_subject = f"Chauffeur Assigned: {chauffeur_first_name(chauffeur)} - {booking['confirmation_code']}"
@@ -3494,7 +3509,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         ))
 
         self.log_booking_action(conn, booking_id, chauffeur_id, "CHAUFFEUR_ALLOCATED", "Dispatch account",
-                                "Chauffeur allocated: " + chauffeur["name"])
+                                f"Chauffeur allocated: {chauffeur['name']} · {chauffeur['vehicle_model']} ({chauffeur['license_plate']})")
 
         conn.commit()
         conn.close()
@@ -3504,14 +3519,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "chauffeur_id": chauffeur_id,
             "chauffeur_name": chauffeur["name"],
             "old_chauffeur_id": booking["chauffeur_id"] if booking["chauffeur_id"] != chauffeur_id else None,
-            "status": "ASSIGNED"
+            "status": booking_status
         })
 
         self.send_json({
             "success": True,
             "booking_id": booking_id,
             "chauffeur": chauffeur,
-            "status": "ASSIGNED"
+            "status": booking_status
         })
 
     def log_booking_action(self, conn, booking_id, chauffeur_id, action, actor, details):
@@ -3556,7 +3571,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if booking["chauffeur_id"] and vehicle_class != vehicle_tier_key(booking["vehicle_class"]):
             assigned = cursor.execute("SELECT vehicle_class, vehicle_model FROM chauffeurs WHERE id = ?",
                                       (booking["chauffeur_id"],)).fetchone()
-            if not assigned or vehicle_tier_key(assigned["vehicle_class"]) != vehicle_class or vehicle_tier_key(assigned["vehicle_model"]) not in (None, vehicle_class):
+            if booking.get("assigned_vehicle_plate") or not assigned or vehicle_tier_key(assigned["vehicle_class"]) != vehicle_class or vehicle_tier_key(assigned["vehicle_model"]) not in (None, vehicle_class):
                 conn.close()
                 self.send_json({"error": "Remove the current chauffeur before changing the booking vehicle class."}, 409)
                 return
@@ -3661,7 +3676,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (booking["chauffeur_id"],)).fetchone()
         chauffeur_dict = dict(ch_row) if ch_row else None
         if chauffeur_dict:
-            chauffeur_dict["name"] = (str(chauffeur_dict["name"] or "").split() or ["Chauffeur"])[0]
+            chauffeur_dict["name"] = chauffeur_first_name(chauffeur_dict)
+            chauffeur_dict["vehicle_model"] = booking.get("assigned_vehicle_model") or chauffeur_dict["vehicle_model"]
+            chauffeur_dict["license_plate"] = booking.get("assigned_vehicle_plate") or chauffeur_dict["license_plate"]
 
         norm_veh = normalize_vehicle_tier(booking.get("vehicle_class", "mercedes_s_class"))
         veh_name = VEHICLE_CONFIGS.get(norm_veh, VEHICLE_CONFIGS["mercedes_s_class"])["name"]
@@ -4470,6 +4487,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             ch_row = cursor.fetchone()
             if ch_row:
                 chauffeur = dict(ch_row)
+                chauffeur["vehicle_model"] = booking.get("assigned_vehicle_model") or chauffeur["vehicle_model"]
+                chauffeur["license_plate"] = booking.get("assigned_vehicle_plate") or chauffeur["license_plate"]
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         new_booking_status = booking["status"]
@@ -4983,13 +5002,21 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.send_json({"success": True, "chauffeur_id": chauffeur_id, "status": new_status})
 
     def handle_save_chauffeur(self, payload):
+        call_sign = str(payload.get("call_sign") or "").strip().upper()
+        if call_sign and not re.fullmatch(r"GA[1-9][0-9]{0,5}", call_sign):
+            self.send_json({"error": "Use a call sign such as GA4."}, 400)
+            return
         ch_id = str(payload.get("id") or "").strip()
         name = str(payload.get("name") or "").strip()
         phone = str(payload.get("phone") or COMPANY_PHONE).strip()
         email = str(payload.get("email") or "").strip()
         pco_license = str(payload.get("pco_license") or "").strip()
         docs_verified = 1 if payload.get("docs_verified", True) else 0
-        driver_pin = str(payload.get("driver_pin") or "").strip() or str(random.randint(1000, 9999))
+        supplied_password = str(payload.get("driver_pin") or "").strip()
+        if supplied_password and not 8 <= len(supplied_password) <= 64:
+            self.send_json({"error": "Use at least eight characters for a new chauffeur password."}, 400)
+            return
+        driver_pin = supplied_password or secrets.token_urlsafe(12)
         vehicle_model = str(payload.get("vehicle_model") or VEHICLE_CONFIGS[normalize_vehicle_tier(payload.get("vehicle_class"))]["name"]).strip()
         model_tier = vehicle_tier_key(vehicle_model)
         vehicle_class = vehicle_tier_key(payload.get("vehicle_class") or vehicle_model)
@@ -5008,8 +5035,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         conn = db.get_connection()
         cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")
+        if call_sign and cursor.execute("SELECT 1 FROM chauffeurs WHERE call_sign = ? AND id != ?", (call_sign, ch_id)).fetchone():
+            conn.close()
+            self.send_json({"error": "That call sign already belongs to a chauffeur."}, 409)
+            return
         if ch_id:
-            existing = cursor.execute("SELECT driver_token, vehicle_class FROM chauffeurs WHERE id = ?", (ch_id,)).fetchone()
+            existing = cursor.execute("SELECT driver_token, driver_pin, vehicle_class FROM chauffeurs WHERE id = ?", (ch_id,)).fetchone()
+            if existing and not str(payload.get("driver_pin") or "").strip() and existing["driver_pin"]:
+                driver_pin = existing["driver_pin"]
             if existing and vehicle_tier_key(existing["vehicle_class"]) != vehicle_class:
                 active_jobs = cursor.execute("""
                     SELECT vehicle_class FROM bookings
@@ -5019,7 +5053,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     conn.close()
                     self.send_json({"error": "Remove incompatible booking allocations before changing this vehicle class."}, 409)
                     return
-            driver_token = (existing["driver_token"] if existing and existing["driver_token"] else f"drv_{ch_id.lower().replace('-', '')}_{random.randint(100000, 999999)}")
+            driver_token = (existing["driver_token"] if existing and existing["driver_token"] else secrets.token_urlsafe(24))
             cursor.execute("""
                 UPDATE chauffeurs
                 SET name = ?, phone = ?, email = ?, pco_license = ?, docs_verified = ?,
@@ -5030,7 +5064,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         else:
             ch_id = f"GA-CHF-{random.randint(10, 99)}"
             initials = "".join([w[0].upper() for w in name.split()[:2]]) or "GA"
-            driver_token = f"drv_{ch_id.lower().replace('-', '')}_{random.randint(100000, 999999)}"
+            driver_token = secrets.token_urlsafe(24)
             cursor.execute("""
                 INSERT INTO chauffeurs (
                     id, name, phone, email, pco_license, docs_verified, driver_pin, driver_token,
@@ -5040,6 +5074,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 5.0, 100, ?, ?, ?, ?, ?, 'AVAILABLE', 51.5074, -0.1278, 'Central London', NULL)
             """, (ch_id, name, phone, email, pco_license, docs_verified, driver_pin, driver_token, initials, vehicle_model, vehicle_class, license_plate, pax_cap, lug_cap))
 
+        if call_sign:
+            cursor.execute("UPDATE chauffeurs SET call_sign = ? WHERE id = ?", (call_sign, ch_id))
+        db.assign_missing_call_signs(conn)
         conn.commit()
         conn.close()
         self.send_json({"success": True, "id": ch_id, "driver_token": driver_token, "driver_pin": driver_pin})
@@ -5086,36 +5123,30 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         identifier = str(payload.get("identifier") or "").strip()
         pin = str(payload.get("pin") or "").strip()
         if not identifier or not pin:
-            self.send_json({"error": "Please enter your vehicle registration plate (or mobile number) and PIN."}, 400)
+            self.send_json({"error": "Enter your call sign and password."}, 400)
             return
 
-        clean_id = identifier.upper().replace(" ", "")
-        clean_phone = re.sub(r"[^0-9]", "", identifier)
         conn = db.get_connection()
         cursor = conn.cursor()
-        rows = [dict(r) for r in cursor.execute("SELECT * FROM chauffeurs").fetchall()]
-        matched = None
-        for r in rows:
-            r_plate = (r.get("license_plate") or "").upper().replace(" ", "")
-            r_phone = re.sub(r"[^0-9]", "", r.get("phone") or "")
-            r_pin = str(r.get("driver_pin") or "1234").strip()
-            if (clean_id == r_plate or (clean_phone and len(clean_phone) >= 7 and clean_phone in r_phone) or identifier.lower() == (r.get("name") or "").lower()):
-                if pin == r_pin:
-                    matched = r
-                    break
-
-        if not matched:
+        row = cursor.execute("SELECT id, driver_pin, driver_token FROM chauffeurs WHERE call_sign = ?",
+                             (identifier.upper(),)).fetchone()
+        if not row or not row["driver_pin"] or not secrets.compare_digest(pin.encode(), row["driver_pin"].encode()):
             conn.close()
-            self.send_json({"error": "Invalid registration plate/phone or 4-digit PIN."}, 401)
+            self.send_json({"error": "Invalid call sign or password."}, 401)
             return
+        if row["driver_pin"] == "1234":
+            conn.close()
+            self.send_json({"error": "Ask Dispatch to set your chauffeur password."}, 403)
+            return
+        matched = dict(row)
 
         if not matched.get("driver_token"):
-            tok = f"drv_{matched['id'].lower().replace('-', '')}_{random.randint(100000, 999999)}"
+            tok = secrets.token_urlsafe(24)
             cursor.execute("UPDATE chauffeurs SET driver_token = ? WHERE id = ?", (tok, matched["id"]))
             conn.commit()
             matched["driver_token"] = tok
         conn.close()
-        self.send_json({"success": True, "driver_token": matched["driver_token"], "chauffeur": matched})
+        self.send_json({"success": True, "driver_token": matched["driver_token"]})
 
     def handle_driver_me(self, query):
         token = (query.get("token") or [""])[0].strip()
@@ -5124,7 +5155,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
         conn = db.get_connection()
         cursor = conn.cursor()
-        ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE driver_token = ? OR id = ?", (token, token)).fetchone()
+        ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE driver_token = ?", (token,)).fetchone()
         if not ch_row:
             conn.close()
             self.send_json({"error": "Invalid driver token"}, 401)
@@ -5134,11 +5165,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             SELECT id, confirmation_code, customer_name, customer_phone,
                    pickup_address, pickup_unit, dropoff_address, dropoff_unit,
                    pickup_datetime, flight_number, passenger_count, luggage_count,
-                   special_requests, hours_booked, service_type, stops, pending_amendment, status
+                   special_requests, hours_booked, service_type, stops, pending_amendment, status,
+                   COALESCE(assigned_vehicle_model, ?) AS vehicle_model,
+                   COALESCE(assigned_vehicle_plate, ?) AS license_plate
             FROM bookings
             WHERE chauffeur_id = ? AND status NOT IN ('COMPLETED', 'CANCELLED')
             ORDER BY pickup_datetime ASC
-        """, (ch["id"],)).fetchall()]
+        """, (ch["vehicle_model"], ch["license_plate"], ch["id"])).fetchall()]
         messages = [dict(r) for r in reversed(cursor.execute("""
             SELECT * FROM driver_messages
             WHERE chauffeur_id = ?1 AND (
@@ -5152,6 +5185,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         """, (ch["id"],)).fetchall())]
         alerts = booking_alerts.pending(conn, ch["id"])
         conn.close()
+        current_job = next((job for job in jobs if job["id"] == ch.get("active_booking_id")), None)
+        if current_job:
+            ch.update({field: current_job[field] for field in ("vehicle_model", "license_plate")})
+        ch.pop("driver_pin", None)
+        ch.pop("driver_token", None)
         self.send_json({"chauffeur": ch, "jobs": jobs, "messages": messages, "pending_alerts": alerts})
 
     def handle_driver_action(self, payload):
@@ -5184,7 +5222,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": "Invalid token or status"}, 400)
             return
         conn = db.get_connection()
-        ch_row = conn.execute("SELECT * FROM chauffeurs WHERE driver_token = ? OR id = ?", (token, token)).fetchone()
+        ch_row = conn.execute("SELECT * FROM chauffeurs WHERE driver_token = ?", (token,)).fetchone()
         if not ch_row:
             conn.close()
             self.send_json({"error": "Invalid driver token"}, 401)
@@ -5205,7 +5243,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
         conn = db.get_connection()
         cursor = conn.cursor()
-        ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE driver_token = ? OR id = ?", (token, token)).fetchone()
+        ch_row = cursor.execute("SELECT * FROM chauffeurs WHERE driver_token = ?", (token,)).fetchone()
         if not ch_row:
             conn.close()
             self.send_json({"error": "Invalid driver token"}, 401)

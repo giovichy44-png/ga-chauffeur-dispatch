@@ -328,6 +328,7 @@ function initTabs() {
 }
 
 function switchTab(tabId) {
+  if (tabId !== 'jobs') closeLiveTracking(false);
   document.querySelectorAll('.simple-tab-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
   });
@@ -827,7 +828,7 @@ function renderCdsDispatchTable(filtered) {
         <td><span class="excel-cell-truncate">${escapeHtml(b.customer_name)}</span></td>
         <td><span class="excel-cell-truncate">${escapeHtml(shortPu)} &rarr; ${escapeHtml(shortDo)}</span>${flightTag}</td>
         <td>${escapeHtml(vehicleLabel)}</td>
-        <td>${escapeHtml(b.chauffeur_id ? (b.chauffeur_name || 'Allocated') : 'Unallocated')}</td>
+        <td>${escapeHtml(b.chauffeur_id ? ([b.chauffeur_call_sign, b.chauffeur_name].filter(Boolean).join(' · ') || 'Allocated') : 'Unallocated')}</td>
         <td class="dispatch-status-cell"><span class="dispatch-status-dot" data-status="${escapeHtml(statusColour)}" role="img" aria-label="${escapeHtml(statusLabel)}" title="${escapeHtml(statusLabel)}"></span> ${escapeHtml(statusLabel)}</td>
         <td class="dispatch-action-cell">
           <select class="dispatch-job-action" aria-label="Actions for ${escapeHtml(b.confirmation_code)}" onchange="runDispatchJobAction('${b.id}', this)">
@@ -1119,7 +1120,7 @@ function renderFleetThinTable() {
 
     if (!isExpanded) return mainRow;
 
-    const driverAppUrl = `${window.location.origin}/driver?token=${encodeURIComponent(ch.driver_token || ch.id)}`;
+    const driverAppUrl = getDriverAppInstallUrl();
     const expandRow = `
       <tr class="excel-expand-row">
         <td colspan="8">
@@ -1129,7 +1130,7 @@ function renderFleetThinTable() {
               <div><strong>Model:</strong> <span style="color:#fff;">${escapeHtml(ch.vehicle_model)}</span></div>
               <div style="margin-top:4px;"><strong>Registration Plate:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.license_plate)}</span></div>
               <div style="margin-top:4px;"><strong>PCO / Licence Ref:</strong> <span style="color:#34d399;">${escapeHtml(ch.pco_license || 'Verified On File')}</span></div>
-              <div style="margin-top:4px;"><strong>Chauffeur App PIN:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.driver_pin || '1234')}</span></div>
+              <div style="margin-top:4px;"><strong>Call sign:</strong> <span style="color:var(--gold);font-family:monospace;">${escapeHtml(ch.call_sign || '')}</span></div>
             </div>
             <div class="excel-drawer-box">
               <div class="excel-drawer-title">👤 Chauffeur Profile &amp; App Link</div>
@@ -1219,6 +1220,7 @@ function editFleetChauffeur(chId) {
   if (!ch) return;
   document.getElementById('fm-id').value = ch.id;
   document.getElementById('fm-name').value = ch.name || '';
+  document.getElementById('fm-call-sign').value = ch.call_sign || '';
   document.getElementById('fm-phone').value = ch.phone || '';
   document.getElementById('fm-model').value = ch.vehicle_model || '';
   document.getElementById('fm-plate').value = ch.license_plate || '';
@@ -1227,7 +1229,7 @@ function editFleetChauffeur(chId) {
   const pcoEl = document.getElementById('fm-pco');
   if (pcoEl) pcoEl.value = ch.pco_license || '';
   const pinEl = document.getElementById('fm-pin');
-  if (pinEl) pinEl.value = ch.driver_pin || '1234';
+  if (pinEl) pinEl.value = '';
   const verEl = document.getElementById('fm-verified');
   if (verEl) verEl.checked = Number(ch.docs_verified) !== 0;
   const titleEl = document.getElementById('fleet-form-title');
@@ -1243,7 +1245,7 @@ function renderFleetManageList() {
         <div style="font-weight:700;color:#fff;font-size:13.5px;">
           👤 ${escapeHtml(ch.name)}
           <span style="color:var(--gold);font-family:monospace;">[${escapeHtml(ch.license_plate)}]</span>
-          <span style="color:#34d399;font-size:11px;margin-left:6px;">✓ Verified (PIN: ${escapeHtml(ch.driver_pin || '1234')})</span>
+          <span style="color:#34d399;font-size:11px;margin-left:6px;">${escapeHtml(ch.call_sign || '')} · ${ch.driver_pin && ch.driver_pin !== '1234' ? 'Password set' : 'Set password'}</span>
         </div>
         <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(ch.vehicle_model)} • 📞 ${escapeHtml(ch.phone)} ${ch.pco_license ? '• PCO: ' + escapeHtml(ch.pco_license) : ''}</div>
       </div>
@@ -1268,12 +1270,13 @@ async function saveFleetChauffeur(e) {
     passenger_capacity: existing?.passenger_capacity,
     luggage_capacity: Number.isNaN(luggageCapacity) ? existing?.luggage_capacity : luggageCapacity,
     name: document.getElementById('fm-name').value,
+    call_sign: document.getElementById('fm-call-sign').value,
     phone: document.getElementById('fm-phone').value,
     vehicle_model: document.getElementById('fm-model').value,
     license_plate: document.getElementById('fm-plate').value,
     vehicle_class: document.getElementById('fm-class').value,
     pco_license: document.getElementById('fm-pco')?.value || '',
-    driver_pin: document.getElementById('fm-pin')?.value || '1234',
+    driver_pin: document.getElementById('fm-pin')?.value || undefined,
     docs_verified: document.getElementById('fm-verified')?.checked ?? true
   };
   try {
@@ -1296,15 +1299,14 @@ async function saveFleetChauffeur(e) {
   }
 }
 
-function getDriverAppInstallUrl(ch) {
-  const token = ch.driver_token || ch.id;
-  return `${window.location.origin}/driver?token=${encodeURIComponent(token)}`;
+function getDriverAppInstallUrl() {
+  return new URL('/driver/', window.location.origin).href;
 }
 
 function copyDriverAppLink(chId) {
   const ch = App.chauffeurs.find(c => c.id === chId);
   if (!ch) return;
-  const url = getDriverAppInstallUrl(ch);
+  const url = getDriverAppInstallUrl();
   navigator.clipboard?.writeText(url);
   showToast(`🔗 Chauffeur App link copied for ${ch.name}!`);
 }
@@ -1312,16 +1314,17 @@ function copyDriverAppLink(chId) {
 function sendDriverAppInvite(chId) {
   const ch = App.chauffeurs.find(c => c.id === chId);
   if (!ch) return;
-  const url = getDriverAppInstallUrl(ch);
+  const url = getDriverAppInstallUrl();
   const cleanPhone = (ch.phone || '').replace(/[^0-9]/g, '');
   const msg = [
     `🚘 *GA Chauffeur Services — Verified Chauffeur App*`,
-    `Hello ${ch.name}, your chauffeur profile & vehicle (${ch.vehicle_model} — *${ch.license_plate}*) have been verified on GA Dispatch.`,
+    `Hello ${ch.name}, your chauffeur profile is ready.`,
     ``,
     `📲 *Install Your Personal Chauffeur App:*`,
     url,
     ``,
-    `🔑 *Your 4-Digit Chauffeur PIN:* ${ch.driver_pin || '1234'}`,
+    `*Call sign:* ${ch.call_sign}`,
+    `🔑 Use the password provided by Dispatch.`,
     `(Open the link in Safari on your iPhone -> tap Share -> "Add to Home Screen". Allocated jobs & live Dispatch chat will appear there automatically.)`
   ].join('\n');
   navigator.clipboard?.writeText(url);
@@ -1530,43 +1533,65 @@ function openAllocateModal(bookingId) {
 
   const choiceList = document.querySelector('#modal-allocate .car-choice-list');
   const bookedClass = allocationVehicleClass(booking.vehicle_class);
-  const matches = App.chauffeurs.filter(ch => {
-    const configured = allocationVehicleClass(ch.vehicle_class);
-    const model = allocationVehicleClass(ch.vehicle_model);
-    return bookedClass && bookedClass === configured && (!model || model === configured);
+  const matchingVehicles = App.chauffeurs.filter(vehicle => {
+    const configured = allocationVehicleClass(vehicle.vehicle_class);
+    const model = allocationVehicleClass(vehicle.vehicle_model);
+    return vehicle.license_plate && bookedClass && bookedClass === configured && (!model || model === configured);
   });
+  const vehicles = [...new Map(matchingVehicles.map(vehicle =>
+    [vehicle.license_plate.replace(/\s+/g, '').toUpperCase(), vehicle])).values()];
   if (choiceList) {
-    choiceList.innerHTML = matches.map(ch => {
-      const iconLbl = ch.vehicle_class === 'mercedes_v_class' ? 'V' : (ch.vehicle_class === 'range_rover_autobiography' ? 'RR' : 'S');
-      return `
-        <div class="car-choice-btn" onclick="assignVehicle('${escapeHtml(ch.id)}')">
-          <div class="choice-icon">${iconLbl}</div>
-          <div class="choice-info">
-            <strong>${escapeHtml(ch.name)} • ${escapeHtml(ch.vehicle_model)}</strong>
-            <span>Reg: ${escapeHtml(ch.license_plate)} • Up to ${ch.passenger_capacity || 4} Passengers</span>
-          </div>
-          <span class="choice-badge">Select ↗</span>
-        </div>
-      `;
-    }).join('') || '<p>No chauffeurs have the booked vehicle class.</p>';
+    choiceList.innerHTML = vehicles.length ? `
+      <form id="allocate-vehicle-form">
+        <label for="allocation-vehicle">Vehicle</label>
+        <select required id="allocation-vehicle" class="dispatch-job-action">
+          <option value="">Select vehicle</option>
+          ${vehicles.map(vehicle => `<option value="${escapeHtml(vehicle.id)}">${escapeHtml(vehicle.vehicle_model)} · ${escapeHtml(vehicle.license_plate)}</option>`).join('')}
+        </select>
+        <label for="allocation-chauffeur">Chauffeur</label>
+        <select required id="allocation-chauffeur" class="dispatch-job-action">
+          <option value="">Select chauffeur</option>
+          ${App.chauffeurs.map(ch => `<option value="${escapeHtml(ch.id)}">${escapeHtml([ch.call_sign, ch.name].filter(Boolean).join(' · '))}</option>`).join('')}
+        </select>
+        <button type="submit" class="btn btn-gold">Allocate vehicle and chauffeur</button>
+      </form>
+    ` : '<p>No fleet vehicles match the booked vehicle class.</p>';
+    const form = document.getElementById('allocate-vehicle-form');
+    if (form) {
+      const vehicle = document.getElementById('allocation-vehicle');
+      const chauffeur = document.getElementById('allocation-chauffeur');
+      chauffeur.value = booking.chauffeur_id || '';
+      const assigned = vehicles.find(candidate => candidate.license_plate === booking.license_plate);
+      if (assigned) vehicle.value = assigned.id;
+      form.onsubmit = async event => {
+        event.preventDefault();
+        const submit = form.querySelector('button');
+        submit.disabled = true;
+        try {
+          await assignVehicle(chauffeur.value, vehicle.value);
+        } finally {
+          submit.disabled = false;
+        }
+      };
+    }
   }
 
   document.getElementById('modal-allocate').style.display = 'flex';
 }
 
-async function assignVehicle(chauffeurId) {
+async function assignVehicle(chauffeurId, vehicleId) {
   if (!App.allocatingJobId) return;
 
   try {
     const res = await fetch(`/api/bookings/${App.allocatingJobId}/allocate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chauffeur_id: chauffeurId })
+      body: JSON.stringify({ chauffeur_id: chauffeurId, vehicle_id: vehicleId })
     });
     const data = await res.json();
     if (data.success) {
       closeModal('modal-allocate');
-      showToast(`Car allocated & customer confirmation sent!`);
+      showToast('Vehicle and chauffeur allocated.');
       loadData();
     } else {
       showToast(data.error || 'Unable to allocate this vehicle.');
@@ -1595,13 +1620,13 @@ function renderDriverView() {
   if (!ch) return;
 
   const assignedJobs = App.bookings.filter(b => b.chauffeur_id === ch.id && b.status !== 'COMPLETED' && b.status !== 'CANCELLED');
-  const appUrl = getDriverAppInstallUrl(ch);
+  const appUrl = getDriverAppInstallUrl();
 
   const installCardHtml = `
     <div style="background:#141b18;border:1px solid var(--gold-border);border-radius:10px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
       <div>
         <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.08em;">📲 Standalone Chauffeur Phone App</div>
-        <div style="font-size:13px;color:#fff;margin-top:3px;"><strong>${escapeHtml(ch.name)}</strong> • ${escapeHtml(ch.vehicle_model)} [${escapeHtml(ch.license_plate)}] • PIN: <strong style="color:var(--gold);">${escapeHtml(ch.driver_pin || '1234')}</strong></div>
+        <div style="font-size:13px;color:#fff;margin-top:3px;"><strong>${escapeHtml(ch.name)}</strong> • ${escapeHtml(ch.vehicle_model)} [${escapeHtml(ch.license_plate)}] • <strong style="color:var(--gold);">${escapeHtml(ch.call_sign || '')}</strong></div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button type="button" class="btn btn-gold" style="padding:7px 12px;font-size:12px;" onclick="sendDriverAppInvite('${escapeHtml(ch.id)}')">📲 Send App to Driver's Phone</button>
@@ -2698,7 +2723,7 @@ function drawTrackingVehicle(ctx, tier) {
   ctx.fillStyle = paint;
   ctx.fill();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = '#f4f5f6';
+  ctx.strokeStyle = '#a3a9af';
   ctx.stroke();
 
   const cabinTop = van ? -24 : suv ? -21 : -15;
@@ -2712,8 +2737,11 @@ function drawTrackingVehicle(ctx, tier) {
   ctx.lineTo(-width + 6, van ? 34 : 25);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#171c23';
-  ctx.fillRect(-width + 8, cabinTop + 12, width * 2 - 16, van ? 33 : 18);
+  ctx.fillStyle = '#111419';
+  const roofHeight = van ? 32 : suv ? 25 : 19;
+  ctx.fillRect(-width + 8, cabinTop + 12, width * 2 - 16, roofHeight);
+  ctx.fillStyle = '#545a62';
+  ctx.fillRect(-width + 8, cabinTop + 12 + roofHeight, width * 2 - 16, 2);
   ctx.fillStyle = '#dbedf7';
   ctx.fillRect(-nose, -length + 4, 7, 3);
   ctx.fillRect(nose - 7, -length + 4, 7, 3);
@@ -2768,20 +2796,36 @@ function moveTrackingMarker(entry, point) {
   entry.frame = requestAnimationFrame(animate);
 }
 
+let trackingSession;
+
+function closeLiveTracking(returnFocus = true) {
+  if (!trackingSession) return;
+  trackingSession.abort();
+  trackingSession = null;
+  document.getElementById('dispatch-live-tracking').hidden = true;
+  const toggle = document.getElementById('live-tracking-toggle');
+  toggle.setAttribute('aria-expanded', 'false');
+  if (returnFocus) toggle.focus();
+}
+
 async function openLiveTracking() {
-  const dialog = document.getElementById('dispatch-live-tracking');
-  if (dialog.open) return;
+  if (trackingSession) return;
+  switchTab('jobs');
+  const panel = document.getElementById('dispatch-live-tracking');
   const list = document.getElementById('dispatch-live-locations');
   const status = document.getElementById('dispatch-map-status');
   const routeStatus = document.getElementById('dispatch-route-status');
   const container = document.getElementById('dispatch-live-map');
   const session = new AbortController();
+  trackingSession = session;
   const markers = new Map();
   const streets = new Map();
   let geocoder;
   let maps, map, selectedId, routeKey, routeVersion = 0, overlays = [], framed = false;
   let latest = [];
-  dialog.showModal();
+  panel.hidden = false;
+  document.getElementById('live-tracking-toggle').setAttribute('aria-expanded', 'true');
+  panel.scrollIntoView({block:'nearest'});
   container.replaceChildren();
   status.textContent = 'Loading Google Maps…';
   routeStatus.textContent = '';
@@ -2868,8 +2912,7 @@ async function openLiveTracking() {
     }
   }
 
-  dialog.addEventListener('close', () => {
-    session.abort();
+  session.signal.addEventListener('abort', () => {
     clearRoute();
     markers.forEach(({marker, frame}) => { cancelAnimationFrame(frame); marker.setMap(null); });
   }, {once:true});
@@ -2922,7 +2965,7 @@ async function openLiveTracking() {
             existing.heading = heading;
             existing.tier = tier;
           } else {
-            const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier,heading), title:chauffeur.name, zIndex:10});
+            const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier,heading), title:[chauffeur.call_sign, chauffeur.name].filter(Boolean).join(' · '), zIndex:10});
             marker.addListener('click', () => selectVehicle(latest.find(row => row.id === chauffeur.id), true));
             markers.set(chauffeur.id, {marker, point, target:point, heading, tier});
           }
@@ -2949,7 +2992,7 @@ async function openLiveTracking() {
         button.dataset.chauffeur = chauffeur.id;
         const tier = ({mercedes_v_class:'V-Class',mercedes_s_class:'S-Class',range_rover_autobiography:'Range Rover'})[allocationVehicleClass(chauffeur.vehicle_class)] || 'Vehicle';
         const job = {ASSIGNED:'Allocated', ACCEPTED:'Accepted', EN_ROUTE:'En route', ARRIVED:'At pickup', ON_BOARD:'Passenger on board', NEXT_STOP:'Passenger on board'};
-        button.textContent = [chauffeur.name, tier, job[chauffeur.job_status] || 'No active job'].join(' · ');
+        button.textContent = [chauffeur.call_sign, chauffeur.name, tier, job[chauffeur.job_status] || 'No active job'].filter(Boolean).join(' · ');
         button.onclick = () => selectVehicle(chauffeur,true);
         const heading = markers.get(chauffeur.id)?.heading;
         const direction = heading == null ? '' : ['N','NE','E','SE','S','SW','W','NW'][Math.round(heading / 45) % 8];

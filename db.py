@@ -18,6 +18,23 @@ def get_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def assign_missing_call_signs(conn):
+    profiles = conn.execute("SELECT id, call_sign FROM chauffeurs ORDER BY id").fetchall()
+    used = {profile["call_sign"] for profile in profiles if profile["call_sign"]}
+    reserved = {"GA-CHF-01": "GA1", "GA-CHF-02": "GA2", "GA-CHF-03": "GA3"}
+    number = 4
+    for profile in profiles:
+        if profile["call_sign"]:
+            continue
+        call_sign = reserved.get(profile["id"])
+        if not call_sign or call_sign in used:
+            while f"GA{number}" in used:
+                number += 1
+            call_sign = f"GA{number}"
+        conn.execute("UPDATE chauffeurs SET call_sign = ? WHERE id = ?", (call_sign, profile["id"]))
+        used.add(call_sign)
+
+
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
@@ -70,11 +87,15 @@ def init_db():
         ("pco_license", "TEXT DEFAULT ''"),
         ("docs_verified", "INTEGER DEFAULT 1"),
         ("driver_pin", "TEXT DEFAULT '1234'"),
-        ("driver_token", "TEXT DEFAULT ''")
+        ("driver_token", "TEXT DEFAULT ''"),
+        ("call_sign", "TEXT")
     ]
     for col_name, col_def in ch_cols_to_add:
         if col_name not in existing_ch_cols:
             cursor.execute(f"ALTER TABLE chauffeurs ADD COLUMN {col_name} {col_def}")
+
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS chauffeurs_call_sign ON chauffeurs(call_sign)")
+    assign_missing_call_signs(conn)
 
     # Ensure every existing chauffeur has a unique driver_token and driver_pin
     cursor.execute("SELECT id, driver_pin, driver_token, pco_license FROM chauffeurs")
@@ -178,6 +199,8 @@ def init_db():
         ("stripe_payment_intent_id", "TEXT"),
         ("stripe_customer_id", "TEXT"),
         ("pending_amendment", "TEXT"),
+        ("assigned_vehicle_model", "TEXT"),
+        ("assigned_vehicle_plate", "TEXT"),
         ("stops", "TEXT NOT NULL DEFAULT '[]'")
     ]
     for col_name, col_def in cols_to_add:
@@ -342,6 +365,7 @@ def seed_data(force=False):
     INSERT INTO chauffeurs (id, name, phone, avatar, rating, trips_count, vehicle_model, vehicle_class, license_plate, passenger_capacity, luggage_capacity, status, lat, lng, current_zone, active_booking_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, chauffeurs)
+    assign_missing_call_signs(conn)
 
     conn.commit()
     conn.close()
