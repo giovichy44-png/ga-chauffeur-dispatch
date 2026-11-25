@@ -323,6 +323,11 @@ GOOGLE_PLACES_BROWSER_KEY = os.environ.get("GOOGLE_PLACES_BROWSER_KEY", "AIzaSyD
 PUBLIC_PATHS = {
     "/api/flight-webhook",
     "/api/route-quote",
+    "/invoices-app.webmanifest",
+    "/invoices-app-sw.js",
+    "/invoices-icon-180.png",
+    "/invoices-icon-192.png",
+    "/invoices-icon-512.png",
     "/api/forms-config",
     "/api/postcode",
     "/api/enquiry",
@@ -1936,7 +1941,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.end_headers()
-                    self.wfile.write(LOGIN_PAGE_HTML.encode("utf-8"))
+                    page = LOGIN_PAGE_HTML
+                    if path == "/invoices.html":
+                        page = page.replace('<title>Private Dispatch Portal | GA Chauffeurs</title>',
+                                            '<title>Sign in to GA Invoicing</title>')
+                        page = page.replace('/chauffeur-touch-v2.png', '/invoices-icon-180.png')
+                        page = page.replace('/manifest.json?v=dispatch-icon-2', '/invoices-app.webmanifest')
+                        page = page.replace('<div class="form-group">', '<input type="hidden" name="return_to" value="/invoices.html"><div class="form-group">', 1)
+                        page = page.replace("window.location.replace('/?auth_token='", "window.location.replace('/invoices.html?auth_token='")
+                    self.wfile.write(page.encode("utf-8"))
                     return
                 else:
                     self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
@@ -2457,6 +2470,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if is_form_post:
                 form_fields = parse_qs(post_data.decode("utf-8", errors="ignore"))
                 username = (form_fields.get("username") or [""])[0].strip()
+                return_to = "/invoices.html" if form_fields.get("return_to") == ["/invoices.html"] else "/"
                 password = (form_fields.get("password") or [""])[0]
             else:
                 username = str(payload.get("username", "")).strip()
@@ -2468,7 +2482,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 if is_form_post:
                     self.send_response(303)
                     self.send_header("Set-Cookie", cookie_header)
-                    self.send_header("Location", f"/?saved_token={token}")
+                    self.send_header("Location", f"{return_to}?saved_token={token}" if return_to == "/" else return_to)
                     self.end_headers()
                     return
                 body = json.dumps({"success": True, "token": token}).encode("utf-8")
@@ -2483,7 +2497,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             else:
                 if is_form_post:
                     self.send_response(303)
-                    self.send_header("Location", "/?error=1")
+                    self.send_header("Location", return_to + "?error=1")
                     self.end_headers()
                     return
                 self.send_json({"error": "Invalid username or password"}, 401)
@@ -2633,6 +2647,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                         invoice_id = dispatch_invoices.save_client(conn, payload)
                     elif operation == "item":
                         invoice_id = dispatch_invoices.save_item(conn, payload)
+                    elif operation in ("client-delete", "client-restore"):
+                        invoice_id = int(payload.get("id") or 0)
+                        archived = datetime.now(timezone.utc).isoformat() if operation == "client-delete" else None
+                        updated = conn.execute("UPDATE invoice_clients SET archived_at=? WHERE id=?", (archived, invoice_id))
+                        if not updated.rowcount:
+                            raise ValueError("Client not found.")
                     elif operation == "save":
                         invoice_id = dispatch_invoices.manual_invoice(conn, payload)
                     elif operation == "paid":

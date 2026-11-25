@@ -98,18 +98,45 @@ function option(value, title) {
   return new Option(title, value);
 }
 
+function renderClients() {
+  const search = $('client-search').value.trim().toLowerCase();
+  const reverse = $('client-sort').value === 'desc' ? -1 : 1;
+  const showDeleted = $('show-deleted-clients').checked;
+  const clients = state.invoice_clients.filter(client => Boolean(client.archived_at) === showDeleted &&
+    [client.name, client.email].join(' ').toLowerCase().includes(search))
+    .sort((a, b) => reverse * a.name.localeCompare(b.name, 'en-GB', {sensitivity:'base', numeric:true}));
+  $('client-list').replaceChildren(...clients.map(client => {
+    const details = [client.email, client.address, ...Object.entries(JSON.parse(client.source_details || '{}'))
+      .filter(([key]) => !['Email','Billing address'].includes(key)).map(([key, value]) => key + ' · ' + value)]
+      .filter(Boolean).join(' · ');
+    const controls = [];
+    if (!client.archived_at) controls.push(button('Edit client', () => fill($('client-form'), client)));
+    controls.push(button(client.archived_at ? 'Restore client' : 'Delete client', async () => {
+      if (!client.archived_at && !confirm('Delete ' + client.name + ' from the active client list? Existing invoices will stay in your records.')) return;
+      await api(client.archived_at ? 'client-restore' : 'client-delete', {id:client.id});
+      if ($('client-form').elements.id.value === String(client.id)) $('client-form').reset();
+      await load();
+      notice(client.archived_at ? 'Client restored.' : 'Client deleted. You can restore it under Show deleted clients.');
+    }));
+    return entry(client.name, details, controls);
+  }));
+  if (!clients.length) $('client-list').textContent = search ? 'No clients match.' : showDeleted ? 'No deleted clients.' : 'No clients yet.';
+}
+
+function updateClientOptions(selected) {
+  const clients = state.invoice_clients.filter(client => !client.archived_at || String(client.id) === String(selected))
+    .sort((a, b) => a.name.localeCompare(b.name, 'en-GB', {sensitivity:'base', numeric:true}));
+  form.elements.client_id.replaceChildren(option('', 'Select a client'),
+    ...clients.map(client => option(client.id, client.name + (client.archived_at ? ' (deleted)' : ''))));
+  form.elements.client_id.value = selected ?? '';
+}
+
 async function load() {
   Object.assign(state, await api());
-  const selectedClient = form.elements.client_id.value;
-  form.elements.client_id.replaceChildren(option('', 'Select a client'),
-    ...state.invoice_clients.map(client => option(client.id, client.name)));
-  form.elements.client_id.value = selectedClient;
+  updateClientOptions(form.elements.client_id.value);
   $('catalog').replaceChildren(option('', 'Select an item'),
     ...state.invoice_items.map(item => option(item.id, item.description)));
-  $('client-list').replaceChildren(...state.invoice_clients.map(client =>
-    entry(client.name, [client.email, client.address, ...Object.entries(JSON.parse(client.source_details || '{}'))
-      .filter(([key]) => !['Email','Billing address'].includes(key)).map(([key, value]) => key + ' · ' + value)]
-      .filter(Boolean).join(' · '), [button('Edit client', () => fill($('client-form'), client))])));
+  renderClients();
   $('item-list').replaceChildren(...state.invoice_items.map(item =>
     entry(item.description, money(item.unit_pence), [button('Edit item', () =>
       fill($('item-form'), {...item, unit_price:(item.unit_pence / 100).toFixed(2)}))])));
@@ -159,6 +186,7 @@ function updateTotal() {
 function editInvoice(invoice = {}) {
   if (!state.today) return;
   show('editor');
+  updateClientOptions(invoice.client_id);
   fill(form, {
     id:invoice.id, client_id:invoice.client_id, issued:invoice.issued || state.today,
     due:invoice.due || state.today, comments:invoice.comments, discount:(invoice.discount_pence || 0) / 100,
@@ -189,6 +217,9 @@ function submit(target, operation, values, after) {
 
 $('new').onclick = () => editInvoice();
 $('search').oninput = renderInvoices;
+$('client-search').oninput = renderClients;
+$('client-sort').onchange = renderClients;
+$('show-deleted-clients').onchange = renderClients;
 form.oninput = updateTotal;
 $('add-line').onclick = () => {
   try { addLine().querySelector('input').focus(); updateTotal(); }
@@ -233,3 +264,16 @@ $('client-import').onsubmit = async event => {
   finally { event.submitter.disabled = false; }
 };
 load().catch(error => notice(error.message));
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/invoices-app-sw.js', {scope:'/invoices.html'}).catch(() => {});
+}
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  const install = $('install-invoicing');
+  install.hidden = false;
+  install.onclick = async () => {
+    await event.prompt();
+    install.hidden = true;
+  };
+});

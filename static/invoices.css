@@ -27,3 +27,8 @@ input,textarea,select{font:inherit;color:var(--ink);padding:9px 10px;min-width:0
 .actions{margin-top:12px}.catalog{min-width:180px;max-width:100%}.check{display:flex;align-items:center;align-self:end;min-height:42px}.check input{width:auto}.search{max-width:350px;margin:16px 0}
 #total{font-weight:700;color:var(--ink)}
 @media(max-width:600px){.line{grid-template-columns:repeat(2,minmax(0,1fr));padding-bottom:12px;border-bottom:1px solid var(--border)}.line label:first-child{grid-column:1/-1}.remove{grid-column:1/-1;justify-self:start}header img{max-width:46%}}
+
+.app-links{display:flex;gap:12px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+#install-invoicing{background:var(--gold);color:var(--ink);border-color:var(--gold)}
+.client-filters{display:grid;grid-template-columns:minmax(200px,1fr) 140px auto;align-items:end;gap:12px;margin-top:16px}
+@media(max-width:600px){.client-filters{grid-template-columns:1fr 1fr}.client-filters label:first-child{grid-column:1/-1}}

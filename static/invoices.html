@@ -4,13 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Invoicing · GA Chauffeur Services</title>
-<link rel="stylesheet" href="/invoices.css?v=1">
-<script defer src="/invoices.js?v=2"></script>
+<meta name="theme-color" content="#17211c">
+<meta name="apple-mobile-web-app-title" content="GA Invoicing">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/invoices-app.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="/invoices-icon-180.png">
+<link rel="icon" type="image/png" href="/invoices-icon-192.png">
+<link rel="stylesheet" href="/invoices.css?v=2">
+<script defer src="/invoices.js?v=3"></script>
 </head>
 <body>
 <header>
   <img src="/assets/ga-logo.png" width="195" alt="GA Chauffeur Services">
-  <a href="/">Back to Dispatch</a>
+  <div class="app-links"><button id="install-invoicing" type="button" hidden>Install app</button><a href="/">Back to Dispatch</a></div>
 </header>
 <main>
   <div class="heading"><h1>Invoicing</h1><button id="new" type="button">New invoice</button></div>
@@ -39,6 +45,11 @@
         <button>Import clients</button>
       </form>
     </details>
+    <div class="client-filters">
+      <label>Find a client<input id="client-search" type="search" placeholder="Name or billing email"></label>
+      <label>Sort by name<select id="client-sort"><option value="asc">A to Z</option><option value="desc">Z to A</option></select></label>
+      <label class="check"><input id="show-deleted-clients" type="checkbox"> Show deleted clients</label>
+    </div>
     <div id="client-list"></div>
   </section>
   <section id="items" hidden>

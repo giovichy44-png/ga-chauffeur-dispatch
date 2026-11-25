@@ -34,6 +34,8 @@ def init(conn):
         conn.execute("ALTER TABLE invoice_clients ADD COLUMN source_key TEXT")
     if "source_details" not in columns:
         conn.execute("ALTER TABLE invoice_clients ADD COLUMN source_details TEXT NOT NULL DEFAULT '{}'")
+    if "archived_at" not in columns:
+        conn.execute("ALTER TABLE invoice_clients ADD COLUMN archived_at TEXT")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS invoice_client_source ON invoice_clients(source_key)")
 
 
@@ -123,6 +125,10 @@ def manual_invoice(conn, data):
     client = conn.execute("SELECT * FROM invoice_clients WHERE id=?", (data.get("client_id"),)).fetchone()
     if not client:
         raise ValueError("Choose a client.")
+    if client["archived_at"]:
+        saved = conn.execute("SELECT client_id FROM invoices WHERE id=?", (data.get("id"),)).fetchone()
+        if not saved or saved["client_id"] != client["id"]:
+            raise ValueError("Restore the deleted client before creating a new invoice for them.")
     issued = date.fromisoformat(str(data.get("issued", "")))
     due = date.fromisoformat(str(data.get("due", "")))
     if due < issued:
