@@ -1518,7 +1518,7 @@ function allocationVehicleClass(value) {
   return '';
 }
 
-function openAllocateModal(bookingId) {
+async function openAllocateModal(bookingId) {
   App.allocatingJobId = bookingId;
   const booking = App.bookings.find(b => b.id === bookingId);
   if (!booking) return;
@@ -1533,20 +1533,29 @@ function openAllocateModal(bookingId) {
 
   const choiceList = document.querySelector('#modal-allocate .car-choice-list');
   const bookedClass = allocationVehicleClass(booking.vehicle_class);
-  const matchingVehicles = App.chauffeurs.filter(vehicle => {
+  let fleet;
+  try {
+    const response = await fetch('/api/dispatch/fleet');
+    if (!response.ok) throw Error();
+    fleet = await response.json();
+  } catch {
+    showToast('Could not load fleet vehicles.');
+    return;
+  }
+  if (App.allocatingJobId !== bookingId) return;
+  const matchingVehicles = fleet.vehicles.filter(vehicle => {
     const configured = allocationVehicleClass(vehicle.vehicle_class);
     const model = allocationVehicleClass(vehicle.vehicle_model);
     return vehicle.license_plate && bookedClass && bookedClass === configured && (!model || model === configured);
   });
-  const vehicles = [...new Map(matchingVehicles.map(vehicle =>
-    [vehicle.license_plate.replace(/\s+/g, '').toUpperCase(), vehicle])).values()];
+  const vehicles = matchingVehicles;
   if (choiceList) {
     choiceList.innerHTML = vehicles.length ? `
       <form id="allocate-vehicle-form">
         <label for="allocation-vehicle">Vehicle</label>
         <select required id="allocation-vehicle" class="dispatch-job-action">
           <option value="">Select vehicle</option>
-          ${vehicles.map(vehicle => `<option value="${escapeHtml(vehicle.id)}">${escapeHtml(vehicle.vehicle_model)} · ${escapeHtml(vehicle.license_plate)}</option>`).join('')}
+          ${vehicles.map(vehicle => `<option value="fleet:${escapeHtml(vehicle.id)}">${escapeHtml(vehicle.vehicle_model)} · ${escapeHtml(vehicle.license_plate)}</option>`).join('')}
         </select>
         <label for="allocation-chauffeur">Chauffeur</label>
         <select required id="allocation-chauffeur" class="dispatch-job-action">
@@ -1562,7 +1571,13 @@ function openAllocateModal(bookingId) {
       const chauffeur = document.getElementById('allocation-chauffeur');
       chauffeur.value = booking.chauffeur_id || '';
       const assigned = vehicles.find(candidate => candidate.license_plate === booking.license_plate);
-      if (assigned) vehicle.value = assigned.id;
+      if (assigned) vehicle.value = 'fleet:' + assigned.id;
+      chauffeur.onchange = () => {
+        const profile = fleet.chauffeurs.find(entry => entry.id === chauffeur.value);
+        const car = vehicles.find(entry => entry.id === profile?.fleet_vehicle_id);
+        vehicle.value = car ? 'fleet:' + car.id : '';
+      };
+      if (!assigned && chauffeur.value) chauffeur.onchange();
       form.onsubmit = async event => {
         event.preventDefault();
         const submit = form.querySelector('button');

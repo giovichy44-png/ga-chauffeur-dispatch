@@ -1058,6 +1058,10 @@
             </div>
 
             ${b.vehicle_model ? `<p class="job-vehicle">${esc(b.vehicle_model)} · ${esc(b.license_plate || '')}</p>` : ''}
+            ${['ASSIGNED', 'ACCEPTED'].includes(b.status) && DriverApp.chauffeur.profile_vehicle &&
+                DriverApp.chauffeur.profile_vehicle.license_plate !== b.license_plate &&
+                DriverApp.chauffeur.profile_vehicle.vehicle_class === b.vehicle_class
+                ? `<button type="button" class="nav-link" data-booking="${esc(b.id)}" onclick="useAssignedVehicle(this)">Use assigned vehicle (${esc(DriverApp.chauffeur.profile_vehicle.license_plate)})</button>` : ''}
             <div class="route-box">
               <div class="route-point">
                 <div class="route-head">
@@ -1185,6 +1189,24 @@
         control.value = 0;
         control.dataset.distance = '0';
         control.disabled = false;
+      }
+    }
+
+    async function useAssignedVehicle(button) {
+      button.disabled = true;
+      try {
+        const response = await fetch('/api/driver/job-vehicle', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({token:DriverApp.token, booking_id:button.dataset.booking})
+        });
+        const result = await response.json();
+        if (!response.ok) throw Error(result.error);
+        await loadDriverPortal(true);
+        showDriverToast('Vehicle assigned to the booking.');
+      } catch (error) {
+        showDriverToast(error.message || 'Could not update the booking vehicle.');
+      } finally {
+        button.disabled = false;
       }
     }
 

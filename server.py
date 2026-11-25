@@ -41,6 +41,7 @@ import journey_stops
 import booking_alerts
 import dispatch_restore
 import dispatch_invoices
+import dispatch_fleet
 import booking_pdf
 import quote_service
 import flight_monitor
@@ -340,6 +341,7 @@ PUBLIC_PATHS = {
     "/driver-manifest.json",
     "/driver-icon-180.png",
     "/api/driver/me",
+    "/api/driver/job-vehicle",
     "/api/driver/login",
     "/api/driver/action",
     "/api/driver/status",
@@ -1907,6 +1909,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                     return
 
+        if path == "/api/dispatch/fleet":
+            with db.get_connection() as conn:
+                profiles = conn.execute("""SELECT id,name,phone,email,pco_license,call_sign,docs_verified,fleet_vehicle_id
+                                          FROM chauffeurs ORDER BY call_sign""").fetchall()
+                vehicles = conn.execute("SELECT * FROM fleet_vehicles ORDER BY license_plate").fetchall()
+            self.send_json({"chauffeurs": [dict(row) for row in profiles], "vehicles": [dict(row) for row in vehicles]},
+                           cache_control="no-store")
+            return
+
         if path == "/api/dispatch/invoices":
             with db.get_connection() as conn:
                 result = {table: [dict(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY id DESC")]
@@ -2465,6 +2476,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_driver_status(payload)
             return
 
+        if path == "/api/driver/job-vehicle":
+            self.handle_driver_job_vehicle(payload)
+            return
+
         if path == "/api/driver/location":
             if not isinstance(payload, dict):
                 self.send_json({"error": "Invalid location."}, 400)
@@ -2546,6 +2561,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                 return
 
+        if path.startswith("/api/dispatch/fleet/"):
+            self.handle_split_fleet(path.rsplit("/", 1)[-1], payload)
+            return
+
         if path.startswith("/api/dispatch/invoices/"):
             operation = path.rsplit("/", 1)[-1]
             if not isinstance(payload, dict):
@@ -2558,7 +2577,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     self.send_json({"success": True} if sent else {"error": message}, 200 if sent else 409)
                     return
                 with db.get_connection() as conn:
-                    if operation == "client":
+                    if operation == "import":
+                        summary = dispatch_invoices.import_clients(conn, payload.get("clients"))
+                    elif operation == "client":
                         invoice_id = dispatch_invoices.save_client(conn, payload)
                     elif operation == "item":
                         invoice_id = dispatch_invoices.save_item(conn, payload)
@@ -2572,7 +2593,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     else:
                         self.send_json({"error": "Invalid invoice operation."}, 404)
                         return
-                self.send_json({"id": invoice_id})
+                self.send_json(summary if operation == "import" else {"id": invoice_id})
             except (TypeError, ValueError) as error:
                 self.send_json({"error": str(error)}, 400)
             return
@@ -3492,7 +3513,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Chauffeur not found"}, 404)
                 return
 
-        vehicle = cursor.execute("SELECT * FROM chauffeurs WHERE id = ?", (vehicle_id,)).fetchone() if vehicle_id else chauffeur
+        if vehicle_id and vehicle_id.startswith("fleet:"):
+            vehicle = cursor.execute("SELECT * FROM fleet_vehicles WHERE id=?", (vehicle_id[6:],)).fetchone()
+        elif vehicle_id:
+            vehicle = cursor.execute("SELECT * FROM chauffeurs WHERE id=?", (vehicle_id,)).fetchone()
+        else:
+            vehicle = dispatch_fleet.profile_vehicle(conn, chauffeur) or chauffeur
         if not vehicle or not matches_vehicle(vehicle) or not vehicle["license_plate"]:
             conn.close()
             self.send_json({"error": f"Choose a fleet vehicle in the booked class: {VEHICLE_CONFIGS[booked_tier]['name']}."}, 409)
@@ -5029,6 +5055,105 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         broadcast_event("chauffeur_status_updated", {"chauffeur_id": chauffeur_id, "status": new_status})
         self.send_json({"success": True, "chauffeur_id": chauffeur_id, "status": new_status})
 
+    def handle_split_fleet(self, operation, payload):
+        if not isinstance(payload, dict):
+            self.send_json({"error": "Invalid fleet details."}, 400)
+            return
+        try:
+            with db.get_connection() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                if operation == "password":
+                    profile = conn.execute("SELECT driver_pin FROM chauffeurs WHERE id=?", (payload.get("id"),)).fetchone()
+                    if not profile:
+                        raise ValueError("Chauffeur profile not found.")
+                    saved = profile["driver_pin"] if profile["driver_pin"] != "1234" else ""
+                elif operation == "vehicle":
+                    saved = dispatch_fleet.save_vehicle(conn, payload, vehicle_tier_key)
+                elif operation == "assignment":
+                    saved = str(payload.get("chauffeur_id") or "")
+                    selected = payload.get("vehicle_id") or None
+                    vehicle = conn.execute("SELECT * FROM fleet_vehicles WHERE id=?", (selected,)).fetchone() if selected else None
+                    if selected and not vehicle:
+                        raise ValueError("Choose an existing vehicle.")
+                    values = tuple(vehicle[field] for field in ("vehicle_model","vehicle_class","license_plate",
+                                   "passenger_capacity","luggage_capacity")) if vehicle else ("","","",0,0)
+                    current = conn.execute("SELECT vehicle_model,license_plate FROM chauffeurs WHERE id=?", (saved,)).fetchone()
+                    if not current:
+                        raise ValueError("Choose an existing chauffeur.")
+                    if current["license_plate"]:
+                        conn.execute("""UPDATE bookings SET assigned_vehicle_model=COALESCE(assigned_vehicle_model,?),
+                              assigned_vehicle_plate=COALESCE(assigned_vehicle_plate,?)
+                              WHERE chauffeur_id=?""", (current["vehicle_model"], current["license_plate"], saved))
+                    updated = conn.execute("""UPDATE chauffeurs SET fleet_vehicle_id=?,vehicle_model=?,vehicle_class=?,
+                         license_plate=?,passenger_capacity=?,luggage_capacity=? WHERE id=?""",
+                                           (selected, *values, saved))
+                    if not updated.rowcount:
+                        raise ValueError("Choose an existing chauffeur.")
+                elif operation == "profile":
+                    saved = self.save_chauffeur_profile(conn, payload)
+                else:
+                    raise ValueError("Unknown fleet operation.")
+        except sqlite3.IntegrityError:
+            self.send_json({"error": "That call sign or vehicle registration already exists."}, 409)
+            return
+        except (TypeError, ValueError) as error:
+            self.send_json({"error": str(error)}, 400)
+            return
+        self.send_json({"password": saved} if operation == "password" else {"id": saved}, cache_control="no-store")
+
+    def save_chauffeur_profile(self, conn, payload):
+        profile_id = str(payload.get("id") or "").strip()
+        name = str(payload.get("name") or "").strip()
+        call_sign = str(payload.get("call_sign") or "").strip().upper()
+        password = str(payload.get("password") or "").strip()
+        if not name or len(name) > 120 or (call_sign and not re.fullmatch(r"GA[1-9][0-9]{0,5}", call_sign)):
+            raise ValueError("Enter a name and a valid GA call sign.")
+        if (password or not profile_id) and not 8 <= len(password) <= 64:
+            raise ValueError("Enter at least eight characters for a new password.")
+        details = (name, str(payload.get("phone") or "").strip(), str(payload.get("email") or "").strip(),
+                   str(payload.get("pco_license") or "").strip(), int(bool(payload.get("docs_verified"))))
+        if profile_id:
+            changed = conn.execute("""UPDATE chauffeurs SET name=?,phone=?,email=?,pco_license=?,docs_verified=?,
+                  call_sign=COALESCE(?,call_sign),driver_pin=COALESCE(?,driver_pin) WHERE id=?""",
+                                   (*details, call_sign or None, password or None, profile_id))
+            if not changed.rowcount:
+                raise ValueError("Chauffeur profile not found.")
+        else:
+            profile_id = "GA-CHF-" + secrets.token_hex(8)
+            conn.execute("""INSERT INTO chauffeurs (id,name,phone,email,pco_license,docs_verified,call_sign,driver_pin,
+                driver_token,vehicle_model,vehicle_class,license_plate,lat,lng,current_zone)
+                VALUES (?,?,?,?,?,?,?,?,?,'','','',51.5074,-0.1278,'')""",
+                         (profile_id, *details, call_sign or None, password, secrets.token_urlsafe(24)))
+            db.assign_missing_call_signs(conn)
+        return profile_id
+
+    def handle_driver_job_vehicle(self, payload):
+        if not isinstance(payload, dict) or not isinstance(payload.get("token"), str) or not payload["token"]:
+            self.send_json({"error": "Chauffeur sign-in required."}, 401)
+            return
+        with db.get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            chauffeur = conn.execute("SELECT * FROM chauffeurs WHERE driver_token=?", (payload["token"],)).fetchone()
+            if not chauffeur:
+                self.send_json({"error": "Chauffeur sign-in required."}, 401)
+                return
+            job_id = str(payload.get("booking_id") or "")
+            booking = conn.execute("SELECT * FROM bookings WHERE id=? AND chauffeur_id=?", (job_id, chauffeur["id"])).fetchone()
+            if not booking or booking["status"] not in ("ASSIGNED", "ACCEPTED"):
+                self.send_json({"error": "Choose an allocated booking before setting off."}, 409)
+                return
+            vehicle = dispatch_fleet.profile_vehicle(conn, chauffeur)
+            if not vehicle or vehicle_tier_key(vehicle["vehicle_class"]) != vehicle_tier_key(booking["vehicle_class"]):
+                self.send_json({"error": "Your assigned vehicle does not match this booking. Contact Dispatch."}, 409)
+                return
+            if vehicle["license_plate"] != booking["assigned_vehicle_plate"] or vehicle["vehicle_model"] != booking["assigned_vehicle_model"]:
+                conn.execute("UPDATE bookings SET assigned_vehicle_model=?,assigned_vehicle_plate=?,updated_at=? WHERE id=?",
+                             (vehicle["vehicle_model"], vehicle["license_plate"], datetime.now().isoformat(), job_id))
+                self.log_booking_action(conn, job_id, chauffeur["id"], "VEHICLE_UPDATED", chauffeur["name"],
+                                        f"Chauffeur selected {vehicle['vehicle_model']} ({vehicle['license_plate']}).")
+        broadcast_event("vehicle_updated", {"booking_id": job_id})
+        self.send_json({"success": True})
+
     def handle_save_chauffeur(self, payload):
         call_sign = str(payload.get("call_sign") or "").strip().upper()
         if call_sign and not re.fullmatch(r"GA[1-9][0-9]{0,5}", call_sign):
@@ -5090,7 +5215,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 WHERE id = ?
             """, (name, phone, email, pco_license, docs_verified, driver_pin, driver_token, vehicle_model, vehicle_class, license_plate, pax_cap, lug_cap, ch_id))
         else:
-            ch_id = f"GA-CHF-{random.randint(10, 99)}"
+            ch_id = "GA-CHF-" + secrets.token_hex(8)
             initials = "".join([w[0].upper() for w in name.split()[:2]]) or "GA"
             driver_token = secrets.token_urlsafe(24)
             cursor.execute("""
@@ -5105,6 +5230,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if call_sign:
             cursor.execute("UPDATE chauffeurs SET call_sign = ? WHERE id = ?", (call_sign, ch_id))
         db.assign_missing_call_signs(conn)
+        dispatch_fleet.migrate_legacy(conn)
         conn.commit()
         conn.close()
         self.send_json({"success": True, "id": ch_id, "driver_token": driver_token, "driver_pin": driver_pin})
@@ -5189,11 +5315,13 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": "Invalid driver token"}, 401)
             return
         ch = dict(ch_row)
+        vehicle = dispatch_fleet.profile_vehicle(conn, ch)
+        ch["profile_vehicle"] = dict(vehicle) if vehicle else None
         jobs = [dict(r) for r in cursor.execute("""
             SELECT id, confirmation_code, customer_name, customer_phone,
                    pickup_address, pickup_unit, dropoff_address, dropoff_unit,
                    pickup_datetime, flight_number, passenger_count, luggage_count,
-                   special_requests, hours_booked, service_type, stops, pending_amendment, status,
+                   special_requests, hours_booked, service_type, stops, pending_amendment, status, vehicle_class,
                    COALESCE(assigned_vehicle_model, ?) AS vehicle_model,
                    COALESCE(assigned_vehicle_plate, ?) AS license_plate
             FROM bookings

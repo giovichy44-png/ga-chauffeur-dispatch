@@ -107,7 +107,9 @@ async function load() {
   $('catalog').replaceChildren(option('', 'Select an item'),
     ...state.invoice_items.map(item => option(item.id, item.description)));
   $('client-list').replaceChildren(...state.invoice_clients.map(client =>
-    entry(client.name, client.email, [button('Edit client', () => fill($('client-form'), client))])));
+    entry(client.name, [client.email, client.address, ...Object.entries(JSON.parse(client.source_details || '{}'))
+      .filter(([key]) => !['Email','Billing address'].includes(key)).map(([key, value]) => key + ' · ' + value)]
+      .filter(Boolean).join(' · '), [button('Edit client', () => fill($('client-form'), client))])));
   $('item-list').replaceChildren(...state.invoice_items.map(item =>
     entry(item.description, money(item.unit_pence), [button('Edit item', () =>
       fill($('item-form'), {...item, unit_price:(item.unit_pence / 100).toFixed(2)}))])));
@@ -218,4 +220,16 @@ submit(form, 'save', data => ({...Object.fromEntries(data), items:lines()}), () 
   show('invoices');
   notice('Draft saved. Open the preview or send the invoice from the list.');
 });
+$('client-import').onsubmit = async event => {
+  event.preventDefault();
+  event.submitter.disabled = true;
+  try {
+    const clients = JSON.parse(event.currentTarget.elements.client_export.value);
+    const result = await api('import', {clients});
+    $('client-import').reset();
+    await load();
+    notice('Imported ' + result.created + ' clients. ' + result.already_imported + ' already imported.');
+  } catch (error) { notice(error.message); }
+  finally { event.submitter.disabled = false; }
+};
 load().catch(error => notice(error.message));

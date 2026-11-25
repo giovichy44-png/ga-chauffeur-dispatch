@@ -7,6 +7,7 @@ Phone: +44 7886 622082 | Email: enquiries@gachauffeurs.co.uk
 
 import sqlite3
 import dispatch_invoices
+import dispatch_fleet
 import json
 import uuid
 import os
@@ -286,6 +287,7 @@ def init_db():
     )
     """)
 
+    dispatch_fleet.init(conn)
     dispatch_invoices.init(conn)
     conn.commit()
     conn.close()
@@ -367,6 +369,7 @@ def seed_data(force=False):
     INSERT INTO chauffeurs (id, name, phone, avatar, rating, trips_count, vehicle_model, vehicle_class, license_plate, passenger_capacity, luggage_capacity, status, lat, lng, current_zone, active_booking_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, chauffeurs)
+    dispatch_fleet.migrate_legacy(conn)
     assign_missing_call_signs(conn)
 
     conn.commit()

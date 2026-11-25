@@ -29,6 +29,37 @@ def init(conn):
     ):
         conn.execute(sql)
 
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(invoice_clients)")}
+    if "source_key" not in columns:
+        conn.execute("ALTER TABLE invoice_clients ADD COLUMN source_key TEXT")
+    if "source_details" not in columns:
+        conn.execute("ALTER TABLE invoice_clients ADD COLUMN source_details TEXT NOT NULL DEFAULT '{}'")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS invoice_client_source ON invoice_clients(source_key)")
+
+
+def import_clients(conn, data):
+    if not isinstance(data, list) or not 1 <= len(data) <= 500:
+        raise ValueError("Choose a client export with 1–500 records.")
+    created = 0
+    for row in data:
+        if not isinstance(row, dict):
+            raise ValueError("Invalid client record.")
+        key = clean(row.get("source_key"), "source client reference", 80, True)
+        fields = row.get("details", {})
+        if not isinstance(fields, dict) or len(fields) > 30:
+            raise ValueError("Invalid client contact details.")
+        details = {clean(label, "contact label", 80, True): clean(value, "contact details", 2000)
+                   for label, value in fields.items() if value}
+        billing_email = clean(row.get("email"), "billing email", 254)
+        if billing_email and not EMAIL.fullmatch(billing_email):
+            raise ValueError("Invalid billing email in the client export.")
+        values = (key, clean(row.get("name"), "client name", required=True), billing_email,
+                  clean(row.get("address"), "billing address", 1500), json.dumps(details))
+        result = conn.execute("""INSERT INTO invoice_clients(source_key,name,email,address,source_details)
+            VALUES (?,?,?,?,?) ON CONFLICT(source_key) DO NOTHING""", values)
+        created += result.rowcount
+    return {"created": created, "already_imported": len(data) - created}
+
 
 def today():
     return datetime.now(ZoneInfo("Europe/London")).date()

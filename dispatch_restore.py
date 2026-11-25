@@ -5,11 +5,12 @@ import secrets
 
 import db
 import dispatch_invoices
+import dispatch_fleet
 
-TABLES = ("bookings", "confirmations", "action_logs", "driver_messages", "customer_chat_messages", "alert_receipts", *dispatch_invoices.TABLES)
+TABLES = ("fleet_vehicles", "bookings", "confirmations", "action_logs", "driver_messages", "customer_chat_messages", "alert_receipts", *dispatch_invoices.TABLES)
 FLEET_FIELDS = ("id", "name", "phone", "avatar", "rating", "trips_count", "vehicle_model", "vehicle_class",
                 "license_plate", "passenger_capacity", "luggage_capacity", "status", "lat", "lng", "current_zone",
-                "email", "pco_license", "docs_verified", "call_sign")
+                "email", "pco_license", "docs_verified", "call_sign", "fleet_vehicle_id")
 
 
 def restore(snapshot):
@@ -29,6 +30,14 @@ def restore(snapshot):
             profiles = snapshot.get("fleet_profiles", [])
             if not isinstance(profiles, list):
                 raise ValueError("Invalid fleet backup.")
+            if snapshot.get("fleet_vehicles"):
+                conn.execute("UPDATE chauffeurs SET fleet_vehicle_id=NULL")
+                conn.execute("DELETE FROM fleet_vehicles")
+                for vehicle in snapshot["fleet_vehicles"]:
+                    fields = ("id", "registration_key", "license_plate", "vehicle_model", "vehicle_class",
+                              "passenger_capacity", "luggage_capacity")
+                    conn.execute(f"INSERT INTO fleet_vehicles ({','.join(fields)}) VALUES (?,?,?,?,?,?,?)",
+                                 [vehicle[field] for field in fields])
             for record in profiles:
                 if not isinstance(record, dict) or not record.get("id") or not record.get("name"):
                     raise ValueError("Invalid fleet profile.")
@@ -49,7 +58,14 @@ def restore(snapshot):
                 conn.execute(f"INSERT INTO chauffeurs ({','.join(columns)}) VALUES ({placeholders}) "
                              f"ON CONFLICT(id) DO UPDATE SET {updates}", values)
             db.assign_missing_call_signs(conn)
+            if "fleet_vehicles" not in snapshot:
+                conn.execute("UPDATE chauffeurs SET fleet_vehicle_id=NULL")
+                conn.execute("DELETE FROM fleet_vehicles")
+                dispatch_fleet.migrate_legacy(conn)
             for table in TABLES:
+                if table == "fleet_vehicles":
+                    restored[table] = len(snapshot.get(table, []))
+                    continue
                 fields = [row["name"] for row in conn.execute(f"PRAGMA table_info({table})")]
                 records = snapshot.get(table, snapshot.get("actions", []) if table == "action_logs" else [])
                 if not isinstance(records, list):
@@ -72,7 +88,7 @@ def restore(snapshot):
                 if booking and booking["chauffeur_id"] == record["id"]:
                     conn.execute("UPDATE chauffeurs SET active_booking_id = ?, status = ? WHERE id = ?",
                                  (record["active_booking_id"], record.get("status") or "AVAILABLE", record["id"]))
-        except (ValueError, TypeError, sqlite3.DatabaseError):
+        except (ValueError, KeyError, TypeError, sqlite3.DatabaseError):
             conn.rollback()
             return {"error": "Restore stopped because a record did not match Dispatch. No bookings were imported."}, 400
     return {"success": True, "restored": restored}, 200

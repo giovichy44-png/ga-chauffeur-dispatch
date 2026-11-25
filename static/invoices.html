@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Invoicing · GA Chauffeur Services</title>
 <link rel="stylesheet" href="/invoices.css?v=1">
-<script defer src="/invoices.js?v=1"></script>
+<script defer src="/invoices.js?v=2"></script>
 </head>
 <body>
 <header>
@@ -33,6 +33,12 @@
       <label>Billing address<textarea name="address" maxlength="1500" rows="3"></textarea></label>
       <div class="actions"><button>Save client</button><button type="reset" class="secondary">Clear</button></div>
     </form>
+    <details class="card"><summary>Import clients</summary>
+      <form id="client-import">
+        <label>Client export JSON<textarea name="client_export" required rows="4" spellcheck="false"></textarea></label>
+        <button>Import clients</button>
+      </form>
+    </details>
     <div id="client-list"></div>
   </section>
   <section id="items" hidden>

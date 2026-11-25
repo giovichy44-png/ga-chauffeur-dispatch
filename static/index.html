@@ -59,9 +59,7 @@
         <button type="button" class="btn btn-secondary" onclick="openModal('modal-sound-iphone')" style="font-size: 12px; padding: 7px 11px;" title="Test Notification Chimes &amp; Install on iPhone">
           🔔 Test Sound &amp; iPhone App
         </button>
-        <button type="button" class="btn btn-secondary" onclick="switchTab('fleet')" style="font-size: 12px; padding: 7px 11px;">
-          🚘 Fleet &amp; Chauffeurs
-        </button>
+        <a href="/fleet.html" class="btn btn-secondary">Fleet &amp; Chauffeurs</a>
         <a href="/invoices.html" class="btn btn-secondary">Invoices</a>
         <button type="button" class="btn btn-secondary" id="live-tracking-toggle" aria-controls="dispatch-live-tracking" aria-expanded="false" onclick="openLiveTracking()">Live Tracking</button>
         <button type="button" class="btn btn-secondary" id="dispatch-phone-push" onclick="enableDispatchPush(this)">Enable phone notifications</button>
@@ -482,16 +480,10 @@
     <!-- TAB 5: DEDICATED FLEET & DRIVERS PAGE (THIN-LINE EXCEL LIST + CLICK TO EXPAND) -->
     <section class="tab-content" id="pane-fleet">
       <div class="content-container wide-sheet">
-        <div class="jobs-filter-bar" style="margin-bottom: 12px;">
-          <div>
-            <h2 style="font-family: var(--font-serif); font-size: 20px; color: #fff; font-weight: 500;">🚘 Fleet Vehicles &amp; Chauffeurs Roster</h2>
-            <p style="font-size: 12.5px; color: var(--text-muted);">Click any thin vehicle row to expand full chauffeur &amp; vehicle details, or use the right-hand actions to toggle availability and edit.</p>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button type="button" class="btn btn-gold" onclick="openFleetManageModal()">+ Add / Edit Vehicle &amp; Chauffeur</button>
-          </div>
+        <div class="jobs-filter-bar">
+          <h2>Fleet &amp; Chauffeurs</h2>
+          <a class="btn btn-gold" href="/fleet.html">Manage chauffeurs and vehicles</a>
         </div>
-
         <div class="cds-table-wrap">
           <table class="cds-dispatch-table excel-thin-table">
             <thead>
@@ -818,6 +810,6 @@
 
   <script src="/journey-stops.js?v=1"></script>
   <script src="/ga-phone-push.js?v=2"></script>
-  <script src="app.js?v=dispatch-invoicing-2"></script>
+  <script src="app.js?v=dispatch-split-fleet-1"></script>
 </body>
 </html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet · GA Dispatch</title>
+<link rel="stylesheet" href="/invoices.css?v=1">
+<script defer src="/fleet.js?v=2"></script>
+</head>
+<body>
+<header><img src="/assets/ga-logo.png" width="195" alt="GA Chauffeur Services"><a href="/">Back to Dispatch</a></header>
+<main>
+  <h1>Fleet</h1>
+  <nav aria-label="Fleet sections">
+    <button type="button" data-view="chauffeurs" aria-pressed="true">Chauffeurs</button>
+    <button type="button" data-view="vehicles" aria-pressed="false">Vehicles</button>
+  </nav>
+  <p id="fleet-message" role="status" aria-live="polite"></p>
+  <section id="chauffeurs">
+    <form id="profile-form" class="card" hidden>
+      <h2>Chauffeur profile</h2><input name="id" type="hidden">
+      <div class="fields">
+        <label>Full name<input name="name" maxlength="120" required></label>
+        <label>Call sign<input name="call_sign" placeholder="Automatic" pattern="GA[1-9][0-9]{0,5}" autocapitalize="characters"></label>
+        <label>Mobile number<input name="phone" type="tel"></label>
+        <label>Email<input name="email" type="email"></label>
+        <label>PCO licence<input name="pco_license"></label>
+        <label>Password<input name="password" type="password" minlength="8" maxlength="64" autocomplete="new-password"></label>
+        <label class="check"><input id="show-entry-password" type="checkbox"> Show password while typing</label>
+      </div>
+      <label class="check"><input name="docs_verified" type="checkbox"> Documents verified</label>
+      <div class="actions"><button>Save chauffeur</button><button type="button" class="secondary" data-cancel>Cancel</button></div>
+    </form>
+    <p><button id="new-chauffeur" type="button">New chauffeur</button></p>
+    <div id="client-list"></div>
+  </section>
+  <section id="vehicles" hidden>
+    <form id="vehicle-form" class="card" hidden>
+      <h2>Vehicle details</h2><input name="id" type="hidden">
+      <div class="fields">
+        <label>Model<input name="vehicle_model" maxlength="120" required></label>
+        <label>Registration<input name="license_plate" maxlength="20" required></label>
+        <label>Vehicle class<select name="vehicle_class" required>
+          <option value="">Select class</option>
+          <option value="mercedes_s_class">S-Class</option>
+          <option value="mercedes_v_class">V-Class</option>
+          <option value="range_rover_autobiography">Range Rover</option>
+        </select></label>
+        <label>Passenger seats<input type="number" name="passenger_capacity" min="1" max="20" value="4" required></label>
+        <label>Luggage capacity<input type="number" name="luggage_capacity" min="0" max="50" value="2" required></label>
+      </div>
+      <div class="actions"><button>Save vehicle</button><button type="button" class="secondary" data-cancel>Cancel</button></div>
+    </form>
+    <p><button id="new-vehicle" type="button">New vehicle</button></p>
+    <div id="item-list"></div>
+  </section>
+</main>
+</body>
+</html>
