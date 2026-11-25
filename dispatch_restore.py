@@ -4,24 +4,25 @@ import sqlite3
 import secrets
 
 import db
+import dispatch_invoices
 
-TABLES = ("bookings", "confirmations", "action_logs", "driver_messages", "customer_chat_messages", "alert_receipts")
+TABLES = ("bookings", "confirmations", "action_logs", "driver_messages", "customer_chat_messages", "alert_receipts", *dispatch_invoices.TABLES)
 FLEET_FIELDS = ("id", "name", "phone", "avatar", "rating", "trips_count", "vehicle_model", "vehicle_class",
                 "license_plate", "passenger_capacity", "luggage_capacity", "status", "lat", "lng", "current_zone",
                 "email", "pco_license", "docs_verified", "call_sign")
 
 
 def restore(snapshot):
-    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("bookings"), list) or not snapshot["bookings"]:
-        return {"error": "Choose a Dispatch backup containing bookings."}, 400
-    if any(not isinstance(snapshot.get(table, []), list) for table in TABLES):
+    if not isinstance(snapshot, dict) or any(not isinstance(snapshot.get(table, []), list) for table in TABLES):
         return {"error": "The backup contains an invalid table."}, 400
+    if not any(snapshot.get(table) for table in ("bookings", *dispatch_invoices.TABLES)):
+        return {"error": "Choose a Dispatch backup containing bookings or invoicing data."}, 400
 
     with closing(db.get_connection()) as conn, conn:
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("BEGIN IMMEDIATE")
-        if conn.execute("SELECT 1 FROM bookings LIMIT 1").fetchone():
-            return {"error": "Restore is available only when Dispatch has no bookings."}, 409
+        if any(conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() for table in ("bookings", *dispatch_invoices.TABLES)):
+            return {"error": "Restore is available only when Dispatch has no bookings or invoicing data."}, 409
 
         restored = {}
         try:
@@ -32,11 +33,21 @@ def restore(snapshot):
                 if not isinstance(record, dict) or not record.get("id") or not record.get("name"):
                     raise ValueError("Invalid fleet profile.")
                 columns = [name for name in FLEET_FIELDS if name in record]
+                for credential, limit in (("driver_pin", 64), ("driver_token", 256)):
+                    if credential in record:
+                        value = record[credential]
+                        if not isinstance(value, str) or not value or len(value) > limit:
+                            raise ValueError("Invalid chauffeur credential in restore snapshot.")
+                        columns.append(credential)
                 updates = ",".join(f"{name}=excluded.{name}" for name in columns if name != "id")
                 placeholders = ",".join("?" for _ in columns)
-                conn.execute(f"INSERT INTO chauffeurs ({','.join(columns)},driver_token) VALUES ({placeholders},?) "
-                             f"ON CONFLICT(id) DO UPDATE SET {updates}",
-                             [*[record[name] for name in columns], secrets.token_urlsafe(24)])
+                values = [record[name] for name in columns]
+                if "driver_token" not in columns:
+                    columns.append("driver_token")
+                    values.append(secrets.token_urlsafe(24))
+                    placeholders += ",?"
+                conn.execute(f"INSERT INTO chauffeurs ({','.join(columns)}) VALUES ({placeholders}) "
+                             f"ON CONFLICT(id) DO UPDATE SET {updates}", values)
             db.assign_missing_call_signs(conn)
             for table in TABLES:
                 fields = [row["name"] for row in conn.execute(f"PRAGMA table_info({table})")]

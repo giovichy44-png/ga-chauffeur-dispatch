@@ -6,6 +6,7 @@ Phone: +44 7886 622082 | Email: enquiries@gachauffeurs.co.uk
 """
 
 import sqlite3
+import dispatch_invoices
 import json
 import uuid
 import os
@@ -285,6 +286,7 @@ def init_db():
     )
     """)
 
+    dispatch_invoices.init(conn)
     conn.commit()
     conn.close()
 

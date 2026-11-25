@@ -40,6 +40,8 @@ import dispatch_push
 import journey_stops
 import booking_alerts
 import dispatch_restore
+import dispatch_invoices
+import booking_pdf
 import quote_service
 import flight_monitor
 from prepared_pricing.zone_quote import QuoteUnavailable
@@ -1864,7 +1866,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_get_driver_messages(query)
             return
 
-        if path in ("/journey-stops.js", "/ga-phone-push.js"):
+        if path in ("/journey-stops.js", "/ga-phone-push.js", "/assets/ga-logo.png"):
             self.serve_website_file(path)
             return
 
@@ -1905,13 +1907,37 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                     return
 
+        if path == "/api/dispatch/invoices":
+            with db.get_connection() as conn:
+                result = {table: [dict(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY id DESC")]
+                          for table in dispatch_invoices.TABLES}
+            result["today"] = dispatch_invoices.today().isoformat()
+            self.send_json(result, cache_control="no-store")
+            return
+
+        invoice_print = re.fullmatch(r"/api/dispatch/invoices/([0-9]+)/print", path)
+        if invoice_print:
+            with db.get_connection() as conn:
+                row = conn.execute("SELECT * FROM invoices WHERE id=?", (invoice_print[1],)).fetchone()
+            if not row:
+                self.send_json({"error": "Invoice not found."}, 404)
+                return
+            body = dispatch_invoices.markup(dict(row), printable=True).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/api/dispatch/live-locations":
             with db.get_connection() as conn:
                 rows = conn.execute("""
                     SELECT c.id, c.name, c.call_sign, COALESCE(b.vehicle_class, c.vehicle_class) AS vehicle_class, l.latitude, l.longitude, l.accuracy, l.heading,
                            1 AS location_live, l.updated_at, b.status AS job_status,
                            CASE WHEN b.status IN ('EN_ROUTE', 'ON_BOARD', 'NEXT_STOP') THEN b.id END AS journey_id,
-                           b.confirmation_code AS journey_reference
+                           b.confirmation_code AS journey_reference, b.updated_at AS journey_revision
                     FROM chauffeurs c JOIN chauffeur_live_locations l
                       ON l.chauffeur_id = c.id AND l.updated_at >= ?
                     LEFT JOIN bookings b ON b.id = (
@@ -1941,18 +1967,21 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 return
             try:
                 pickup = quote_service.normalize_address(trip["pickup_address"])
+                dropoff = quote_service.normalize_address(trip["dropoff_address"])
+                stops = [quote_service.normalize_address(stop) for stop in journey_stops.load(trip["stops"])]
+                stops, return_stop = journey_stops.split_return_stop(pickup, stops)
+                is_return = trip["status"] == "NEXT_STOP" and bool(return_stop)
                 if trip["status"] == "EN_ROUTE":
                     origin = {"lat": trip["latitude"], "lng": trip["longitude"]}
                     destination, stops = pickup, []
+                elif is_return:
+                    origin, destination, stops = dropoff, return_stop, []
                 else:
-                    origin = pickup
-                    destination = quote_service.normalize_address(trip["dropoff_address"])
-                    stops = [quote_service.normalize_address(stop) for stop in
-                             journey_stops.validate(json.loads(trip["stops"] or "[]"))]
+                    origin, destination = pickup, dropoff
                 route = quote_service.zone.driving_route(origin, destination,
                                                          os.environ["GOOGLE_MAPS_SERVER_KEY"],
                                                          stops=stops, tracking=True)
-                self.send_json(route, cache_control="no-store")
+                self.send_json({**route, "return_leg": is_return}, cache_control="no-store")
             except (QuoteUnavailable, OSError, KeyError, ValueError):
                 self.send_json({"error": "The journey route is temporarily unavailable."}, 503)
             return
@@ -2012,6 +2041,11 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/bootstrap":
             self.handle_bootstrap()
+            return
+
+        confirmation_pdf = re.fullmatch(r"/api/bookings/([^/]+)/confirmation\.pdf", path)
+        if confirmation_pdf:
+            self.handle_booking_confirmation_pdf(confirmation_pdf[1])
             return
 
         if path.startswith("/api/bookings/"):
@@ -2512,6 +2546,37 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Unauthorized. GA Dispatch is private."}, 401)
                 return
 
+        if path.startswith("/api/dispatch/invoices/"):
+            operation = path.rsplit("/", 1)[-1]
+            if not isinstance(payload, dict):
+                self.send_json({"error": "Invalid invoice information."}, 400)
+                return
+            try:
+                if operation == "send":
+                    invoice_id = int(payload.get("id") or 0)
+                    sent, message = dispatch_invoices.deliver(db.get_connection, invoice_id, send_smtp_email)
+                    self.send_json({"success": True} if sent else {"error": message}, 200 if sent else 409)
+                    return
+                with db.get_connection() as conn:
+                    if operation == "client":
+                        invoice_id = dispatch_invoices.save_client(conn, payload)
+                    elif operation == "item":
+                        invoice_id = dispatch_invoices.save_item(conn, payload)
+                    elif operation == "save":
+                        invoice_id = dispatch_invoices.manual_invoice(conn, payload)
+                    elif operation == "paid":
+                        invoice_id = int(payload.get("id") or 0)
+                        updated = conn.execute("UPDATE invoices SET paid=1 WHERE id=? AND delivery='sent'", (invoice_id,))
+                        if not updated.rowcount:
+                            raise ValueError("Only a sent invoice can be marked paid.")
+                    else:
+                        self.send_json({"error": "Invalid invoice operation."}, 404)
+                        return
+                self.send_json({"id": invoice_id})
+            except (TypeError, ValueError) as error:
+                self.send_json({"error": str(error)}, 400)
+            return
+
         if path == "/api/dispatch/restore":
             if len(post_data) > 8_000_000:
                 self.send_json({"error": "This Dispatch backup is too large."}, 413)
@@ -2865,6 +2930,39 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         rows = [dict(row) for row in cursor.fetchall()]
         conn.close()
         self.send_json({"bookings": rows, "count": len(rows)})
+
+    def handle_booking_confirmation_pdf(self, booking_id):
+        with db.get_connection() as conn:
+            row = conn.execute("""
+                SELECT b.*, c.name AS chauffeur_name, c.phone AS chauffeur_phone,
+                       COALESCE(b.assigned_vehicle_model, c.vehicle_model) AS vehicle_model,
+                       COALESCE(b.assigned_vehicle_plate, c.license_plate) AS license_plate
+                FROM bookings b LEFT JOIN chauffeurs c ON b.chauffeur_id=c.id
+                WHERE b.id=?
+            """, (booking_id,)).fetchone()
+        if not row:
+            self.send_json({"error": "Booking not found."}, 404)
+            return
+        booking = dict(row)
+        chauffeur = {"vehicle_model": booking["vehicle_model"]} if booking["chauffeur_name"] else None
+        vehicle = confirmation_vehicle(chauffeur, booking["vehicle_class"])
+        booking["vehicle_display_name"] = booking["vehicle_model"] or vehicle["name"]
+        booking["formatted_pickup"], _ = format_pickup_and_dropoff_times(booking["pickup_datetime"])
+        fares = () if booking["service_type"] == "Open hours chauffeur service" else confirmation_fare(
+            booking["fare_amount"], booking["parking_fee"], booking["dropoff_fee"],
+            booking["congestion_charge"], booking["vat_amount"], booking["total_fare"])
+        reference = booking["confirmation_code"]
+        body = booking_pdf.booking_confirmation(
+            booking, customer_manage_url(reference, booking["customer_email"]), fares,
+            (vehicle.get("image_url") or "missing").rsplit("/", 1)[-1])
+        filename_reference = re.sub(r"[^a-zA-Z0-9-]", "", reference) or "GA"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename_reference}-confirmation.pdf"')
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
 
     def handle_get_booking(self, booking_id):
         conn = db.get_connection()
@@ -3295,33 +3393,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         conn.commit()
         conn.close()
 
-        # Trigger Invoice2go / Zapier webhook if configured
-        send_invoice2go_webhook(
-            booking={
-                "confirmation_code": code,
-                "customer_name": payload["customer_name"],
-                "customer_email": payload["customer_email"],
-                "customer_phone": payload["customer_phone"],
-                "service_type": service_type,
-                "pickup_datetime": payload["pickup_datetime"],
-                "pickup_address": full_pickup_addr,
-                "dropoff_address": full_dropoff_addr,
-                "vehicle_class": normalized_vehicle,
-                "passenger_count": passenger_count,
-                "flight_number": flight_num,
-                "payment_status": payment_status,
-                "special_requests": special_req_str
-            },
-            invoice_number=f"INV-{code}",
-            net_fare=net_fare,
-            parking_fee=parking_fee,
-            dropoff_fee=dropoff_fee,
-            congestion_charge=congestion_charge,
-            vat_amount=vat_amount,
-            total_fare=total_fare,
-            notes=special_req_str,
-            trigger_event="BOOKING_CREATED"
-        )
+
 
         result = {
             "id": booking_id,
@@ -4444,7 +4516,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         conn = db.get_connection()
         cursor = conn.cursor()
-        if acting_driver_id or action == "ARRIVED":
+        if acting_driver_id or action in ("ARRIVED", "COMPLETED"):
             cursor.execute("BEGIN IMMEDIATE")
 
         cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
@@ -4455,6 +4527,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         booking = dict(booking)
+        if action == "COMPLETED" and booking["status"] == "COMPLETED":
+            conn.close()
+            self.send_json({"success": True, "booking_status": "COMPLETED"})
+            return
         chauffeur_id = booking["chauffeur_id"]
         if acting_driver_id and chauffeur_id != acting_driver_id:
             conn.close()
@@ -4534,7 +4610,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         elif action == "NEXT_STOP":
             new_booking_status = "NEXT_STOP"
-            stop_note = payload.get("stop_note") or booking['dropoff_address']
+            _, return_stop = journey_stops.split_return_stop(booking["pickup_address"], journey_stops.load(booking.get("stops")))
+            stop_note = payload.get("stop_note") or return_stop or booking["dropoff_address"]
             details = f"En route to next stop: {stop_note}."
             sms_alert = f"GA Chauffeurs: Proceeding to next stop ({stop_note}) for booking {booking['confirmation_code']}."
 
@@ -4560,7 +4637,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     trips_count = trips_count + 1, current_zone = 'Stanmore / London Base'
                 WHERE id = ?
                 """, (booking["dropoff_lat"], booking["dropoff_lng"], chauffeur_id))
-            details = f"Journey successfully completed at {booking['dropoff_address']}. Official receipt issued."
+            details = f"Journey successfully completed at {booking['dropoff_address']}. Invoice prepared."
 
             # If a card pre-authorisation hold exists, capture it upon completion
             card_code = booking.get("card_auth_code") or ""
@@ -4573,65 +4650,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     else:
                         details += f" Stripe pre-authorisation capture pending: {cap_res.get('error')}."
                 else:
-                    cursor.execute("UPDATE bookings SET payment_status = 'PAID' WHERE id = ?", (booking_id,))
-                    details += f" Card pre-authorisation hold of £{booking['total_fare']:.2f} captured ({card_code})."
-
-            cnf_rec_id = f"CNF-{random.randint(1000, 9999)}"
-            receipt_subject = f"Official Receipt: {booking['confirmation_code']} - GA Chauffeur Services Limited"
-            receipt_content = (
-                f"GA Chauffeur Services Limited - Official Trip Receipt\n\n"
-                f"Booking Reference: {booking['confirmation_code']}\n"
-                f"Passenger: {booking['customer_name']}\n"
-                f"Chauffeur: {chauffeur['name'] if chauffeur else 'GA Executive Chauffeur'}\n"
-                f"Route: {booking['pickup_address']} -> {booking['dropoff_address']}\n"
-                f"Distance: {booking['estimated_distance_mi']} miles\n"
-                f"Total Charged: £{booking.get('total_fare') or booking['fare_amount']:.2f} GBP\n\n"
-                f"Thank you for traveling with GA Chauffeur Services Limited (gachauffeurs.co.uk)."
-            )
-            rec_html = build_luxury_email_html(
-                booking_ref=booking['confirmation_code'],
-                customer_name=booking['customer_name'],
-                pickup_addr=booking['pickup_address'],
-                dropoff_addr=booking['dropoff_address'],
-                pickup_dt=booking['pickup_datetime'],
-                vehicle_tier=booking['vehicle_class'],
-                net_fare=booking.get('fare_amount', 165.0),
-                vat_amt=booking.get('vat_amount'),
-                total_fare=booking.get('total_fare'),
-                service_type=booking.get('service_type', 'Airport Transfer'),
-                passengers=booking.get('passenger_count', 1),
-                large_cases=booking.get('large_cases', 0),
-                medium_cases=booking.get('medium_cases', 0),
-                hand_luggage=booking.get('hand_luggage', 0),
-                chauffeur=chauffeur,
-                flight=booking.get('flight_number'),
-                parking_fee=booking.get('parking_fee', 0),
-                dropoff_fee=booking.get('dropoff_fee', 0),
-                congestion_charge=booking.get('congestion_charge', 0),
-                card_brand=booking.get('card_brand'),
-                card_last4=booking.get('card_last4'),
-                card_auth_code=booking.get('card_auth_code')
-            )
-            rec_sent, _ = send_smtp_email(booking["customer_email"], receipt_subject, rec_html, receipt_content)
-            cursor.execute("""
-            INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                cnf_rec_id, booking_id, "EMAIL", booking["customer_email"],
-                receipt_subject, receipt_content, "DELIVERED" if rec_sent else "FAILED", now_str
-            ))
-            send_invoice2go_webhook(
-                booking=booking,
-                invoice_number=f"INV-{booking['confirmation_code']}",
-                net_fare=booking.get("fare_amount", 165.0),
-                parking_fee=booking.get("parking_fee", 0.0),
-                dropoff_fee=booking.get("dropoff_fee", 0.0),
-                congestion_charge=booking.get("congestion_charge", 0.0),
-                vat_amount=booking.get("vat_amount", 0.0),
-                total_fare=booking.get("total_fare") or booking.get("fare_amount", 165.0),
-                notes=booking.get("special_requests") or "",
-                trigger_event="JOURNEY_COMPLETED"
-            )
+                    details += " Card pre-authorisation recorded. Payment still due."
 
         elif action == "CANCEL":
             new_booking_status = "CANCELLED"
@@ -4664,10 +4683,19 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             )
         self.log_booking_action(conn, booking_id, chauffeur_id, action, actor, log_details)
 
+        invoice = None
+        if action == "COMPLETED":
+            final_booking = dict(cursor.execute("SELECT * FROM bookings WHERE id=?", (booking_id,)).fetchone())
+            invoice = dispatch_invoices.from_booking(conn, final_booking)
+
         conn.commit()
         conn.close()
 
         result = {"success": True, "action": action, "booking_status": new_booking_status, "details": details}
+        if invoice:
+            result["invoice_number"] = dispatch_invoices.number(invoice[0])
+            if invoice[1]:
+                result["invoice_sent"], _ = dispatch_invoices.deliver(db.get_connection, invoice[0], send_smtp_email)
         if arrival_email:
             arrival_id, recipient, subject, markup, text = arrival_email
             delivered, _ = send_smtp_email(recipient, subject, markup, text)

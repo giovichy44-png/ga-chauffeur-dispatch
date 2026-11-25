@@ -1,5 +1,6 @@
 """Ordered intermediate destinations shared by checkout and booking amendments."""
 import json
+import re
 
 
 def validate(value):
@@ -18,3 +19,16 @@ def load(value):
         return validate(json.loads(value or "[]") if isinstance(value, (str, type(None))) else value)
     except ValueError:
         return []
+
+def split_return_stop(pickup, stops):
+    """A final stop at the original pickup is the return leg."""
+    def address_key(address):
+        return re.sub(r"[^\w]", "", address.casefold())
+    if not stops:
+        return stops, None
+    first_name = pickup.split(",", 1)[0].strip().casefold()
+    last_name = stops[-1].split(",", 1)[0].strip().casefold()
+    same_hotel = first_name == last_name and bool(re.search(r"\bhotel\b", first_name))
+    if same_hotel or address_key(stops[-1]) == address_key(pickup):
+        return stops[:-1], stops[-1]
+    return stops, None

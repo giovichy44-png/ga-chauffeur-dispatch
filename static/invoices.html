@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invoicing · GA Chauffeur Services</title>
+<link rel="stylesheet" href="/invoices.css?v=1">
+<script defer src="/invoices.js?v=1"></script>
+</head>
+<body>
+<header>
+  <img src="/assets/ga-logo.png" width="195" alt="GA Chauffeur Services">
+  <a href="/">Back to Dispatch</a>
+</header>
+<main>
+  <div class="heading"><h1>Invoicing</h1><button id="new" type="button">New invoice</button></div>
+  <nav aria-label="Invoicing sections">
+    <button data-view="invoices" aria-pressed="true">Invoices</button>
+    <button data-view="clients" aria-pressed="false">Clients</button>
+    <button data-view="items" aria-pressed="false">Items</button>
+  </nav>
+  <p id="message" role="status" aria-live="polite"></p>
+  <section id="invoices">
+    <label class="search">Find an invoice <input id="search" type="search" placeholder="Invoice number, client or status"></label>
+    <div id="invoice-list"></div>
+  </section>
+  <section id="clients" hidden>
+    <form id="client-form" class="card">
+      <h2>Client details</h2>
+      <input type="hidden" name="id">
+      <div class="fields"><label>Name or company<input name="name" required maxlength="500"></label>
+      <label>Billing email<input name="email" type="email" maxlength="254"></label></div>
+      <label>Billing address<textarea name="address" maxlength="1500" rows="3"></textarea></label>
+      <div class="actions"><button>Save client</button><button type="reset" class="secondary">Clear</button></div>
+    </form>
+    <div id="client-list"></div>
+  </section>
+  <section id="items" hidden>
+    <form id="item-form" class="card">
+      <h2>Item details</h2>
+      <input type="hidden" name="id">
+      <div class="fields"><label>Description<input name="description" required maxlength="500"></label>
+      <label>Unit price (£)<input name="unit_price" type="number" min="0" max="1000000" step="0.01" required></label></div>
+      <div class="actions"><button>Save item</button><button type="reset" class="secondary">Clear</button></div>
+    </form>
+    <div id="item-list"></div>
+  </section>
+  <section id="editor" hidden>
+    <form class="card" id="invoice-form">
+      <h2 id="editor-title">New invoice</h2>
+      <input type="hidden" name="id">
+      <div class="fields"><label>Bill to<select name="client_id" required></select></label>
+      <label>Invoice date<input name="issued" type="date" required></label>
+      <label>Due date<input name="due" type="date" required></label></div>
+      <h3>Charges</h3>
+      <div id="lines"></div>
+      <div class="actions"><button id="add-line" type="button" class="secondary">Add line item</button>
+        <label class="catalog">Use saved item<select id="catalog"></select></label></div>
+      <div class="fields"><label>Discount (£)<input name="discount" type="number" min="0" step="0.01" value="0"></label>
+      <label class="check"><input id="include-vat" type="checkbox"> Include VAT</label>
+      <label id="vat-field" hidden>VAT rate (%)<input name="vat_percent" type="number" min="0" max="100" step="0.01" value="20"></label></div>
+      <p id="total" aria-live="polite"></p>
+      <label>Comments and payment instructions<textarea name="comments" maxlength="3000" rows="4"></textarea></label>
+      <div class="actions"><button>Save draft</button><button type="button" class="secondary" data-view="invoices">Back to invoices</button></div>
+    </form>
+  </section>
+</main>
+<template id="line-template"><div class="line">
+  <label>Description<input name="description" required maxlength="500"></label>
+  <label>Quantity<input name="quantity" type="number" min="0.001" max="10000" step="0.001" value="1" required></label>
+  <label>Rate (£)<input name="unit_price" type="number" min="0" max="1000000" step="0.01" required></label>
+  <button type="button" class="secondary remove" aria-label="Remove line item">Remove</button>
+</div></template>
+</body>
+</html>

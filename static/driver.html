@@ -1030,7 +1030,7 @@
       const markup = activeJobs.map(b => {
         const cleanPhone = (b.customer_phone || '').replace(/[^0-9+]/g, '');
         const next = b.status === 'ON_BOARD'
-          ? (b.hours_booked > 2 || b.service_type === 'Open hours chauffeur service' ? ['NEXT_STOP', 'Next stop'] : ['DROPPED_OFF', 'Passenger dropped off'])
+          ? (driverStops(b.stops).length || b.hours_booked > 2 || b.service_type === 'Open hours chauffeur service' ? ['NEXT_STOP', 'Next stop'] : ['DROPPED_OFF', 'Passenger dropped off'])
           : nextSteps[b.status];
         const btnsHtml = next ? `
           <div class="swipe-box"><label for="swipe-${esc(b.id)}">${esc(next[1])}</label>

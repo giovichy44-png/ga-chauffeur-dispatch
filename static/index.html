@@ -62,6 +62,7 @@
         <button type="button" class="btn btn-secondary" onclick="switchTab('fleet')" style="font-size: 12px; padding: 7px 11px;">
           🚘 Fleet &amp; Chauffeurs
         </button>
+        <a href="/invoices.html" class="btn btn-secondary">Invoices</a>
         <button type="button" class="btn btn-secondary" id="live-tracking-toggle" aria-controls="dispatch-live-tracking" aria-expanded="false" onclick="openLiveTracking()">Live Tracking</button>
         <button type="button" class="btn btn-secondary" id="dispatch-phone-push" onclick="enableDispatchPush(this)">Enable phone notifications</button>
         <button type="button" class="btn btn-secondary" onclick="openDriverCommsModal()" style="font-size: 12px; padding: 7px 11px; position: relative;" title="Live Chauffeur Messages">
@@ -434,19 +435,15 @@
       </div>
     </section>
 
-    <!-- TAB 4: SENT CONFIRMATIONS, INVOICING & INVOICE2GO -->
+    <!-- TAB 4: SENT CONFIRMATIONS AND INVOICING -->
     <section class="tab-content" id="pane-outbox">
       <div class="content-container">
         <div class="outbox-card" style="margin-bottom: 22px;">
           <div class="outbox-header">
             <div>
-              <h2>Invoice2go / Zapier Webhook Integration</h2>
-              <p>Connect your Invoice2go account via Zapier (<em>Invoice2go &rarr; Account &amp; Settings &rarr; Connect to Zapier &rarr; Catch Hook</em>) to automatically sync clients, line items, and invoices whenever a booking is created, completed, or invoiced.</p>
+              <h2>Invoicing</h2>
+              <p><a class="btn btn-secondary" href="/invoices.html">Open invoices</a></p>
             </div>
-          </div>
-          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px;">
-            <input type="url" id="invoice2go-webhook-input" placeholder="https://hooks.zapier.com/hooks/catch/..." style="flex: 1; min-width: 260px; background: #121715; border: 1px solid var(--border); color: #fff; padding: 10px 14px; border-radius: 6px; font-size: 13px;">
-            <button type="button" class="btn btn-gold" onclick="saveInvoice2goWebhook()">Save Invoice2go Webhook</button>
           </div>
           <div style="margin-top: 10px; font-size: 12px; color: var(--text-muted);">
             <strong>Approved Corporate Invoice Accounts (No Card Required):</strong> <span style="color: var(--gold-accent);">makiko.thomas@suntory.com</span>, <span style="color: var(--gold-accent);">garaqishvili@gmail.com</span>
@@ -821,6 +818,6 @@
 
   <script src="/journey-stops.js?v=1"></script>
   <script src="/ga-phone-push.js?v=2"></script>
-  <script src="app.js?v=dispatch-tracking-workspace-1"></script>
+  <script src="app.js?v=dispatch-invoicing-2"></script>
 </body>
 </html>

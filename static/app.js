@@ -2204,6 +2204,7 @@ async function viewVoucher(bookingId) {
     if (!body) return;
 
     body.innerHTML = `
+      <a class="btn btn-secondary" href="/api/bookings/${encodeURIComponent(b.id)}/confirmation.pdf">Download booking confirmation PDF</a>
       <div style="background: #09090c; border: 1px solid var(--gold-border); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--gold-border); padding-bottom: 10px;">
           <div>
@@ -2283,37 +2284,6 @@ async function requestTaxInvoice(bookingId) {
     alert(error.message);
   }
 }
-
-async function loadInvoice2goSettings() {
-  try {
-    const res = await fetch('/api/settings/invoice2go');
-    const data = await res.json();
-    const inp = document.getElementById('invoice2go-webhook-input');
-    if (inp && data && data.webhook_url) {
-      inp.value = data.webhook_url;
-    }
-  } catch (_) {}
-}
-
-async function saveInvoice2goWebhook() {
-  const inp = document.getElementById('invoice2go-webhook-input');
-  const url = inp ? inp.value.trim() : '';
-  try {
-    const res = await fetch('/api/settings/invoice2go', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ webhook_url: url })
-    });
-    const data = await res.json();
-    if (data.success) {
-      showToast('Invoice2go / Zapier Webhook URL saved!');
-    }
-  } catch (_) {
-    showToast('Could not save webhook URL');
-  }
-}
-
-document.addEventListener('DOMContentLoaded', loadInvoice2goSettings);
 
 function showToast(msg) {
   const stack = document.getElementById('toast-stack');
@@ -2620,7 +2590,8 @@ async function restoreDispatchBackup(event) {
     const result = await response.json();
     if (!response.ok) throw Error(result.error || 'Could not restore the Dispatch backup.');
     pasted.value = '';
-    status.textContent = `Restored ${result.restored.bookings} bookings.`;
+    const invoices = result.restored.invoices || 0;
+    status.textContent = `Restored ${result.restored.bookings} bookings${invoices ? ' and ' + invoices + ' invoices' : ''}.`;
     await loadData();
   } catch (error) {
     status.textContent = error.message;
@@ -2874,7 +2845,7 @@ async function openLiveTracking() {
     if (zoom || !chauffeur) selectedId = chauffeur?.id;
     const journey = chauffeur?.journey_id;
     const enRoute = chauffeur?.job_status === 'EN_ROUTE';
-    const key = journey && journey + (enRoute ? ':pickup' : ':passenger');
+    const key = journey && [journey, chauffeur.job_status, chauffeur.journey_revision].join(':');
     if (zoom && map && chauffeur?.updated_at != null) {
       map.panTo({lat:chauffeur.latitude, lng:chauffeur.longitude});
       if (!key) map.setZoom(15);
@@ -2892,11 +2863,11 @@ async function openLiveTracking() {
       if (path.length < 2) throw Error();
       overlays = [
         new maps.Polyline({map, path, strokeColor:'#1261e9', strokeOpacity:1, strokeWeight:6}),
-        ...(!enRoute ? [new maps.Marker({map, position:route.pickup_location, label:'A', title:'Pickup'})] : []),
+        ...(!enRoute ? [new maps.Marker({map, position:route.pickup_location, label:'A', title:route.return_leg ? 'Return pickup' : 'Pickup'})] : []),
         ...(route.stop_locations || []).map((position, index) => new maps.Marker({
           map, position, label:String(index + 1), title:'Stop ' + (index + 1)
         })),
-        new maps.Marker({map, position:route.dropoff_location, label:enRoute ? 'A' : 'B', title:enRoute ? 'Pickup' : 'Drop-off'})
+        new maps.Marker({map, position:route.dropoff_location, label:enRoute ? 'A' : 'B', title:enRoute ? 'Pickup' : route.return_leg ? 'Return destination' : 'Drop-off'})
       ];
       const bounds = new maps.LatLngBounds();
       path.forEach(point => bounds.extend(point));
@@ -2904,7 +2875,8 @@ async function openLiveTracking() {
       map.fitBounds(bounds, 50);
       routeStatus.textContent = chauffeur.journey_reference + (enRoute
         ? ' · En route to pickup'
-        : ' · Passenger on board · A Pickup → B Drop-off');
+        : route.return_leg ? ' · Return journey · A Return pickup → B Return destination'
+          : ' · Passenger on board · A Pickup → B Drop-off');
     } catch {
       if (version === routeVersion && !session.signal.aborted) {
         routeStatus.textContent = 'The route is unavailable. Live vehicle positions are still shown.';
