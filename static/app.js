@@ -2728,7 +2728,7 @@ function liveVehicleIcon(maps, tier, heading) {
     ctx.fill();
   }
   drawTrackingVehicle(ctx, tier);
-  return {url:canvas.toDataURL(), scaledSize:new maps.Size(56,56), anchor:new maps.Point(28,28)};
+  return {url:canvas.toDataURL(), scaledSize:new maps.Size(43,43), anchor:new maps.Point(21.5,21.5)};
 }
 
 function trackingBearing(from, to) {
@@ -2740,6 +2740,22 @@ function trackingBearing(from, to) {
   const north = Math.cos(a) * Math.sin(b) - Math.sin(a) * Math.cos(b) * Math.cos(delta);
   const metres = Math.hypot(east, north) * 6371000;
   return {metres, degrees:(Math.atan2(east, north) / radians + 360) % 360};
+}
+
+function moveTrackingMarker(entry, point) {
+  if (entry.target.lat === point.lat && entry.target.lng === point.lng) return;
+  cancelAnimationFrame(entry.frame);
+  const from = entry.marker.getPosition();
+  const lat = from.lat();
+  const lng = from.lng();
+  const start = performance.now();
+  entry.target = point;
+  function animate(now) {
+    const progress = Math.min((now - start) / 750, 1);
+    entry.marker.setPosition({lat:lat + (point.lat - lat) * progress, lng:lng + (point.lng - lng) * progress});
+    if (progress < 1) entry.frame = requestAnimationFrame(animate);
+  }
+  entry.frame = requestAnimationFrame(animate);
 }
 
 async function openLiveTracking() {
@@ -2801,8 +2817,10 @@ async function openLiveTracking() {
   }
 
   async function selectVehicle(chauffeur, zoom = false) {
-    selectedId = chauffeur?.id;
-    const key = chauffeur?.journey_id;
+    if (zoom || !chauffeur) selectedId = chauffeur?.id;
+    const journey = chauffeur?.journey_id;
+    const enRoute = chauffeur?.job_status === 'EN_ROUTE';
+    const key = journey && journey + (enRoute ? ':pickup' : ':passenger');
     if (zoom && map && chauffeur?.updated_at != null) {
       map.panTo({lat:chauffeur.latitude, lng:chauffeur.longitude});
       if (!key) map.setZoom(15);
@@ -2812,22 +2830,27 @@ async function openLiveTracking() {
     if (!key) return;
     routeKey = key;
     const version = routeVersion;
-    routeStatus.textContent = 'Loading passenger journey…';
+    routeStatus.textContent = 'Loading journey route…';
     try {
-      const route = await trackingJSON('/api/dispatch/live-route?' + new URLSearchParams({id:key}), 40000);
+      const route = await trackingJSON('/api/dispatch/live-route?' + new URLSearchParams({id:journey}), 40000);
       if (version !== routeVersion || session.signal.aborted) return;
       const path = route.path.map(([lng,lat]) => ({lat,lng}));
       if (path.length < 2) throw Error();
       overlays = [
         new maps.Polyline({map, path, strokeColor:'#1261e9', strokeOpacity:1, strokeWeight:6}),
-        new maps.Marker({map, position:route.pickup_location, label:'A', title:'Pickup'}),
-        new maps.Marker({map, position:route.dropoff_location, label:'B', title:'Drop-off'})
+        ...(!enRoute ? [new maps.Marker({map, position:route.pickup_location, label:'A', title:'Pickup'})] : []),
+        ...(route.stop_locations || []).map((position, index) => new maps.Marker({
+          map, position, label:String(index + 1), title:'Stop ' + (index + 1)
+        })),
+        new maps.Marker({map, position:route.dropoff_location, label:enRoute ? 'A' : 'B', title:enRoute ? 'Pickup' : 'Drop-off'})
       ];
       const bounds = new maps.LatLngBounds();
       path.forEach(point => bounds.extend(point));
       bounds.extend({lat:chauffeur.latitude, lng:chauffeur.longitude});
       map.fitBounds(bounds, 50);
-      routeStatus.textContent = chauffeur.journey_reference + ' · Passenger on board · A Pickup → B Drop-off';
+      routeStatus.textContent = chauffeur.journey_reference + (enRoute
+        ? ' · En route to pickup'
+        : ' · Passenger on board · A Pickup → B Drop-off');
     } catch {
       if (version === routeVersion && !session.signal.aborted) {
         routeStatus.textContent = 'The route is unavailable. Live vehicle positions are still shown.';
@@ -2838,7 +2861,7 @@ async function openLiveTracking() {
   dialog.addEventListener('close', () => {
     session.abort();
     clearRoute();
-    markers.forEach(({marker}) => marker.setMap(null));
+    markers.forEach(({marker, frame}) => { cancelAnimationFrame(frame); marker.setMap(null); });
   }, {once:true});
 
   while (!session.signal.aborted) {
@@ -2850,7 +2873,15 @@ async function openLiveTracking() {
         try {
           maps = await loadDispatchMaps(key);
           if (session.signal.aborted) return;
-          map = new maps.Map(container, {center:{lat:51.5074,lng:-0.1278}, zoom:11, mapTypeControl:false, streetViewControl:false});
+          map = new maps.Map(container, {
+            center:{lat:51.5074,lng:-0.1278}, zoom:12, mapTypeId:'roadmap',
+            mapTypeControl:false, streetViewControl:false, fullscreenControl:false,
+            styles:[
+              {featureType:'poi.business', stylers:[{visibility:'off'}]},
+              {featureType:'transit', stylers:[{visibility:'off'}]},
+              {featureType:'administrative', elementType:'geometry.stroke', stylers:[{visibility:'off'}]}
+            ]
+          });
         } catch (error) {
           status.textContent = error.message;
         }
@@ -2858,8 +2889,9 @@ async function openLiveTracking() {
       if (map) {
         const bounds = new maps.LatLngBounds();
         const ids = new Set(latest.map(chauffeur => chauffeur.id));
-        for (const [id, {marker}] of markers) {
+        for (const [id, {marker, frame}] of markers) {
           if (!ids.has(id)) {
+            cancelAnimationFrame(frame);
             marker.setMap(null);
             markers.delete(id);
             streets.delete(id);
@@ -2874,7 +2906,7 @@ async function openLiveTracking() {
           if (existing) {
             const movement = trackingBearing(existing.point, point);
             if (chauffeur.heading == null && movement.metres >= Math.max(12, chauffeur.accuracy || 0)) heading = movement.degrees;
-            existing.marker.setPosition(point);
+            moveTrackingMarker(existing, point);
             if (heading !== existing.heading || tier !== existing.tier) existing.marker.setIcon(liveVehicleIcon(maps,tier,heading));
             if (movement.metres >= Math.max(12, chauffeur.accuracy || 0)) existing.point = point;
             existing.heading = heading;
@@ -2882,7 +2914,7 @@ async function openLiveTracking() {
           } else {
             const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier,heading), title:chauffeur.name, zIndex:10});
             marker.addListener('click', () => selectVehicle(latest.find(row => row.id === chauffeur.id), true));
-            markers.set(chauffeur.id, {marker, point, heading, tier});
+            markers.set(chauffeur.id, {marker, point, target:point, heading, tier});
           }
           lookupStreet(chauffeur, point);
         }
@@ -2924,11 +2956,11 @@ async function openLiveTracking() {
     } catch {
       if (session.signal.aborted) return;
       status.textContent = 'Unable to refresh chauffeur locations. Retrying…';
-      markers.forEach(({marker}) => marker.setMap(null));
+      markers.forEach(({marker, frame}) => { cancelAnimationFrame(frame); marker.setMap(null); });
       markers.clear();
       clearRoute();
       list.replaceChildren();
     }
-    await new Promise(resolve => setTimeout(resolve, 8000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
 }

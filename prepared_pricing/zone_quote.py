@@ -97,14 +97,14 @@ def geocode(address,key):
         raise QuoteUnavailable('Google Geocoding status: '+status)
     return address_location(address, data.get('results', []))
 
-def driving_route(pickup,dropoff,key,*,stops=()):
+def driving_route(pickup,dropoff,key,*,stops=(),tracking=False):
     """Geometry, metrics and endpoint surcharge all derive from verified addresses."""
     def endpoint(address, label):
         try:
             return geocode(address, key)
         except QuoteUnavailable as error:
             raise QuoteUnavailable(f"{label}: {error}") from error
-    p = endpoint(pickup, "Collection point")
+    p = pickup if tracking and isinstance(pickup, dict) else endpoint(pickup, "Collection point")
     d = endpoint(dropoff, "Destination")
     body={'origin':{'location':{'latLng':{'latitude':p['lat'],'longitude':p['lng']}}},'destination':{'location':{'latLng':{'latitude':d['lat'],'longitude':d['lng']}}},'travelMode':'DRIVE','routingPreference':'TRAFFIC_AWARE','polylineEncoding':'GEO_JSON_LINESTRING'}
     locations=[endpoint(address, f"Stop {i}") for i, address in enumerate(stops, 1)]
@@ -121,6 +121,8 @@ def driving_route(pickup,dropoff,key,*,stops=()):
     routes=data.get('routes',[])
     if not routes: raise QuoteUnavailable('No driving route is available.')
     route=routes[0];path=route['polyline']['geoJsonLinestring']['coordinates']
+    if tracking:
+        return dict(path=path, pickup_location=p, dropoff_location=d, stop_locations=locations)
     if len(path)<3: raise QuoteUnavailable('A complete road route could not be verified.')
     oneway_miles=route['distanceMeters']/1609.344
     oneway_minutes=float(route['duration'].rstrip('s'))/60

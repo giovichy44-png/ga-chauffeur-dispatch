@@ -1909,7 +1909,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 rows = conn.execute("""
                     SELECT c.id, c.name, c.vehicle_class, l.latitude, l.longitude, l.accuracy, l.heading,
                            1 AS location_live, l.updated_at, b.status AS job_status,
-                           CASE WHEN b.status IN ('ON_BOARD', 'NEXT_STOP') THEN b.id END AS journey_id,
+                           CASE WHEN b.status IN ('EN_ROUTE', 'ON_BOARD', 'NEXT_STOP') THEN b.id END AS journey_id,
                            b.confirmation_code AS journey_reference
                     FROM chauffeurs c JOIN chauffeur_live_locations l
                       ON l.chauffeur_id = c.id AND l.updated_at >= ?
@@ -1931,18 +1931,27 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             booking_id = query.get("id", [""])[0]
             with db.get_connection() as conn:
                 trip = conn.execute("""
-                    SELECT b.pickup_address, b.dropoff_address, b.stops, b.vehicle_class, b.service_type
+                    SELECT b.pickup_address, b.dropoff_address, b.stops, b.status, l.latitude, l.longitude
                     FROM bookings b JOIN chauffeur_live_locations l ON l.chauffeur_id = b.chauffeur_id
-                    WHERE b.id = ? AND b.status IN ('ON_BOARD', 'NEXT_STOP') AND l.updated_at >= ?
+                    WHERE b.id = ? AND b.status IN ('EN_ROUTE', 'ON_BOARD', 'NEXT_STOP') AND l.updated_at >= ?
                 """, (booking_id, time.time() - 300)).fetchone()
             if not trip:
-                self.send_json({"error": "No live passenger journey for this vehicle."}, 404)
+                self.send_json({"error": "No live journey for this vehicle."}, 404)
                 return
             try:
-                route = quote_service.issue(dict(trip), normalize_vehicle_tier, calculate_fare,
-                                            self.client_address[0], preview=True)
-                self.send_json({key: route[key] for key in ("path", "pickup_location", "dropoff_location")},
-                               cache_control="no-store")
+                pickup = quote_service.normalize_address(trip["pickup_address"])
+                if trip["status"] == "EN_ROUTE":
+                    origin = {"lat": trip["latitude"], "lng": trip["longitude"]}
+                    destination, stops = pickup, []
+                else:
+                    origin = pickup
+                    destination = quote_service.normalize_address(trip["dropoff_address"])
+                    stops = [quote_service.normalize_address(stop) for stop in
+                             journey_stops.validate(json.loads(trip["stops"] or "[]"))]
+                route = quote_service.zone.driving_route(origin, destination,
+                                                         os.environ["GOOGLE_MAPS_SERVER_KEY"],
+                                                         stops=stops, tracking=True)
+                self.send_json(route, cache_control="no-store")
             except (QuoteUnavailable, OSError, KeyError, ValueError):
                 self.send_json({"error": "The journey route is temporarily unavailable."}, 503)
             return
@@ -2447,6 +2456,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     heading = payload.get("heading")
                     if type(heading) not in (int, float) or not 0 <= heading < 360:
                         heading = None
+                    now = time.time()
+                    conn.execute("""
+                        UPDATE action_logs
+                        SET details = replace(details, ' No recent GPS fix at the time of this action.', ?)
+                        WHERE chauffeur_id = ? AND action = 'EN_ROUTE_PICKUP'
+                          AND details LIKE '% No recent GPS fix at the time of this action.'
+                          AND timestamp >= ?
+                          AND booking_id IN (SELECT id FROM bookings WHERE chauffeur_id = ? AND status = 'EN_ROUTE')
+                    """, (f" First GPS fix after departure: {coordinates[0]:.6f}, {coordinates[1]:.6f}.",
+                          chauffeur["id"], datetime.fromtimestamp(now - 30, timezone.utc).isoformat(timespec="seconds"),
+                          chauffeur["id"]))
                     conn.execute("""
                         INSERT INTO chauffeur_live_locations
                             (chauffeur_id, latitude, longitude, accuracy, updated_at, heading)
@@ -2454,7 +2474,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                         ON CONFLICT(chauffeur_id) DO UPDATE SET latitude=excluded.latitude,
                             longitude=excluded.longitude, accuracy=excluded.accuracy,
                             updated_at=excluded.updated_at, heading=excluded.heading
-                    """, (chauffeur["id"], *coordinates, time.time(), heading))
+                    """, (chauffeur["id"], *coordinates, now, heading))
             self.send_json({"success": True}, cache_control="no-store")
             return
 
@@ -4613,7 +4633,17 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 f"Live Status Update: {action}", sms_alert, "DELIVERED", now_str
             ))
 
-        self.log_booking_action(conn, booking_id, chauffeur_id, action, actor, details)
+        log_details = details
+        if acting_driver_id and action in ("EN_ROUTE_PICKUP", "COMPLETED"):
+            fix = cursor.execute("""
+                SELECT latitude, longitude FROM chauffeur_live_locations
+                WHERE chauffeur_id = ? AND updated_at >= ?
+            """, (chauffeur_id, time.time() - 15)).fetchone()
+            log_details += (
+                f" GPS: {fix['latitude']:.6f}, {fix['longitude']:.6f}."
+                if fix else " No recent GPS fix at the time of this action."
+            )
+        self.log_booking_action(conn, booking_id, chauffeur_id, action, actor, log_details)
 
         conn.commit()
         conn.close()

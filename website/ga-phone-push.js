@@ -48,9 +48,11 @@ window.GAPhonePush = {
       subscription ||= await registration.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:key});
       const saved = await save(subscription);
       if (!saved.ok) throw Error('Could not save phone notifications. Please try again.');
+      button.dataset.pushEnabled = 'true';
       button.textContent = 'Phone notifications enabled';
       if (interactive) show('Phone notifications enabled on this device.');
     } catch (error) {
+      delete button.dataset.pushEnabled;
       button.textContent = 'Enable phone notifications';
       if (interactive) show(error.message);
     } finally {

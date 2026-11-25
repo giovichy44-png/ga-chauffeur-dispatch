@@ -517,7 +517,7 @@
     <button type="button" class="nav-link" id="chauffeur-phone-push" onclick="enableChauffeurPush(this)">Enable phone notifications</button>
     <div>
       <button type="button" class="nav-link" id="driver-location-toggle" aria-pressed="false" onclick="toggleDriverLocation()">Share live location</button>
-      <p id="driver-location-status" role="status" style="margin:4px 0">Share your location with Dispatch while this app is visible. Dispatch can see your last position for up to five minutes.</p>
+      <p id="driver-location-status" role="status" style="margin:4px 0">Enable live location for active trips while this app is open.</p>
     </div>
     <!-- 1. CHAUFFEUR & VERIFIED VEHICLE DETAILS CARD -->
     <section class="card" id="sec-profile">
@@ -594,7 +594,7 @@
 
   <div class="toast-banner" id="driver-toast"></div>
 
-  <script src="/ga-phone-push.js?v=2"></script>
+  <script src="/ga-phone-push.js?v=3"></script>
   <script>
     const DriverApp = {
       token: '',
@@ -718,6 +718,7 @@
     let driverLocationSession = null;
     let driverLocationRequest = Promise.resolve();
 
+    const tripLocationStatuses = ['EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF'];
     const locationPreference = () => 'ga_share_location:' + DriverApp.chauffeur?.id;
 
     function sendDriverLocation(payload, token) {
@@ -738,16 +739,16 @@
       return driverLocationRequest;
     }
 
-    function stopDriverLocation(message = 'Live location is off.') {
+    function stopDriverLocation(message = 'Live location is off.', preservePreference = false) {
       const session = driverLocationSession;
       driverLocationSession = null;
       clearTimeout(session?.timer);
       const preference = locationPreference();
       const wasSharing = localStorage.getItem(preference) === 'yes';
-      localStorage.removeItem(preference);
+      if (!preservePreference) localStorage.removeItem(preference);
       const button = document.getElementById('driver-location-toggle');
-      button.textContent = 'Share live location';
-      button.setAttribute('aria-pressed', 'false');
+      button.textContent = preservePreference ? 'Turn off trip tracking' : 'Share live location';
+      button.setAttribute('aria-pressed', String(preservePreference));
       document.getElementById('driver-location-status').textContent = message;
       const token = session?.token || DriverApp.token;
       return token && (session || wasSharing)
@@ -755,9 +756,24 @@
         : Promise.resolve();
     }
 
+    function updateTripLocation() {
+      if (localStorage.getItem(locationPreference()) !== 'yes') return;
+      if (DriverApp.jobs.some(job => tripLocationStatuses.includes(job.status))) {
+        startDriverLocation();
+      } else if (driverLocationSession) {
+        stopDriverLocation('', true);
+      } else {
+        const button = document.getElementById('driver-location-toggle');
+        button.textContent = 'Turn off trip tracking';
+        button.setAttribute('aria-pressed', 'true');
+        document.getElementById('driver-location-status').textContent = '';
+      }
+    }
+
     function toggleDriverLocation() {
-      if (driverLocationSession) return stopDriverLocation();
-      startDriverLocation();
+      if (localStorage.getItem(locationPreference()) === 'yes') return stopDriverLocation();
+      localStorage.setItem(locationPreference(), 'yes');
+      updateTripLocation();
     }
 
     function startDriverLocation() {
@@ -777,7 +793,7 @@
 
       function nextSample() {
         session.sampling = false;
-        if (driverLocationSession === session && !document.hidden) session.timer = setTimeout(session.sample, 15000);
+        if (driverLocationSession === session && !document.hidden) session.timer = setTimeout(session.sample, 4000);
       }
 
       session.sample = () => {
@@ -791,7 +807,7 @@
               sharing:true, latitude:coords.latitude, longitude:coords.longitude, accuracy:coords.accuracy,
               heading:coords.speed > 1 ? coords.heading : null
             }, session.token);
-            if (driverLocationSession === session && !document.hidden) status.textContent = 'Sharing live location with Dispatch.';
+            if (driverLocationSession === session && !document.hidden) status.textContent = '';
           } catch {
             if (driverLocationSession === session && !document.hidden) status.textContent = 'Could not send your location. Retrying…';
           } finally {
@@ -802,13 +818,16 @@
           if (error.code === 1 && !document.hidden) stopDriverLocation('Location permission was declined.');
           else if (!document.hidden) status.textContent = 'Waiting for a GPS fix…';
           nextSample();
-        }, {maximumAge:5000, timeout:12000, enableHighAccuracy:true});
+        }, {maximumAge:1000, timeout:12000, enableHighAccuracy:true});
       };
       session.sample();
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (!driverLocationSession) return;
+      if (!driverLocationSession) {
+        if (!document.hidden) updateTripLocation();
+        return;
+      }
       if (document.hidden) {
         clearTimeout(driverLocationSession.timer);
         document.getElementById('driver-location-status').textContent = 'Sharing will resume when you return to the chauffeur app.';
@@ -844,9 +863,9 @@
         if (!data.chauffeur) return;
 
         DriverApp.chauffeur = data.chauffeur;
-        if (localStorage.getItem(locationPreference()) === 'yes') startDriverLocation();
         enableChauffeurPush(document.getElementById('chauffeur-phone-push'), true);
         DriverApp.jobs = data.jobs || [];
+        updateTripLocation();
         DriverApp.messages = data.messages || [];
         DriverApp.pendingAlerts = data.pending_alerts || [];
         updateDriverAlarm();
@@ -869,8 +888,12 @@
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({token, action, subscription})
       });
+      if (!restore && button.dataset.pushEnabled === 'true') return;
       await GAPhonePush[restore ? 'restore' : 'enable'](button, () => send('key'), subscription =>
-        send('subscribe', subscription), showDriverToast, '/driver/', ...(restore ? [token] : []));
+        send('subscribe', subscription), message => {
+          if (button.dataset.pushEnabled !== 'true') showDriverToast(message);
+        }, '/driver/', ...(restore ? [token] : []));
+      button.hidden = button.dataset.pushEnabled === 'true';
     }
 
     function updateDriverAlarm() {
