@@ -2960,15 +2960,22 @@ async function openLiveTracking() {
   }
 
   function refreshRoutes(chauffeurs) {
-    const active = chauffeurs.filter(row => row.journey_id && (row.job_status !== "EN_ROUTE" || row.updated_at != null));
+    const followsGPS = row => ['EN_ROUTE','ON_BOARD','NEXT_STOP'].includes(row.job_status);
+    const active = chauffeurs.filter(row => row.journey_id && (!followsGPS(row) || row.updated_at != null));
     for (const id of routes.keys()) if (!active.some(row => row.id === id)) clearRoute(id);
     for (const chauffeur of active) {
       const id = chauffeur.id;
       const enRoute = chauffeur.job_status === 'EN_ROUTE';
       const key = [chauffeur.journey_id, chauffeur.job_status, chauffeur.journey_revision].join(':');
       const previous = routes.get(id);
-      if (previous?.key === key && Date.now() - previous.checked < (previous.failed ? 15000 : enRoute ? 30000 : Infinity)) continue;
-      const state = {key, checked:Date.now(), overlays:previous?.overlays || []};
+      const point = followsGPS(chauffeur) ? {lat:chauffeur.latitude, lng:chauffeur.longitude} : null;
+      if (previous?.key === key) {
+        const elapsed = Date.now() - previous.checked;
+        const moved = point && previous.point && chauffeur.location_live &&
+          trackingBearing(previous.point, point).metres >= 45;
+        if (previous.pending || elapsed < 12000 || (!moved && !previous.failed)) continue;
+      }
+      const state = {key, point, pending:true, checked:Date.now(), overlays:previous?.overlays || [], path:previous?.path};
       const usedColors = new Set([...routes.values()].map(route => route.color));
       const color = previous?.color || colors.find(candidate => !usedColors.has(candidate)) || colors[active.indexOf(chauffeur) % colors.length];
       state.color = color;
@@ -2991,11 +2998,11 @@ async function openLiveTracking() {
             icon:{path:maps.SymbolPath.CIRCLE,scale:10,fillColor:color,fillOpacity:1,strokeColor:'#263347',strokeWeight:2}});
           state.overlays = [
             new maps.Polyline({map, path, strokeColor:color, strokeOpacity:.9, strokeWeight:5}),
-            ...(!enRoute ? [pin(route.pickup_location,'A','Pickup')] : []),
+            ...(!route.from_vehicle && !enRoute ? [pin(route.pickup_location,'A','Pickup')] : []),
             ...(route.stop_locations || []).map((position,index) => pin(position,String(index + 1),'Stop ' + (index + 1))),
             pin(route.dropoff_location,enRoute?'A':route.as_directed?'S':'B',enRoute?'Pickup':route.as_directed?'Last scheduled stop':'Destination')
           ];
-        }).catch(() => { state.failed = true; });
+        }).catch(() => { state.failed = true; }).finally(() => { state.pending = false; });
     }
     routeStatus.textContent = [...routes.values()].some(route => route.asDirected)
       ? 'As directed journeys show scheduled stops only.'

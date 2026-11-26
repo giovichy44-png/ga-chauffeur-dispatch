@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fleet · GA Dispatch</title>
 <link rel="stylesheet" href="/invoices.css?v=1">
-<script defer src="/fleet.js?v=2"></script>
+<script defer src="/fleet.js?v=3"></script>
+<style>
+.fleet-photo{display:block;width:96px;height:64px;object-fit:contain;border-radius:6px;margin-bottom:8px;background:#f4f2ea}
+.fleet-photo.portrait{width:56px;height:56px;object-fit:cover}
+.assignment-preview{margin:0}
+.fleet-photo[hidden],#remove-profile-photo-label[hidden]{display:none}
+</style>
 </head>
 <body>
 <header><img src="/assets/ga-logo.png" width="195" alt="GA Chauffeur Services"><a href="/">Back to Dispatch</a></header>
@@ -28,6 +34,9 @@
         <label>Password<input name="password" type="password" minlength="8" maxlength="64" autocomplete="new-password"></label>
         <label class="check"><input id="show-entry-password" type="checkbox"> Show password while typing</label>
       </div>
+      <label>Chauffeur photo<input id="profile-photo" type="file" accept="image/*"></label>
+      <img id="profile-photo-preview" class="fleet-photo portrait" alt="Chauffeur photo preview" hidden>
+      <label id="remove-profile-photo-label" class="check" hidden><input id="remove-profile-photo" type="checkbox"> Remove chauffeur photo</label>
       <label class="check"><input name="docs_verified" type="checkbox"> Documents verified</label>
       <div class="actions"><button>Save chauffeur</button><button type="button" class="secondary" data-cancel>Cancel</button></div>
     </form>
@@ -46,6 +55,7 @@
           <option value="mercedes_v_class">V-Class</option>
           <option value="range_rover_autobiography">Range Rover</option>
         </select></label>
+        <img id="vehicle-photo-preview" class="fleet-photo" alt="Vehicle class photo" hidden>
         <label>Passenger seats<input type="number" name="passenger_capacity" min="1" max="20" value="4" required></label>
         <label>Luggage capacity<input type="number" name="luggage_capacity" min="0" max="50" value="2" required></label>
       </div>

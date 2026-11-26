@@ -9,7 +9,14 @@ window.GAPhonePush = {
   },
   async enable(button, getKey, save, show, scope = '/', interactive = true) {
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-      show('On iPhone, add this app to the Home Screen in Safari and open it there first.');
+      if (!interactive) return;
+      if (window.webkit?.messageHandlers?.chauffeurLocation) {
+        show('This native build does not receive Web Push. For phone alerts, open the Safari-installed GA Chauffeur web app. Use this native app for background trip tracking.');
+      } else if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) {
+        show('Push is unavailable in this Home Screen app on this iPhone. Check that iOS is up to date and that you opened the Dispatch or Chauffeur web app from its own icon.');
+      } else {
+        show('On iPhone, open the GA Dispatch or GA Chauffeur web app from its Home Screen icon. When adding it in Safari, enable Open as Web App if shown.');
+      }
       return;
     }
     if (button.disabled) return;

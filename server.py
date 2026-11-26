@@ -2003,7 +2003,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/dispatch/fleet":
             with db.get_connection() as conn:
-                profiles = conn.execute("""SELECT id,name,phone,email,pco_license,call_sign,docs_verified,fleet_vehicle_id
+                profiles = conn.execute("""SELECT id,name,phone,email,pco_license,call_sign,docs_verified,fleet_vehicle_id,photo_jpeg
                                           FROM chauffeurs ORDER BY call_sign""").fetchall()
                 vehicles = conn.execute("SELECT * FROM fleet_vehicles ORDER BY license_plate").fetchall()
             self.send_json({"chauffeurs": [dict(row) for row in profiles], "vehicles": [dict(row) for row in vehicles]},
@@ -2091,26 +2091,29 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 else:
                     stops, return_stop = journey_stops.split_return_stop(pickup, stops)
                 is_return = trip["status"] == "NEXT_STOP" and bool(return_stop) and dropoff.casefold() not in ("", "as directed")
+                moving = trip["status"] in ("EN_ROUTE", "ON_BOARD", "NEXT_STOP")
+                if moving and trip["latitude"] is None:
+                    self.send_json({"path": [], "waiting_for_gps": True}, cache_control="no-store")
+                    return
+                origin = {"lat": trip["latitude"], "lng": trip["longitude"]} if moving else pickup
                 if trip["status"] == "EN_ROUTE":
-                    if trip["latitude"] is None:
-                        self.send_json({"path": [], "waiting_for_gps": True}, cache_control="no-store")
-                        return
-                    origin = {"lat": trip["latitude"], "lng": trip["longitude"]}
                     destination, stops = pickup, []
                 elif is_return:
-                    origin, destination, stops = dropoff, return_stop, []
+                    destination, stops = return_stop, []
                 elif dropoff.casefold() in ("", "as directed"):
                     if not stops:
                         self.send_json({"path": [], "as_directed": True}, cache_control="no-store")
                         return
-                    origin, destination = pickup, stops[-1]
-                    stops = stops[:-1]
+                    destination = stops[-1]
+                    stops = [] if moving else stops[:-1]
                 else:
-                    origin, destination = pickup, dropoff
+                    destination = dropoff
+                    if moving:
+                        stops = []
                 route = quote_service.zone.driving_route(origin, destination,
                                                          os.environ["GOOGLE_MAPS_SERVER_KEY"],
                                                          stops=stops, tracking=True)
-                self.send_json({**route, "return_leg": is_return, "as_directed": dropoff.casefold() in ("", "as directed")}, cache_control="no-store")
+                self.send_json({**route, "return_leg": is_return, "from_vehicle": moving, "as_directed": dropoff.casefold() in ("", "as directed")}, cache_control="no-store")
             except (QuoteUnavailable, OSError, KeyError, ValueError):
                 self.send_json({"error": "The journey route is temporarily unavailable."}, 503)
             return
@@ -3072,7 +3075,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         bookings = [dict(r) for r in cursor.fetchall()]
 
         cursor.execute("SELECT * FROM chauffeurs ORDER BY id ASC")
-        chauffeurs = [dict(r) for r in cursor.fetchall()]
+        chauffeurs = [{key: row[key] for key in row.keys() if key != "photo_jpeg"} for row in cursor.fetchall()]
 
         cursor.execute("""
             SELECT c.*, b.confirmation_code, b.customer_name
@@ -5414,6 +5417,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 VALUES (?,?,?,?,?,?,?,?,?,'','','',51.5074,-0.1278,'')""",
                          (profile_id, *details, call_sign or None, password, secrets.token_urlsafe(24)))
             db.assign_missing_call_signs(conn)
+        if "photo_jpeg" in payload:
+            photo = dispatch_fleet.validate_profile_photo(payload["photo_jpeg"])
+            conn.execute("UPDATE chauffeurs SET photo_jpeg=? WHERE id=?", (photo, profile_id))
         return profile_id
 
     def handle_driver_job_vehicle(self, payload):

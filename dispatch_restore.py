@@ -10,7 +10,7 @@ import dispatch_fleet
 TABLES = ("fleet_vehicles", "bookings", "confirmations", "action_logs", "driver_messages", "customer_chat_messages", "alert_receipts", *dispatch_invoices.TABLES)
 FLEET_FIELDS = ("id", "name", "phone", "avatar", "rating", "trips_count", "vehicle_model", "vehicle_class",
                 "license_plate", "passenger_capacity", "luggage_capacity", "status", "lat", "lng", "current_zone",
-                "email", "pco_license", "docs_verified", "call_sign", "fleet_vehicle_id")
+                "email", "pco_license", "docs_verified", "call_sign", "fleet_vehicle_id", "photo_jpeg")
 
 
 def restore(snapshot):

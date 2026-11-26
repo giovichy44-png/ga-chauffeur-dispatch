@@ -1,4 +1,6 @@
 """Vehicle registry and current chauffeur assignments."""
+import base64
+import binascii
 import re
 
 
@@ -13,9 +15,25 @@ def init(conn):
         passenger_capacity INTEGER NOT NULL, luggage_capacity INTEGER NOT NULL
     )""")
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(chauffeurs)")}
+    if "photo_jpeg" not in columns:
+        conn.execute("ALTER TABLE chauffeurs ADD COLUMN photo_jpeg TEXT")
     if "fleet_vehicle_id" not in columns:
         conn.execute("ALTER TABLE chauffeurs ADD COLUMN fleet_vehicle_id INTEGER REFERENCES fleet_vehicles(id)")
         migrate_legacy(conn)
+
+
+def validate_profile_photo(value):
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str) or len(value) > 160_000:
+        raise ValueError("Choose a smaller chauffeur photo.")
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except (ValueError, binascii.Error):
+        raise ValueError("Choose a valid photo.") from None
+    if not raw.startswith(b"\xff\xd8\xff") or not raw.endswith(b"\xff\xd9"):
+        raise ValueError("Choose a valid JPEG photo.")
+    return value
 
 
 def migrate_legacy(conn):
