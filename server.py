@@ -254,7 +254,7 @@ def invoice_payment_signature(invoice_id):
 
 
 def invoice_card_url(invoice):
-    if not STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_")) or not invoice["balance_pence"]:
+    if invoice.get("archived_at") or not STRIPE_SECRET_KEY.startswith(("sk_live_", "rk_live_")) or not invoice["balance_pence"]:
         return ""
     invoice_id = invoice["id"]
     return f"https://dispatch.gachauffeurs.co.uk/invoice-pay?invoice={invoice_id}&key={invoice_payment_signature(invoice_id)}"
@@ -2032,7 +2032,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if not invoice:
                 self.send_json({"error": "Invoice not found."}, 404)
                 return
-            link = settings.get("card_link") or invoice_card_url(invoice)
+            link = "" if invoice.get("archived_at") else settings.get("card_link") or invoice_card_url(invoice)
             is_pdf = invoice_print[2] == "pdf"
             body = invoice_pdf.build(invoice, settings, link) if is_pdf else dispatch_invoices.markup(
                 invoice, printable=True, payment_details=settings, card_link=link).encode("utf-8")
@@ -2712,7 +2712,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             try:
                 if operation == "send":
                     invoice_id = int(payload.get("id") or 0)
-                    sent, message = dispatch_invoices.deliver(db.get_connection, invoice_id, send_smtp_email, invoice_pdf.build, invoice_card_url)
+                    sent, message = dispatch_invoices.deliver(db.get_connection, invoice_id, send_smtp_email, invoice_pdf.build, invoice_card_url,
+                                                               resend=payload.get("resend") is True)
                     self.send_json({"success": True} if sent else {"error": message}, 200 if sent else 409)
                     return
                 with db.get_connection() as conn:
@@ -2728,6 +2729,21 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                         updated = conn.execute("UPDATE invoice_clients SET archived_at=? WHERE id=?", (archived, invoice_id))
                         if not updated.rowcount:
                             raise ValueError("Client not found.")
+                    elif operation == "backfill":
+                        conn.execute("BEGIN IMMEDIATE")
+                        summary = dispatch_invoices.backfill_completed(conn)
+                    elif operation in ("delete", "restore"):
+                        conn.execute("BEGIN IMMEDIATE")
+                        invoice_id = int(payload.get("id") or 0)
+                        row = conn.execute("SELECT archived_at,delivery FROM invoices WHERE id=?", (invoice_id,)).fetchone()
+                        if not row:
+                            raise ValueError("Invoice not found.")
+                        if row["delivery"] == "sending":
+                            raise ValueError("Check email delivery before deleting this invoice.")
+                        if operation == "delete" and not row["archived_at"]:
+                            settle_invoice_checkout(conn, invoice_id, expire=True)
+                        archived = datetime.now(timezone.utc).isoformat() if operation == "delete" else None
+                        conn.execute("UPDATE invoices SET archived_at=? WHERE id=?", (archived, invoice_id))
                     elif operation == "save":
                         conn.execute("BEGIN IMMEDIATE")
                         if payload.get("id"):
@@ -2751,7 +2767,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     else:
                         self.send_json({"error": "Invalid invoice operation."}, 404)
                         return
-                self.send_json(summary if operation == "import" else {"id": invoice_id})
+                self.send_json(summary if operation in ("import", "backfill") else {"id": invoice_id})
             except (TypeError, ValueError) as error:
                 self.send_json({"error": str(error)}, 400)
             return
@@ -3196,7 +3212,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             with db.get_connection() as conn:
                 conn.execute("BEGIN IMMEDIATE")
                 row = conn.execute("SELECT * FROM invoices WHERE id=? AND delivery='sent'", (invoice_id,)).fetchone()
-                if not row:
+                if not row or row["archived_at"]:
                     self.send_json({"error": "Invoice not available for payment."}, 404)
                     return
                 existing = settle_invoice_checkout(conn, invoice_id)

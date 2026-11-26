@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/invoices-icon-180.png">
 <link rel="icon" type="image/png" href="/invoices-icon-192.png">
 <link rel="stylesheet" href="/invoices.css?v=4">
-<script defer src="/invoices.js?v=6"></script>
+<script defer src="/invoices.js?v=7"></script>
 </head>
 <body>
 <header>
@@ -29,6 +29,7 @@
   <p id="message" role="status" aria-live="polite"></p>
   <section id="invoices">
     <label class="search">Find an invoice <input id="search" type="search" placeholder="Invoice number, client or status"></label>
+    <label class="check"><input id="show-deleted-invoices" type="checkbox"> Show deleted invoices</label>
     <div id="invoice-list"></div>
   </section>
   <section id="clients" hidden>
@@ -79,6 +80,7 @@
       <h2 id="preview-title">Invoice preview</h2>
       <div id="preview-actions" class="actions"></div>
       <iframe id="preview-pdf" title="Invoice PDF"></iframe>
+      <div id="preview-footer" class="actions" style="justify-content:flex-end;margin-top:12px"></div>
     </div>
   </section>
   <dialog id="payment-dialog">

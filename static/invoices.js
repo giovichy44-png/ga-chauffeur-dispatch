@@ -57,9 +57,22 @@ function entry(title, summary, actions) {
   return row;
 }
 
-function canSend(invoice) {
-  return ['draft','failed','queued'].includes(invoice.delivery) &&
-    (!invoice.booking_id || invoice.booking_status === 'COMPLETED');
+function invoiceSendIssue(invoice) {
+  if (invoice.archived_at) return 'Restore this invoice before emailing it.';
+  if (invoice.delivery === 'review') return 'Edit and save the final charges before sending.';
+  if (invoice.delivery === 'sending') return 'Check the previous email delivery before trying again.';
+  if (invoice.booking_id && invoice.booking_status !== 'COMPLETED') return 'Complete the booking before sending its invoice.';
+  if (!invoice.client_email) return 'Add the client’s billing email before sending.';
+  return '';
+}
+
+async function changeInvoiceArchive(invoice) {
+  const restoring = Boolean(invoice.archived_at);
+  if (!restoring && !confirm('Move ' + code(invoice.id) + ' to Deleted invoices?')) return;
+  await api(restoring ? 'restore' : 'delete', {id:invoice.id});
+  await load();
+  show('invoices');
+  notice(restoring ? 'Invoice restored.' : 'Invoice deleted. Use Show deleted invoices to restore it.');
 }
 
 function openPayment(invoice) {
@@ -70,9 +83,11 @@ function openPayment(invoice) {
 }
 
 async function sendInvoice(invoice) {
-  if (!invoice.client_email) throw Error('Add a billing email before sending.');
-  if (!confirm('Send invoice ' + code(invoice.id) + ' to ' + invoice.client_email + '?')) return;
-  await api('send', {id:invoice.id});
+  const issue = invoiceSendIssue(invoice);
+  if (issue) throw Error(issue);
+  const resend = invoice.delivery === 'sent';
+  if (!confirm((resend ? 'Send another copy of ' : 'Send invoice ') + code(invoice.id) + ' to ' + invoice.client_email + '?')) return;
+  await api('send', {id:invoice.id, resend});
   await load();
   const updated = state.invoices.find(row => row.id === invoice.id);
   if (!$('invoice-preview').hidden && updated) previewInvoice(updated);
@@ -90,26 +105,34 @@ function previewInvoice(invoice) {
   download.rel = 'noopener';
   download.textContent = 'Open PDF in new tab';
   const controls = [download, button('Back to invoices', () => show('invoices'))];
-  if (canSend(invoice)) controls.push(button('Send invoice', () => sendInvoice(invoice)));
-  if (invoice.delivery !== 'sending') controls.push(button(invoice.delivery === 'sent' ? 'Revise invoice' : 'Edit invoice', () => editInvoice(invoice)));
-  if (invoice.balance_pence > 0) controls.push(button('Record payment or deduction', () => openPayment(invoice)));
+  if (!invoice.archived_at && invoice.delivery !== 'sending') controls.push(button(invoice.delivery === 'sent' ? 'Revise invoice' : 'Edit invoice', () => editInvoice(invoice)));
+  if (!invoice.archived_at && invoice.balance_pence > 0) controls.push(button('Record payment or deduction', () => openPayment(invoice)));
   if (invoice.checkout_session) controls.push(button('Refresh card status', async () => {
     await api('sync-payment', {id:invoice.id});
     await load();
     previewInvoice(state.invoices.find(row => row.id === invoice.id));
   }));
   $('preview-actions').replaceChildren(...controls);
+  const send = button(invoice.delivery === 'sent' ? 'Email another copy' : 'Email invoice to client', () => sendInvoice(invoice));
+  send.classList.remove('secondary');
+  $('preview-footer').replaceChildren(
+    button('Back to invoices', () => show('invoices')),
+    button(invoice.archived_at ? 'Restore invoice' : 'Delete invoice', () => changeInvoiceArchive(invoice)),
+    ...(!invoice.archived_at ? [send] : [])
+  );
 }
 
 function renderInvoices() {
   const search = $('search').value.toLowerCase().trim();
-  const invoices = state.invoices.filter(invoice =>
+  const deleted = $('show-deleted-invoices').checked;
+  const invoices = state.invoices.filter(invoice => Boolean(invoice.archived_at) === deleted &&
     [code(invoice.id), invoice.client_name, invoice.booking_reference, statusOf(invoice)].join(' ').toLowerCase().includes(search));
   $('invoice-list').replaceChildren(...invoices.map(invoice => {
     const controls = [button('View PDF', () => previewInvoice(invoice))];
-    if (invoice.delivery !== 'sending') controls.push(button(invoice.delivery === 'sent' ? 'Revise' : 'Edit', () => editInvoice(invoice)));
-    if (canSend(invoice)) controls.push(button('Send invoice', () => sendInvoice(invoice)));
-    if (invoice.balance_pence > 0) controls.push(button('Record payment', () => openPayment(invoice)));
+    if (!invoice.archived_at && invoice.delivery !== 'sending') controls.push(button(invoice.delivery === 'sent' ? 'Revise' : 'Edit', () => editInvoice(invoice)));
+    controls.push(button(invoice.archived_at ? 'Restore' : 'Delete invoice', () => changeInvoiceArchive(invoice)));
+    if (!invoice.archived_at && !invoiceSendIssue(invoice)) controls.push(button(invoice.delivery === 'sent' ? 'Email another copy' : 'Email invoice', () => sendInvoice(invoice)));
+    if (!invoice.archived_at && invoice.balance_pence > 0) controls.push(button('Record payment', () => openPayment(invoice)));
     const journeyStatus = invoice.booking_id && invoice.booking_status !== 'COMPLETED' ? 'Awaiting journey completion' : '';
     return entry(code(invoice.id) + ' · ' + invoice.client_name,
       [statusOf(invoice), journeyStatus, invoice.booking_reference, 'Balance ' + money(invoice.balance_pence),
@@ -117,6 +140,8 @@ function renderInvoices() {
   }));
   if (!invoices.length) $('invoice-list').textContent = search ? 'No invoices match.' : 'No invoices yet.';
 }
+
+$('show-deleted-invoices').onchange = renderInvoices;
 
 function option(value, title) {
   return new Option(title, value);

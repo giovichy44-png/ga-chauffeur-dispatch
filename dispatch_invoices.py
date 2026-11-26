@@ -52,6 +52,8 @@ def init(conn):
         conn.execute("ALTER TABLE invoices ADD COLUMN checkout_pence INTEGER")
     if "manually_edited" not in invoice_columns:
         conn.execute("ALTER TABLE invoices ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
+    if "archived_at" not in invoice_columns:
+        conn.execute("ALTER TABLE invoices ADD COLUMN archived_at TEXT")
     migrate_legacy_payments(conn)
 
 
@@ -238,7 +240,7 @@ def manual_invoice(conn, data):
             raise ValueError("The invoice total cannot be less than payments and deductions already recorded.")
         result = conn.execute("""UPDATE invoices SET client_id=?, client_name=?, client_email=?, client_address=?,
                     issued=?, due=?, items=?, comments=?, discount_pence=?, vat_percent=?, vat_pence=?, subtotal_pence=?,
-                    total_pence=?, delivery='draft', manually_edited=1 WHERE id=? AND delivery IN ('draft','review','failed','queued','sent')""",
+                    total_pence=?, delivery='draft', manually_edited=1 WHERE id=? AND archived_at IS NULL AND delivery IN ('draft','review','failed','queued','sent')""",
                               (*values, data["id"]))
         if not result.rowcount:
             raise ValueError("This invoice is currently being sent.")
@@ -305,6 +307,15 @@ def from_booking(conn, booking, *, completed=False):
     return invoice_id, False
 
 
+def backfill_completed(conn):
+    rows = conn.execute("""SELECT b.* FROM bookings b WHERE b.status='COMPLETED'
+        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.booking_id=b.id)
+        ORDER BY b.pickup_datetime, b.id""").fetchall()
+    for row in rows:
+        from_booking(conn, dict(row), completed=True)
+    return {"created": len(rows)}
+
+
 def number(invoice_id):
     return f"GA-INV-{invoice_id:05d}"
 
@@ -367,11 +378,14 @@ td,th {{padding:9px 6px;text-align:right;border-bottom:1px solid #e2e7e2}} td:fi
 <p>{comments}</p>{bank_section}{payment_link}{print_button}</main></body></html>"""
 
 
-def deliver(connection, invoice_id, sender, pdf_builder=None, card_url=None):
+def deliver(connection, invoice_id, sender, pdf_builder=None, card_url=None, *, resend=False):
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM invoices WHERE id=?", (invoice_id,)).fetchone()
-        if not row or row["delivery"] not in ("draft", "queued", "failed", "sending"):
+        if not row or row["archived_at"]:
+            return False, "Restore the deleted invoice before emailing it."
+        allowed = ("draft", "queued", "failed", "sending", "sent") if resend else ("draft", "queued", "failed", "sending")
+        if row["delivery"] not in allowed:
             return False, "This invoice is already sent or requires review."
         if row["delivery"] == "sending":
             return False, "Delivery is in progress or needs checking."
@@ -403,5 +417,5 @@ def deliver(connection, invoice_id, sender, pdf_builder=None, card_url=None):
         # A transport exception can occur after acceptance. Keep the claim so a retry cannot send twice.
         return False, "Delivery could not be confirmed. Check the mail provider before retrying."
     with connection() as conn:
-        conn.execute("UPDATE invoices SET delivery=? WHERE id=?", ("sent" if sent else "failed", invoice_id))
+        conn.execute("UPDATE invoices SET delivery=? WHERE id=?", ("sent" if sent or row["delivery"] == "sent" else "failed", invoice_id))
     return sent, "" if sent else "The invoice was saved, but email delivery failed."
