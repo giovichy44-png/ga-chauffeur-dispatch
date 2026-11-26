@@ -81,6 +81,9 @@ def init_db():
 
     if "heading" not in {row["name"] for row in cursor.execute("PRAGMA table_info(chauffeur_live_locations)")}:
         cursor.execute("ALTER TABLE chauffeur_live_locations ADD COLUMN heading REAL")
+    if "booking_id" not in {row["name"] for row in cursor.execute("PRAGMA table_info(chauffeur_live_locations)")}:
+        cursor.execute("ALTER TABLE chauffeur_live_locations ADD COLUMN booking_id TEXT")
+
 
     cursor.execute("PRAGMA table_info(chauffeurs)")
     existing_ch_cols = [row["name"] for row in cursor.fetchall()]

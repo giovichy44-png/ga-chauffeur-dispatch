@@ -2055,8 +2055,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                            COALESCE(l.updated_at >= ?, 0) AS location_live, l.updated_at, b.status AS job_status,
                            CASE WHEN b.status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF') THEN b.id END AS journey_id,
                            b.confirmation_code AS journey_reference, b.updated_at AS journey_revision
-                    FROM chauffeurs c LEFT JOIN chauffeur_live_locations l
-                      ON l.chauffeur_id = c.id AND l.updated_at >= ?
+                    FROM chauffeurs c
                     LEFT JOIN bookings b ON b.id = (
                         SELECT id FROM bookings
                         WHERE chauffeur_id = c.id AND status IN ('ASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF')
@@ -2065,6 +2064,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                             WHEN 'ARRIVED' THEN 1 WHEN 'EN_ROUTE' THEN 2 WHEN 'DROPPED_OFF' THEN 2 ELSE 3 END,
                             updated_at DESC, id DESC LIMIT 1
                     )
+                    LEFT JOIN chauffeur_live_locations l ON l.chauffeur_id = c.id
+                      AND (l.booking_id = b.id OR (l.booking_id IS NULL AND l.updated_at >= ?))
                     WHERE l.chauffeur_id IS NOT NULL OR b.status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF')
                     ORDER BY c.name
                 """, (time.time() - 45, time.time() - 300)).fetchall()
@@ -2078,7 +2079,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 trip = conn.execute("""
                     SELECT b.pickup_address, b.dropoff_address, b.stops, b.status, l.latitude, l.longitude
                     FROM bookings b LEFT JOIN chauffeur_live_locations l
-                      ON l.chauffeur_id = b.chauffeur_id AND l.updated_at >= ?
+                      ON l.chauffeur_id = b.chauffeur_id
+                      AND (l.booking_id = b.id OR (l.booking_id IS NULL AND l.updated_at >= ?))
                     WHERE b.id = ? AND b.status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF')
                 """, (time.time() - 300, booking_id)).fetchone()
             if not trip:
@@ -2627,10 +2629,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 if stop:
                     conn.execute("DELETE FROM chauffeur_live_locations WHERE chauffeur_id = ?", (chauffeur["id"],))
                 else:
-                    if payload.get("active_trip_only") is True and not conn.execute("""
-                        SELECT 1 FROM bookings WHERE chauffeur_id = ?
-                        AND status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF') LIMIT 1
-                    """, (chauffeur["id"],)).fetchone():
+                    active_booking = conn.execute("""
+                        SELECT id FROM bookings WHERE chauffeur_id = ?
+                        AND status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF')
+                        ORDER BY CASE status WHEN 'ON_BOARD' THEN 0 WHEN 'NEXT_STOP' THEN 0
+                                             WHEN 'ARRIVED' THEN 1 ELSE 2 END, updated_at DESC, id DESC
+                        LIMIT 1
+                    """, (chauffeur["id"],)).fetchone()
+                    if payload.get("active_trip_only") is True and not active_booking:
                         self.send_json({"error": "No active journey."}, 409, cache_control="no-store")
                         return
                     heading = payload.get("heading")
@@ -2649,12 +2655,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                           chauffeur["id"]))
                     conn.execute("""
                         INSERT INTO chauffeur_live_locations
-                            (chauffeur_id, latitude, longitude, accuracy, updated_at, heading)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                            (chauffeur_id, latitude, longitude, accuracy, updated_at, heading, booking_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(chauffeur_id) DO UPDATE SET latitude=excluded.latitude,
                             longitude=excluded.longitude, accuracy=excluded.accuracy,
-                            updated_at=excluded.updated_at, heading=excluded.heading
-                    """, (chauffeur["id"], *coordinates, now, heading))
+                            updated_at=excluded.updated_at, heading=excluded.heading, booking_id=excluded.booking_id
+                    """, (chauffeur["id"], *coordinates, now, heading, active_booking["id"] if active_booking else None))
             self.send_json({"success": True}, cache_control="no-store")
             return
 
