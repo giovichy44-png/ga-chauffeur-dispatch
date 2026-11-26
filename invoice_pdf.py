@@ -9,7 +9,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from booking_pdf import ASSETS, GOLD, INK, PAPER
-from dispatch_invoices import bank_lines, number, pounds
+from dispatch_invoices import ENQUIRIES_EMAIL, bank_lines, invoice_dates, number, pounds, public_comments, uk_date
 import json
 
 
@@ -44,17 +44,17 @@ def build(invoice, settings, card_link=""):
     banner = table([[logo, [paragraph("Invoice", 26, colors.white, "Times-Roman", True),
                            paragraph(code, 11, GOLD, right=True)]]], [width / 2, width / 2], INK)
     vat_number = settings.get("vat_number") or os.environ.get("GA_VAT_REGISTRATION", "")
-    sender = ["GA Chauffeur Services Limited", "1 Glebe Road, Stanmore, HA7 4EJ",
-              "Company number 11136878", "enquiries@gachauffeurs.co.uk"]
+    sender = [paragraph("GA Chauffeur Services Limited\n1 Glebe Road, Stanmore, HA7 4EJ", right=True),
+              paragraph(f'<a href="mailto:{ENQUIRIES_EMAIL}" color="#366052"><u>{ENQUIRIES_EMAIL}</u></a>',
+                        right=True, markup=True)]
     if vat_number and invoice["vat_pence"]:
-        sender.append("VAT registration " + vat_number)
+        sender.append(paragraph("VAT registration " + vat_number, right=True))
     contact = "\n".join(filter(None, [invoice["client_name"], invoice["client_email"], invoice["client_address"]]))
-    status = "Paid" if invoice["paid"] else "Draft · final charges pending" if invoice["delivery"] == "review" else "Draft" if invoice["delivery"] == "draft" else ""
-    dates = f"Invoice date {invoice['issued']}\nDue date {invoice['due']}"
-    if status:
-        dates += "\n" + status
+    dates = invoice_dates(invoice)
+    if invoice["paid"]:
+        dates.append("Paid")
     details = table([[[paragraph("BILL TO", 9, font="Helvetica-Bold"), paragraph(contact)],
-                      [paragraph("\n".join(sender), right=True), paragraph(dates, right=True)]]],
+                      [*sender, Spacer(1, 6), paragraph("\n".join(dates), right=True)]]],
                     [width / 2, width / 2])
     charges = [[paragraph("Description", font="Helvetica-Bold"),
                 *[paragraph(label, font="Helvetica-Bold", right=True) for label in ("Qty", "Rate", "Amount")]]]
@@ -73,14 +73,14 @@ def build(invoice, settings, card_link=""):
     totals.append(("Balance due", invoice["balance_pence"]))
     summary = table([[paragraph(label, font="Helvetica-Bold"), paragraph(pounds(amount), right=True)]
                      for label, amount in totals], [width - 124, 124], PAPER)
-    ledger = [paragraph(f"{row['noted_on']} · {row['kind'].title()} · {pounds(row['amount_pence'])}" +
+    ledger = [paragraph(f"{uk_date(row['noted_on'])} · {row['kind'].title()} · {pounds(row['amount_pence'])}" +
                         (f" · {row['memo']}" if row["memo"] else "")) for row in invoice.get("payments", [])]
     content = [banner, Spacer(1, 16), details, Spacer(1, 16),
                table(charges, [width - 217, 52, 80, 85], header=True), Spacer(1, 10), summary]
     if ledger:
         content.extend([Spacer(1, 12), paragraph("PAYMENTS AND DEDUCTIONS", 9, font="Helvetica-Bold"), *ledger])
-    if invoice["comments"]:
-        content.extend([Spacer(1, 12), paragraph(invoice["comments"])])
+    if comments := public_comments(invoice):
+        content.extend([Spacer(1, 12), paragraph(comments)])
     if invoice["balance_pence"]:
         bank = bank_lines(settings)
         if bank:

@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo
 from urllib.parse import urlsplit
 
 TABLES = ("invoice_clients", "invoice_items", "invoices", "invoice_payments", "invoice_preferences")
+ENQUIRIES_EMAIL = "enquiries@gachauffeurs.co.uk"
+REVIEW_COMMENT = "Final charges require review in Dispatch."
 EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 
 
@@ -85,6 +87,15 @@ def save_preferences(conn, payload):
 
 def annotate(conn, invoice):
     invoice = dict(invoice)
+    items = json.loads(invoice["items"])
+    for item in items:
+        legacy = re.match(r"^([^·]+?) · (GA-[A-Z0-9]+) · .+ → .+", item["description"])
+        if not legacy:
+            continue
+        booking = conn.execute("SELECT * FROM bookings WHERE confirmation_code=?", (legacy[2],)).fetchone()
+        if booking and (invoice["booking_id"] in (None, booking["id"])) and legacy[1] == booking["service_type"]:
+            item["description"] = journey_description(dict(booking))
+    invoice["items"] = json.dumps(items)
     payments = [dict(row) for row in conn.execute("SELECT * FROM invoice_payments WHERE invoice_id=? ORDER BY id", (invoice["id"],))]
     invoice["payments"] = payments
     invoice["paid_pence"] = sum(row["amount_pence"] for row in payments if row["kind"] == "payment")
@@ -250,19 +261,62 @@ def manual_invoice(conn, data):
                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", values).lastrowid
 
 
+def uk_date(value):
+    try:
+        return date.fromisoformat(str(value)[:10]).strftime("%d/%m/%Y")
+    except ValueError:
+        return str(value or "")
+
+
+def invoice_dates(invoice):
+    issued, due = invoice["issued"], invoice["due"]
+    lines = ["Invoice date " + uk_date(issued)]
+    days = (date.fromisoformat(due) - date.fromisoformat(issued)).days
+    lines.append("Due on receipt" if days == 0 else f"Net {days} {'day' if days == 1 else 'days'}")
+    lines.append("Due date " + uk_date(due))
+    return lines
+
+
+def public_comments(invoice):
+    return "" if invoice["comments"] == REVIEW_COMMENT else invoice["comments"]
+
+
+def brief_location(address):
+    address = (address or "").strip()
+    airport = re.match(r"^([^,()]+? Airport)(?:\s*\([A-Z]{3}\))?(?:\s+Terminal\s+([A-Za-z0-9]+))?", address, re.I)
+    if airport:
+        return airport[1] + (f" Terminal {airport[2]}" if airport[2] else "")
+    first = address.split(",", 1)[0].strip()
+    return re.sub(r"^The (?=Bloomsbury Hotel$)", "", first, flags=re.I)
+
+
+def journey_description(booking):
+    pickup = booking.get("pickup_datetime") or ""
+    when = uk_date(pickup)
+    if re.match(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}", pickup):
+        when += " " + pickup[11:16]
+    origin = brief_location(booking.get("pickup_address"))
+    destination = brief_location(booking.get("dropoff_address"))
+    route = " to ".join(filter(None, [origin, destination]))
+    stops = list(filter(None, (brief_location(stop) for stop in journey_stops.load(booking.get("stops")))))
+    if stops:
+        route += " via " + ", ".join(stops)
+    service = booking["service_type"]
+    label = ("Transfer" if "transfer" in service.casefold() or "airport" in service.casefold()
+             else "Hourly chauffeur service" if "hours" in service.casefold() or "hourly" in service.casefold()
+             else service)
+    return " · ".join(filter(None, [when, booking.get("customer_name"), label])) + "\n" + route
+
+
 def from_booking(conn, booking, *, completed=False):
     items = []
     for description, key in (
-        (f"{booking['service_type']} · {booking['confirmation_code']} · {booking['pickup_address']} → {booking['dropoff_address']}", "fare_amount"),
+        (journey_description(booking), "fare_amount"),
         ("Waiting time", "waiting_fee"), ("Extra stops", "extra_stops_fee"),
         ("Parking", "parking_fee"), ("Airport drop-off", "dropoff_fee"), ("Congestion charge", "congestion_charge"),
     ):
         amount = pence(booking.get(key) or 0)
         if amount or key == "fare_amount":
-            if key == "fare_amount":
-                stops = journey_stops.load(booking.get("stops"))
-                if stops:
-                    description += " · Stops: " + "; ".join(stops)
             items.append(dict(description=description, quantity="1", unit_pence=amount, amount_pence=amount))
     subtotal = sum(row["amount_pence"] for row in items)
     vat = pence(booking.get("vat_amount") or 0)
@@ -299,7 +353,7 @@ def from_booking(conn, booking, *, completed=False):
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (booking["id"], client["id"], client["name"], email, client["address"], issued.isoformat(),
          (issued + timedelta(days=7)).isoformat(), json.dumps(items),
-         "Final charges require review in Dispatch." if needs_review else "", 0,
+         REVIEW_COMMENT if needs_review else "", 0,
          "", vat, subtotal, total, "review" if needs_review else "draft", 0)).lastrowid
     captured = pence(booking.get("captured_booking_amount", booking.get("total_fare")) or 0)
     if paid and 0 < captured <= total:
@@ -338,12 +392,9 @@ def markup(invoice, *, printable=False, payment_details=None, card_link=""):
     discount = f"<tr><td colspan='3'>Discount</td><td>−{pounds(invoice['discount_pence'])}</td></tr>" if invoice["discount_pence"] else ""
     vat_label = f"VAT ({escape(invoice['vat_percent'])}%)" if invoice["vat_percent"] else "VAT"
     vat = f"<tr><td colspan='3'>{vat_label}</td><td>{pounds(invoice['vat_pence'])}</td></tr>" if invoice["vat_pence"] else ""
-    if invoice["delivery"] == "review":
-        banner = "<p><strong>Draft · final charges pending</strong></p>"
-    else:
-        banner = "<p><strong>Paid</strong></p>" if invoice["paid"] else ""
-    due = "" if invoice["paid"] else f" · Due {escape(invoice['due'])}"
-    comments = escape(invoice["comments"]).replace("\n", "<br>")
+    banner = "<p><strong>Paid</strong></p>" if invoice["paid"] else ""
+    dates = "<br>".join(escape(line) for line in invoice_dates(invoice))
+    comments = escape(public_comments(invoice)).replace("\n", "<br>")
     print_button = '<button onclick="window.print()">Print or save PDF</button>' if printable else ""
     address = escape(invoice["client_address"]).replace("\n", "<br>")
     payment_details = payment_details or {}
@@ -368,9 +419,9 @@ td,th {{padding:9px 6px;text-align:right;border-bottom:1px solid #e2e7e2}} td:fi
 <div style="background:#18231d;padding:20px;color:#fff;border-radius:10px">
 <img src="https://gachauffeurs.co.uk/assets/ga-logo.png" width="200" alt="GA Chauffeur Services">
 <h1 style="font:36px Georgia;margin:15px 0 4px">Invoice</h1><p style="color:#e1c991;margin:0">{code}</p></div>
-<p><strong>GA Chauffeur Services Limited</strong><br>1 Glebe Road, Stanmore, HA7 4EJ<br>Company number 11136878{vat_number}<br>enquiries@gachauffeurs.co.uk</p>
+<p><strong>GA Chauffeur Services Limited</strong><br>1 Glebe Road, Stanmore, HA7 4EJ<br><a href="mailto:{ENQUIRIES_EMAIL}">{ENQUIRIES_EMAIL}</a>{vat_number}</p>
 <p><strong>Bill to</strong><br>{escape(invoice['client_name'])}<br>{escape(invoice['client_email'])}<br>{address}</p>
-<p>Issued {escape(invoice['issued'])}{due}</p>{banner}
+<p>{dates}</p>{banner}
 <table style="border-collapse:collapse;width:100%" cellspacing="0">
 <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
 <tbody>{line_rows}<tr><td colspan="3">Subtotal</td><td>{pounds(invoice['subtotal_pence'])}</td></tr>{discount}{vat}
@@ -402,11 +453,13 @@ def deliver(connection, invoice_id, sender, pdf_builder=None, card_url=None, *, 
         link = settings.get("card_link") or (card_url(invoice) if card_url else "")
         try:
             attachment = (code + ".pdf", pdf_builder(invoice, settings, link)) if pdf_builder else None
-            body = markup(invoice, payment_details=settings, card_link=link)
+            name = invoice["client_name"] or "Customer"
+            body = (f"<p>Dear {escape(name)},</p><p>Please find attached your invoice for chauffeur services.</p>"
+                    "<p>Best regards,<br>GA Chauffeur Services</p>")
+            plain = f"Dear {name},\n\nPlease find attached your invoice for chauffeur services.\n\nBest regards,\nGA Chauffeur Services"
         except Exception:
             return False, "The invoice PDF could not be prepared."
         conn.execute("UPDATE invoices SET delivery='sending' WHERE id=?", (invoice_id,))
-    plain = f"Invoice {code} · Balance due {pounds(invoice['balance_pence'])}."
     try:
         if attachment:
             sent, error = sender(invoice["client_email"], f"GA Chauffeurs invoice {code}", body, plain,
