@@ -39,6 +39,17 @@
   @media (max-width: 600px) {
     #dispatch-live-map { height: clamp(220px, 38dvh, 380px); }
   }
+
+  .edit-booking-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .edit-booking-passenger{grid-column:1/-1}
+  .edit-booking-passenger label{min-width:0;font-size:11px;color:var(--gold);text-transform:uppercase}
+  @media(max-width:600px){
+    #modal-edit-booking .modal-box{width:100%;max-width:none!important;margin:0}
+    .edit-booking-fields{grid-template-columns:minmax(0,1fr)}
+    .edit-booking-passenger .passenger-name-fields{grid-template-columns:84px minmax(0,1fr)}
+    #modal-edit-booking input,#modal-edit-booking select{box-sizing:border-box;min-width:0;font-size:16px!important}
+    .mobile-bar{top:calc(100dvh - var(--ga-mobile-bar-height, 78px));bottom:auto}
+  }
 </style>
 </head>
 <body>
@@ -152,6 +163,7 @@
           </div>
           <p id="dispatch-map-status" role="status">Loading Google Maps…</p>
           <div id="dispatch-live-map" aria-label="Google map of live chauffeur locations"></div>
+          <button id="dispatch-fit-routes" type="button" class="btn btn-secondary" hidden>Show all vehicles and routes</button>
           <p id="dispatch-route-status" role="status"></p>
           <ul id="dispatch-live-locations" aria-label="Chauffeur locations"></ul>
         </section>
@@ -549,7 +561,7 @@
       </div>
       <form id="edit-booking-form" onsubmit="submitEditBooking(event)" class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
         <input type="hidden" id="eb-id" value="">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="edit-booking-fields">
           <div>
             <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Pickup Date &amp; Time *</label>
             <input type="datetime-local" id="eb-datetime" required style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
@@ -562,7 +574,7 @@
               <option value="range_rover_autobiography">Range Rover Autobiography (4 Pax)</option>
             </select>
           </div>
-          <div>
+          <div class="edit-booking-passenger">
             <div class="passenger-name-fields">
               <label for="eb-title">Title (optional)<select id="eb-title" class="dispatch-edit-address" autocomplete="honorific-prefix"><option value="">Title</option><option>Mr</option><option>Mrs</option><option>Ms</option><option>Miss</option><option>Dr</option><option>Mx</option></select></label>
               <label for="eb-name">Passenger full name *<input type="text" id="eb-name" required class="dispatch-edit-address" autocomplete="name"></label>
@@ -603,6 +615,10 @@
             <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Base Net Fare (£)</label>
             <input type="number" step="0.01" id="eb-fare" min="0" value="165.00" style="width: 100%; background: #0d1210; border: 1px solid var(--border); color: #fff; padding: 8px 10px; border-radius: 4px; font-size: 13px; margin-top: 3px;">
           </div>
+        </div>
+        <div class="edit-booking-fields">
+          <label for="eb-waiting">Waiting charge (£, before VAT)<input id="eb-waiting" class="dispatch-edit-address" type="number" min="0" step="0.01"></label>
+          <label for="eb-extra-stops">Extra stops charge (£, before VAT)<input id="eb-extra-stops" class="dispatch-edit-address" type="number" min="0" step="0.01"></label>
         </div>
         <div>
           <label style="font-size: 11px; color: var(--gold); text-transform: uppercase;">Special Requests / Notes</label>
@@ -818,6 +834,6 @@
 
   <script src="/journey-stops.js?v=2"></script>
   <script src="/ga-phone-push.js?v=2"></script>
-  <script src="app.js?v=dispatch-job-actions-2"></script>
+  <script src="app.js?v=dispatch-tracking-routes-1"></script>
 </body>
 </html>

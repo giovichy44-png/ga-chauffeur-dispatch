@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
 import json
+import journey_stops
 import os
 import re
 from zoneinfo import ZoneInfo
@@ -49,6 +50,8 @@ def init(conn):
         conn.execute("ALTER TABLE invoices ADD COLUMN checkout_session TEXT")
     if "checkout_pence" not in invoice_columns:
         conn.execute("ALTER TABLE invoices ADD COLUMN checkout_pence INTEGER")
+    if "manually_edited" not in invoice_columns:
+        conn.execute("ALTER TABLE invoices ADD COLUMN manually_edited INTEGER NOT NULL DEFAULT 0")
     migrate_legacy_payments(conn)
 
 
@@ -235,10 +238,10 @@ def manual_invoice(conn, data):
             raise ValueError("The invoice total cannot be less than payments and deductions already recorded.")
         result = conn.execute("""UPDATE invoices SET client_id=?, client_name=?, client_email=?, client_address=?,
                     issued=?, due=?, items=?, comments=?, discount_pence=?, vat_percent=?, vat_pence=?, subtotal_pence=?,
-                    total_pence=?, delivery='draft' WHERE id=? AND delivery IN ('draft','review','failed')""",
+                    total_pence=?, delivery='draft', manually_edited=1 WHERE id=? AND delivery IN ('draft','review','failed','queued','sent')""",
                               (*values, data["id"]))
         if not result.rowcount:
-            raise ValueError("Only unsent invoices can be edited.")
+            raise ValueError("This invoice is currently being sent.")
         return data["id"]
     return conn.execute("""INSERT INTO invoices(client_id,client_name,client_email,client_address,issued,due,items,
                          comments,discount_pence,vat_percent,vat_pence,subtotal_pence,total_pence)
@@ -246,11 +249,35 @@ def manual_invoice(conn, data):
 
 
 def from_booking(conn, booking, *, completed=False):
-    existing = conn.execute("SELECT id, delivery FROM invoices WHERE booking_id=?", (booking["id"],)).fetchone()
+    items = []
+    for description, key in (
+        (f"{booking['service_type']} · {booking['confirmation_code']} · {booking['pickup_address']} → {booking['dropoff_address']}", "fare_amount"),
+        ("Waiting time", "waiting_fee"), ("Extra stops", "extra_stops_fee"),
+        ("Parking", "parking_fee"), ("Airport drop-off", "dropoff_fee"), ("Congestion charge", "congestion_charge"),
+    ):
+        amount = pence(booking.get(key) or 0)
+        if amount or key == "fare_amount":
+            if key == "fare_amount":
+                stops = journey_stops.load(booking.get("stops"))
+                if stops:
+                    description += " · Stops: " + "; ".join(stops)
+            items.append(dict(description=description, quantity="1", unit_pence=amount, amount_pence=amount))
+    subtotal = sum(row["amount_pence"] for row in items)
+    vat = pence(booking.get("vat_amount") or 0)
+    total = subtotal + vat
+    published_total = pence(booking.get("total_fare") or 0)
+    needs_review = (not total or
+                    bool(published_total and published_total != total))
+    existing = conn.execute("SELECT * FROM invoices WHERE booking_id=?", (booking["id"],)).fetchone()
     if existing:
+        if completed and existing["delivery"] in ("draft", "review", "queued", "failed") and not existing["manually_edited"]:
+            current = annotate(conn, existing)
+            if total >= current["paid_pence"] + current["deducted_pence"] and not existing["checkout_session"]:
+                conn.execute("""UPDATE invoices SET items=?, vat_pence=?, subtotal_pence=?, total_pence=?, delivery=?
+                                WHERE id=?""", (json.dumps(items), vat, subtotal, total, "review" if needs_review else "draft", existing["id"]))
         if completed and booking.get("payment_status") == "PAID":
             invoice = annotate(conn, conn.execute("SELECT * FROM invoices WHERE id=?", (existing["id"],)).fetchone())
-            captured = pence(booking.get("total_fare") or 0)
+            captured = pence(booking.get("captured_booking_amount") if booking.get("captured_booking_amount") is not None else booking.get("total_fare") or 0)
             if captured and invoice["paid_pence"] == 0 and captured <= invoice["balance_pence"]:
                 record_payment(conn, existing["id"], "payment", captured, "Booking payment captured", "booking:" + booking["id"])
         return existing["id"], False
@@ -263,20 +290,6 @@ def from_booking(conn, booking, *, completed=False):
         client_id = conn.execute("INSERT INTO invoice_clients(name,email) VALUES (?,?)",
                                  (booking["customer_name"], email)).lastrowid
         client = conn.execute("SELECT * FROM invoice_clients WHERE id=?", (client_id,)).fetchone()
-    items = []
-    for description, key in (
-        (f"{booking['service_type']} · {booking['confirmation_code']} · {booking['pickup_address']} → {booking['dropoff_address']}", "fare_amount"),
-        ("Parking", "parking_fee"), ("Airport drop-off", "dropoff_fee"), ("Congestion charge", "congestion_charge"),
-    ):
-        amount = pence(booking.get(key) or 0)
-        if amount or key == "fare_amount":
-            items.append(dict(description=description, quantity="1", unit_pence=amount, amount_pence=amount))
-    subtotal = sum(row["amount_pence"] for row in items)
-    vat = pence(booking.get("vat_amount") or 0)
-    total = subtotal + vat
-    published_total = pence(booking.get("total_fare") or 0)
-    needs_review = (booking.get("service_type") == "Open hours chauffeur service" or not total or
-                    bool(published_total and published_total != total))
     issued = today()
     paid = completed and booking.get("payment_status") == "PAID" and not needs_review
     invoice_id = conn.execute("""INSERT INTO invoices(booking_id,client_id,client_name,client_email,client_address,
@@ -286,8 +299,9 @@ def from_booking(conn, booking, *, completed=False):
          (issued + timedelta(days=7)).isoformat(), json.dumps(items),
          "Final charges require review in Dispatch." if needs_review else "", 0,
          "", vat, subtotal, total, "review" if needs_review else "draft", 0)).lastrowid
-    if paid:
-        record_payment(conn, invoice_id, "payment", total, "Booking payment captured", "booking:" + booking["id"])
+    captured = pence(booking.get("captured_booking_amount", booking.get("total_fare")) or 0)
+    if paid and 0 < captured <= total:
+        record_payment(conn, invoice_id, "payment", captured, "Booking payment captured", "booking:" + booking["id"])
     return invoice_id, False
 
 

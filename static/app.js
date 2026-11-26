@@ -1052,7 +1052,9 @@ function openEditBookingModal(bookingId) {
   editStops.set(bookingStops(b.stops));
   document.getElementById('eb-pax').value = b.passenger_count || 1;
   document.getElementById('eb-bags').value = b.luggage_count || 0;
-  document.getElementById('eb-fare').value = parseFloat(b.fare_amount || 165.0).toFixed(2);
+  document.getElementById('eb-fare').value = Number(b.fare_amount ?? 0).toFixed(2);
+  document.getElementById('eb-waiting').value = Number(b.waiting_fee ?? 0).toFixed(2);
+  document.getElementById('eb-extra-stops').value = Number(b.extra_stops_fee ?? 0).toFixed(2);
   document.getElementById('eb-notes').value = b.special_requests || '';
   openModal('modal-edit-booking');
 }
@@ -1076,6 +1078,8 @@ async function submitEditBooking(e) {
     passenger_count: parseInt(document.getElementById('eb-pax').value || 1),
     luggage_count: parseInt(document.getElementById('eb-bags').value || 0),
     fare_amount: parseFloat(document.getElementById('eb-fare').value || 165.0),
+    waiting_fee: document.getElementById('eb-waiting').value || '0',
+    extra_stops_fee: document.getElementById('eb-extra-stops').value || '0',
     special_requests: document.getElementById('eb-notes').value
   };
   try {
@@ -2893,7 +2897,17 @@ async function openLiveTracking() {
   const markers = new Map();
   const streets = new Map();
   let geocoder;
-  let maps, map, selectedId, routeKey, routeVersion = 0, overlays = [], framed = false;
+  let maps, map, framed = false;
+  const routes = new Map();
+  const overview = document.getElementById('dispatch-fit-routes');
+  overview.hidden = true;
+  overview.onclick = () => {
+    const bounds = new maps.LatLngBounds();
+    markers.forEach(({marker}) => bounds.extend(marker.getPosition()));
+    routes.forEach(route => (route.path || []).forEach(point => bounds.extend(point)));
+    if (!bounds.isEmpty()) map.fitBounds(bounds, 45);
+  };
+  const colors = ['#21c7e8', '#f4b35b', '#b292fc', '#60d9a4', '#fb83ac'];
   let latest = [];
   panel.hidden = false;
   document.getElementById('live-tracking-toggle').setAttribute('aria-expanded', 'true');
@@ -2934,59 +2948,62 @@ async function openLiveTracking() {
       }).catch(() => {});
   }
 
-  function clearRoute() {
-    routeVersion++;
-    overlays.forEach(overlay => overlay.setMap(null));
-    overlays = [];
-    routeKey = null;
-    routeStatus.textContent = '';
+  function clearRoute(id) {
+    routes.get(id)?.overlays.forEach(overlay => overlay.setMap(null));
+    routes.delete(id);
   }
 
-  async function selectVehicle(chauffeur, zoom = false) {
-    if (zoom || !chauffeur) selectedId = chauffeur?.id;
-    const journey = chauffeur?.journey_id;
-    const enRoute = chauffeur?.job_status === 'EN_ROUTE';
-    const key = journey && [journey, chauffeur.job_status, chauffeur.journey_revision].join(':');
-    if (zoom && map && chauffeur?.updated_at != null) {
-      map.panTo({lat:chauffeur.latitude, lng:chauffeur.longitude});
-      if (!key) map.setZoom(15);
-    }
-    if (!map || routeKey === key) return;
-    clearRoute();
-    if (!key) return;
-    routeKey = key;
-    const version = routeVersion;
-    routeStatus.textContent = 'Loading journey route…';
-    try {
-      const route = await trackingJSON('/api/dispatch/live-route?' + new URLSearchParams({id:journey}), 40000);
-      if (version !== routeVersion || session.signal.aborted) return;
-      const path = route.path.map(([lng,lat]) => ({lat,lng}));
-      if (path.length < 2) throw Error();
-      overlays = [
-        new maps.Polyline({map, path, strokeColor:'#1261e9', strokeOpacity:1, strokeWeight:6}),
-        ...(!enRoute ? [new maps.Marker({map, position:route.pickup_location, label:'A', title:route.return_leg ? 'Return pickup' : 'Pickup'})] : []),
-        ...(route.stop_locations || []).map((position, index) => new maps.Marker({
-          map, position, label:String(index + 1), title:'Stop ' + (index + 1)
-        })),
-        new maps.Marker({map, position:route.dropoff_location, label:enRoute ? 'A' : 'B', title:enRoute ? 'Pickup' : route.return_leg ? 'Return destination' : 'Drop-off'})
-      ];
-      const bounds = new maps.LatLngBounds();
-      path.forEach(point => bounds.extend(point));
-      bounds.extend({lat:chauffeur.latitude, lng:chauffeur.longitude});
-      map.fitBounds(bounds, 50);
-      routeStatus.textContent = chauffeur.journey_reference + (enRoute
-        ? ' · En route to pickup'
-        : route.return_leg ? ' · Return journey · A Return pickup → B Return destination'
-          : ' · Passenger on board · A Pickup → B Drop-off');
-    } catch {
-      if (version === routeVersion && !session.signal.aborted) {
-        routeStatus.textContent = 'The route is unavailable. Live vehicle positions are still shown.';
+  function focusVehicle(chauffeur) {
+    if (!map || chauffeur?.updated_at == null) return;
+    map.panTo({lat:chauffeur.latitude, lng:chauffeur.longitude});
+    map.setZoom(15);
+  }
+
+  function refreshRoutes(chauffeurs) {
+    const active = chauffeurs.filter(row => row.journey_id && (row.job_status !== "EN_ROUTE" || row.updated_at != null));
+    for (const id of routes.keys()) if (!active.some(row => row.id === id)) clearRoute(id);
+    for (const chauffeur of active) {
+      const id = chauffeur.id;
+      const enRoute = chauffeur.job_status === 'EN_ROUTE';
+      const key = [chauffeur.journey_id, chauffeur.job_status, chauffeur.journey_revision].join(':');
+      const previous = routes.get(id);
+      if (previous?.key === key && Date.now() - previous.checked < (previous.failed ? 15000 : enRoute ? 30000 : Infinity)) continue;
+      const state = {key, checked:Date.now(), overlays:previous?.overlays || []};
+      const usedColors = new Set([...routes.values()].map(route => route.color));
+      const color = previous?.color || colors.find(candidate => !usedColors.has(candidate)) || colors[active.indexOf(chauffeur) % colors.length];
+      state.color = color;
+      if (previous?.key !== key) {
+        clearRoute(id);
+        state.overlays = [];
       }
+      routes.set(id, state);
+      trackingJSON('/api/dispatch/live-route?' + new URLSearchParams({id:chauffeur.journey_id}), 40000)
+        .then(route => {
+          if (session.signal.aborted || routes.get(id) !== state) return;
+          state.overlays.forEach(overlay => overlay.setMap(null));
+          state.overlays = [];
+          state.asDirected = route.as_directed && !enRoute;
+          const path = route.path.map(([lng,lat]) => ({lat,lng}));
+          state.path = path;
+          overview.hidden = false;
+          if (path.length < 2) return;
+          const pin = (position, label, title) => new maps.Marker({map, position, label:{text:label,color:'#fff'}, title,
+            icon:{path:maps.SymbolPath.CIRCLE,scale:10,fillColor:color,fillOpacity:1,strokeColor:'#263347',strokeWeight:2}});
+          state.overlays = [
+            new maps.Polyline({map, path, strokeColor:color, strokeOpacity:.9, strokeWeight:5}),
+            ...(!enRoute ? [pin(route.pickup_location,'A','Pickup')] : []),
+            ...(route.stop_locations || []).map((position,index) => pin(position,String(index + 1),'Stop ' + (index + 1))),
+            pin(route.dropoff_location,enRoute?'A':route.as_directed?'S':'B',enRoute?'Pickup':route.as_directed?'Last scheduled stop':'Destination')
+          ];
+        }).catch(() => { state.failed = true; });
     }
+    routeStatus.textContent = [...routes.values()].some(route => route.asDirected)
+      ? 'As directed journeys show scheduled stops only.'
+      : [...routes.values()].some(route => route.failed) ? 'Some journey routes are temporarily unavailable.' : '';
   }
 
   session.signal.addEventListener('abort', () => {
-    clearRoute();
+    for (const id of routes.keys()) clearRoute(id);
     markers.forEach(({marker, frame}) => { cancelAnimationFrame(frame); marker.setMap(null); });
   }, {once:true});
 
@@ -2994,7 +3011,7 @@ async function openLiveTracking() {
     try {
       const {chauffeurs, maps_key:key} = await trackingJSON('/api/dispatch/live-locations', 8000);
       if (session.signal.aborted) return;
-      latest = chauffeurs.filter(chauffeur => chauffeur.location_live);
+      latest = chauffeurs;
       if (!map) {
         try {
           maps = await loadDispatchMaps(key);
@@ -3003,13 +3020,13 @@ async function openLiveTracking() {
             center:{lat:51.5074,lng:-0.1278}, zoom:12, mapTypeId:'roadmap',
             mapTypeControl:false, streetViewControl:false, fullscreenControl:false,
             styles:[
-              {elementType:'geometry', stylers:[{color:'#e9e7de'}]},
-              {featureType:'water', elementType:'geometry', stylers:[{color:'#9cc7d2'}]},
-              {featureType:'poi.park', elementType:'geometry', stylers:[{color:'#bcd4b9'}]},
-              {featureType:'road', elementType:'geometry.fill', stylers:[{color:'#ffffff'}]},
-              {featureType:'road.highway', elementType:'geometry.fill', stylers:[{color:'#e4c491'}]},
-              {elementType:'labels.text.fill', stylers:[{color:'#293637'}]},
-              {elementType:'labels.text.stroke', stylers:[{color:'#f5f3ea'}]},
+              {elementType:'geometry', stylers:[{color:'#263439'}]},
+              {featureType:'water', elementType:'geometry', stylers:[{color:'#142633'}]},
+              {featureType:'poi.park', elementType:'geometry', stylers:[{color:'#354f46'}]},
+              {featureType:'road', elementType:'geometry.fill', stylers:[{color:'#bec6c6'}]},
+              {featureType:'road.highway', elementType:'geometry.fill', stylers:[{color:'#dfc08a'}]},
+              {elementType:'labels.text.fill', stylers:[{color:'#eae7dd'}]},
+              {elementType:'labels.text.stroke', stylers:[{color:'#263439'}]},
               {featureType:'poi.business', stylers:[{visibility:'off'}]},
               {featureType:'transit', stylers:[{visibility:'off'}]},
               {featureType:'administrative', elementType:'geometry.stroke', stylers:[{visibility:'off'}]}
@@ -3021,7 +3038,7 @@ async function openLiveTracking() {
       }
       if (map) {
         const bounds = new maps.LatLngBounds();
-        const ids = new Set(latest.map(chauffeur => chauffeur.id));
+        const ids = new Set(latest.filter(row => row.updated_at != null).map(row => row.id));
         for (const [id, {marker, frame}] of markers) {
           if (!ids.has(id)) {
             cancelAnimationFrame(frame);
@@ -3031,6 +3048,7 @@ async function openLiveTracking() {
           }
         }
         for (const chauffeur of latest) {
+          if (chauffeur.updated_at == null) continue;
           const point = {lat:chauffeur.latitude, lng:chauffeur.longitude};
           bounds.extend(point);
           const tier = allocationVehicleClass(chauffeur.vehicle_class);
@@ -3046,20 +3064,24 @@ async function openLiveTracking() {
             existing.tier = tier;
           } else {
             const marker = new maps.Marker({map, position:point, icon:liveVehicleIcon(maps,tier,heading), title:[chauffeur.call_sign, chauffeur.name].filter(Boolean).join(' · '), zIndex:10});
-            marker.addListener('click', () => selectVehicle(latest.find(row => row.id === chauffeur.id), true));
+            marker.addListener('click', () => focusVehicle(latest.find(row => row.id === chauffeur.id)));
             markers.set(chauffeur.id, {marker, point, target:point, heading, tier});
           }
+          markers.get(chauffeur.id).marker.setOpacity(chauffeur.location_live ? 1 : .5);
           lookupStreet(chauffeur, point);
         }
-        if (!framed && latest.length) {
+        if (!framed && !bounds.isEmpty()) {
           framed = true;
-          if (latest.length === 1) {
+          if (ids.size === 1) {
             map.setCenter(bounds.getCenter());
             map.setZoom(14);
           } else map.fitBounds(bounds, 45);
         }
+        overview.hidden = ids.size === 0 && ![...routes.values()].some(route => route.path?.length);
         if (!dispatchMapsDenied) {
-          status.textContent = latest.length ? latest.length + ' sharing live location' : 'No chauffeurs are sharing live location.';
+          const liveCount = latest.filter(row => row.location_live).length;
+          status.textContent = liveCount + ' live' + (latest.length > liveCount ? ' · ' + (latest.length - liveCount) + ' awaiting GPS updates' : '');
+          refreshRoutes(latest);
         }
       }
       const focused = document.activeElement?.dataset.chauffeur;
@@ -3071,29 +3093,41 @@ async function openLiveTracking() {
         button.disabled = chauffeur.updated_at == null || !map;
         button.dataset.chauffeur = chauffeur.id;
         const tier = ({mercedes_v_class:'V-Class',mercedes_s_class:'S-Class',range_rover_autobiography:'Range Rover'})[allocationVehicleClass(chauffeur.vehicle_class)] || 'Vehicle';
-        const job = {ASSIGNED:'Allocated', ACCEPTED:'Accepted', EN_ROUTE:'En route', ARRIVED:'At pickup', ON_BOARD:'Passenger on board', NEXT_STOP:'Passenger on board'};
+        const job = {ASSIGNED:'Allocated', ACCEPTED:'Accepted', EN_ROUTE:'En route', ARRIVED:'At pickup', ON_BOARD:'Passenger on board', NEXT_STOP:'Passenger on board', DROPPED_OFF:'Dropped off'};
         button.textContent = [chauffeur.call_sign, chauffeur.name, tier, job[chauffeur.job_status] || 'No active job'].filter(Boolean).join(' · ');
-        button.onclick = () => selectVehicle(chauffeur,true);
+        button.onclick = () => focusVehicle(chauffeur);
+        if (routes.get(chauffeur.id)?.color) button.style.borderColor = routes.get(chauffeur.id).color;
         const heading = markers.get(chauffeur.id)?.heading;
         const direction = heading == null ? '' : ['N','NE','E','SE','S','SW','W','NW'][Math.round(heading / 45) % 8];
         row.append(button, ' ' + [
           chauffeur.journey_reference, streets.get(chauffeur.id)?.road, direction && 'Heading ' + direction,
-          'Updated ' + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB')
+          chauffeur.updated_at == null ? 'Waiting for driver GPS' : (chauffeur.location_live ? 'Updated ' : 'Last seen ') + new Date(chauffeur.updated_at * 1000).toLocaleTimeString('en-GB')
         ].filter(Boolean).join(' · '));
         return row;
       }));
-      const selected = latest.find(chauffeur => chauffeur.id === selectedId);
-      if (selectedId) selectVehicle(selected);
-      else selectVehicle(latest.find(chauffeur => chauffeur.journey_id));
       if (focused) Array.from(list.querySelectorAll('button')).find(button => button.dataset.chauffeur === focused)?.focus();
     } catch {
       if (session.signal.aborted) return;
       status.textContent = 'Unable to refresh chauffeur locations. Retrying…';
-      markers.forEach(({marker, frame}) => { cancelAnimationFrame(frame); marker.setMap(null); });
-      markers.clear();
-      clearRoute();
-      list.replaceChildren();
     }
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
+}
+
+// Re-anchor navigation to the visible viewport after iOS keyboard and toolbar changes.
+{
+  const nav = document.querySelector('.mobile-bar');
+  const viewport = window.visualViewport;
+  const layoutNavigation = () => {
+    const height = nav?.offsetHeight || 0;
+    if (!height) return;
+    const bottom = viewport ? viewport.height + viewport.offsetTop : window.innerHeight;
+    nav.style.setProperty('--ga-mobile-bar-height', height + 'px');
+    nav.style.top = Math.max(0, bottom - height) + 'px';
+    nav.style.bottom = 'auto';
+  };
+  if (nav) new ResizeObserver(layoutNavigation).observe(nav);
+  viewport?.addEventListener('resize', layoutNavigation);
+  viewport?.addEventListener('scroll', layoutNavigation);
+  window.addEventListener('pageshow', layoutNavigation);
 }

@@ -2050,21 +2050,22 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             with db.get_connection() as conn:
                 rows = conn.execute("""
                     SELECT c.id, c.name, c.call_sign, COALESCE(b.vehicle_class, c.vehicle_class) AS vehicle_class, l.latitude, l.longitude, l.accuracy, l.heading,
-                           1 AS location_live, l.updated_at, b.status AS job_status,
-                           CASE WHEN b.status IN ('EN_ROUTE', 'ON_BOARD', 'NEXT_STOP') THEN b.id END AS journey_id,
+                           COALESCE(l.updated_at >= ?, 0) AS location_live, l.updated_at, b.status AS job_status,
+                           CASE WHEN b.status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF') THEN b.id END AS journey_id,
                            b.confirmation_code AS journey_reference, b.updated_at AS journey_revision
-                    FROM chauffeurs c JOIN chauffeur_live_locations l
+                    FROM chauffeurs c LEFT JOIN chauffeur_live_locations l
                       ON l.chauffeur_id = c.id AND l.updated_at >= ?
                     LEFT JOIN bookings b ON b.id = (
                         SELECT id FROM bookings
-                        WHERE chauffeur_id = c.id AND status IN ('ASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP')
+                        WHERE chauffeur_id = c.id AND status IN ('ASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF')
                         ORDER BY CASE status
                             WHEN 'ON_BOARD' THEN 0 WHEN 'NEXT_STOP' THEN 0
-                            WHEN 'ARRIVED' THEN 1 WHEN 'EN_ROUTE' THEN 2 ELSE 3 END,
+                            WHEN 'ARRIVED' THEN 1 WHEN 'EN_ROUTE' THEN 2 WHEN 'DROPPED_OFF' THEN 2 ELSE 3 END,
                             updated_at DESC, id DESC LIMIT 1
                     )
+                    WHERE l.chauffeur_id IS NOT NULL OR b.status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF')
                     ORDER BY c.name
-                """, (time.time() - 45,)).fetchall()
+                """, (time.time() - 45, time.time() - 300)).fetchall()
             self.send_json({"chauffeurs": [dict(row) for row in rows],
                             "maps_key": GOOGLE_PLACES_BROWSER_KEY}, cache_control="no-store")
             return
@@ -2074,9 +2075,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             with db.get_connection() as conn:
                 trip = conn.execute("""
                     SELECT b.pickup_address, b.dropoff_address, b.stops, b.status, l.latitude, l.longitude
-                    FROM bookings b JOIN chauffeur_live_locations l ON l.chauffeur_id = b.chauffeur_id
-                    WHERE b.id = ? AND b.status IN ('EN_ROUTE', 'ON_BOARD', 'NEXT_STOP') AND l.updated_at >= ?
-                """, (booking_id, time.time() - 300)).fetchone()
+                    FROM bookings b LEFT JOIN chauffeur_live_locations l
+                      ON l.chauffeur_id = b.chauffeur_id AND l.updated_at >= ?
+                    WHERE b.id = ? AND b.status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF')
+                """, (time.time() - 300, booking_id)).fetchone()
             if not trip:
                 self.send_json({"error": "No live journey for this vehicle."}, 404)
                 return
@@ -2084,17 +2086,23 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 pickup = quote_service.normalize_address(trip["pickup_address"])
                 dropoff = quote_service.normalize_address(trip["dropoff_address"])
                 stops = [quote_service.normalize_address(stop) for stop in journey_stops.load(trip["stops"])]
-                if dropoff.casefold() == "as directed":
+                if dropoff.casefold() in ("", "as directed"):
                     return_stop = None
                 else:
                     stops, return_stop = journey_stops.split_return_stop(pickup, stops)
-                is_return = trip["status"] == "NEXT_STOP" and bool(return_stop) and dropoff.casefold() != "as directed"
+                is_return = trip["status"] == "NEXT_STOP" and bool(return_stop) and dropoff.casefold() not in ("", "as directed")
                 if trip["status"] == "EN_ROUTE":
+                    if trip["latitude"] is None:
+                        self.send_json({"path": [], "waiting_for_gps": True}, cache_control="no-store")
+                        return
                     origin = {"lat": trip["latitude"], "lng": trip["longitude"]}
                     destination, stops = pickup, []
                 elif is_return:
                     origin, destination, stops = dropoff, return_stop, []
-                elif dropoff.casefold() == "as directed" and stops:
+                elif dropoff.casefold() in ("", "as directed"):
+                    if not stops:
+                        self.send_json({"path": [], "as_directed": True}, cache_control="no-store")
+                        return
                     origin, destination = pickup, stops[-1]
                     stops = stops[:-1]
                 else:
@@ -2102,7 +2110,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 route = quote_service.zone.driving_route(origin, destination,
                                                          os.environ["GOOGLE_MAPS_SERVER_KEY"],
                                                          stops=stops, tracking=True)
-                self.send_json({**route, "return_leg": is_return}, cache_control="no-store")
+                self.send_json({**route, "return_leg": is_return, "as_directed": dropoff.casefold() in ("", "as directed")}, cache_control="no-store")
             except (QuoteUnavailable, OSError, KeyError, ValueError):
                 self.send_json({"error": "The journey route is temporarily unavailable."}, 503)
             return
@@ -2614,6 +2622,12 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 if stop:
                     conn.execute("DELETE FROM chauffeur_live_locations WHERE chauffeur_id = ?", (chauffeur["id"],))
                 else:
+                    if payload.get("active_trip_only") is True and not conn.execute("""
+                        SELECT 1 FROM bookings WHERE chauffeur_id = ?
+                        AND status IN ('EN_ROUTE', 'ARRIVED', 'ON_BOARD', 'NEXT_STOP', 'DROPPED_OFF') LIMIT 1
+                    """, (chauffeur["id"],)).fetchone():
+                        self.send_json({"error": "No active journey."}, 409, cache_control="no-store")
+                        return
                     heading = payload.get("heading")
                     if type(heading) not in (int, float) or not 0 <= heading < 360:
                         heading = None
@@ -3660,8 +3674,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                                 "Booking created and confirmation email processed.")
 
         saved_booking = dict(cursor.execute("SELECT * FROM bookings WHERE id=?", (booking_id,)).fetchone())
-        if saved_booking["total_fare"] or saved_booking["service_type"] == "Open hours chauffeur service":
-            dispatch_invoices.from_booking(conn, saved_booking)
+        dispatch_invoices.from_booking(conn, saved_booking)
 
         conn.commit()
         conn.close()
@@ -3954,8 +3967,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         parking_fee = float(payload.get("parking_fee", booking.get("parking_fee", 0.0)) or 0.0)
         dropoff_fee = float(payload.get("dropoff_fee", booking.get("dropoff_fee", 0.0)) or 0.0)
         congestion_charge = float(payload.get("congestion_charge", booking.get("congestion_charge", 0.0)) or 0.0)
-        vat_amount = round((net_fare + parking_fee + dropoff_fee) * 0.20, 2)
-        total_fare = round(net_fare + parking_fee + dropoff_fee + vat_amount + congestion_charge, 2)
+        try:
+            waiting_fee = dispatch_invoices.pence(payload.get("waiting_fee", booking["waiting_fee"])) / 100
+            extra_stops_fee = dispatch_invoices.pence(payload.get("extra_stops_fee", booking["extra_stops_fee"])) / 100
+        except ValueError as error:
+            conn.close()
+            self.send_json({"error": str(error)}, 400)
+            return
+        taxable = net_fare + parking_fee + dropoff_fee + waiting_fee + extra_stops_fee
+        vat_amount = round(taxable * 0.20, 2)
+        total_fare = round(taxable + vat_amount + congestion_charge, 2)
 
         cursor.execute("""
             UPDATE bookings SET
@@ -3974,6 +3995,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 hand_luggage = ?,
                 special_requests = ?,
                 stops = ?,
+                waiting_fee = ?,
+                extra_stops_fee = ?,
                 fare_amount = ?,
                 parking_fee = ?,
                 dropoff_fee = ?,
@@ -3986,7 +4009,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             customer_name, customer_phone, customer_email, pickup_datetime,
             pickup_address, dropoff_address, flight_number, vehicle_class,
             passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
-            special_requests, encoded_stops, net_fare,
+            special_requests, encoded_stops, waiting_fee, extra_stops_fee, net_fare,
             parking_fee, dropoff_fee, congestion_charge, vat_amount, total_fare,
             now_str, real_id
         ))
@@ -3997,6 +4020,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                        special_requests=special_requests, stops=encoded_stops, total_fare=total_fare)
         self.log_booking_action(conn, real_id, booking.get("chauffeur_id"), "DISPATCH_AMENDED_BOOKING",
                                 "Dispatch account", booking_alerts.describe_changes(booking, changes))
+        if booking["status"] == "COMPLETED":
+            updated = dict(cursor.execute("SELECT * FROM bookings WHERE id=?", (real_id,)).fetchone())
+            dispatch_invoices.from_booking(conn, {**updated, "captured_booking_amount": 0}, completed=True)
         conn.commit()
         conn.close()
         broadcast_event("booking_updated", {"booking_id": real_id})
@@ -4971,6 +4997,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         invoice = None
         if action == "COMPLETED":
             final_booking = dict(cursor.execute("SELECT * FROM bookings WHERE id=?", (booking_id,)).fetchone())
+            if (booking.get("card_auth_code") or "").startswith("pi_") and final_booking["payment_status"] == "PAID" and booking["payment_status"] != "PAID":
+                final_booking["captured_booking_amount"] = cap_res.get("amount_received", 0) / 100
             invoice = dispatch_invoices.from_booking(conn, final_booking, completed=True)
 
         conn.commit()

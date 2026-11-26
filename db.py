@@ -204,6 +204,8 @@ def init_db():
         ("allocation_notice_hours", "INTEGER NOT NULL DEFAULT 2"),
         ("assigned_vehicle_model", "TEXT"),
         ("assigned_vehicle_plate", "TEXT"),
+        ("waiting_fee", "REAL NOT NULL DEFAULT 0"),
+        ("extra_stops_fee", "REAL NOT NULL DEFAULT 0"),
         ("status_before_delete", "TEXT"),
         ("stops", "TEXT NOT NULL DEFAULT '[]'")
     ]

@@ -91,7 +91,7 @@ function previewInvoice(invoice) {
   download.textContent = 'Open PDF in new tab';
   const controls = [download, button('Back to invoices', () => show('invoices'))];
   if (canSend(invoice)) controls.push(button('Send invoice', () => sendInvoice(invoice)));
-  if (['draft','failed','review'].includes(invoice.delivery)) controls.push(button('Edit invoice', () => editInvoice(invoice)));
+  if (invoice.delivery !== 'sending') controls.push(button(invoice.delivery === 'sent' ? 'Revise invoice' : 'Edit invoice', () => editInvoice(invoice)));
   if (invoice.balance_pence > 0) controls.push(button('Record payment or deduction', () => openPayment(invoice)));
   if (invoice.checkout_session) controls.push(button('Refresh card status', async () => {
     await api('sync-payment', {id:invoice.id});
@@ -107,7 +107,8 @@ function renderInvoices() {
     [code(invoice.id), invoice.client_name, invoice.booking_reference, statusOf(invoice)].join(' ').toLowerCase().includes(search));
   $('invoice-list').replaceChildren(...invoices.map(invoice => {
     const controls = [button('View PDF', () => previewInvoice(invoice))];
-    if (['draft','failed','review'].includes(invoice.delivery)) controls.push(button('Edit', () => editInvoice(invoice)));
+    if (invoice.delivery !== 'sending') controls.push(button(invoice.delivery === 'sent' ? 'Revise' : 'Edit', () => editInvoice(invoice)));
+    if (canSend(invoice)) controls.push(button('Send invoice', () => sendInvoice(invoice)));
     if (invoice.balance_pence > 0) controls.push(button('Record payment', () => openPayment(invoice)));
     const journeyStatus = invoice.booking_id && invoice.booking_status !== 'COMPLETED' ? 'Awaiting journey completion' : '';
     return entry(code(invoice.id) + ' · ' + invoice.client_name,
