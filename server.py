@@ -2032,7 +2032,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             if not invoice:
                 self.send_json({"error": "Invoice not found."}, 404)
                 return
-            link = "" if invoice.get("archived_at") else settings.get("card_link") or invoice_card_url(invoice)
+            link = (settings.get("card_link") or invoice_card_url(invoice)
+                    if invoice["delivery"] == "sent" and not invoice["archived_at"] and invoice["balance_pence"]
+                    else "")
             is_pdf = invoice_print[2] == "pdf"
             body = invoice_pdf.build(invoice, settings, link) if is_pdf else dispatch_invoices.markup(
                 invoice, printable=True, payment_details=settings, card_link=link).encode("utf-8")

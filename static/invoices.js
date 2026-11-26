@@ -99,6 +99,7 @@ function previewInvoice(invoice) {
   $('preview-title').textContent = code(invoice.id) + ' · ' + invoice.client_name;
   const pdf = '/api/dispatch/invoices/' + invoice.id + '/pdf';
   $('preview-pdf').src = pdf + '?v=' + Date.now();
+  $('invoice-card-payment-note').hidden = Boolean(invoice.archived_at || invoice.delivery === 'sent' || !invoice.balance_pence);
   const download = document.createElement('a');
   download.href = pdf;
   download.target = '_blank';

@@ -278,7 +278,9 @@ def invoice_dates(invoice):
 
 
 def public_comments(invoice):
-    return "" if invoice["comments"] == REVIEW_COMMENT else invoice["comments"]
+    internal = re.compile(r"^Corrected billing recipient for GA-[A-Z0-9]+\. Original invoice GA-INV-\d+\.$")
+    return "\n".join(line for line in invoice["comments"].splitlines()
+                     if line != REVIEW_COMMENT and not internal.fullmatch(line)).strip()
 
 
 def brief_location(address):
