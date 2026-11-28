@@ -469,6 +469,8 @@ def is_public_request(method, path):
         "/api/bookings",
         "/api/login",
         "/api/public/booking-amend",
+        "/api/public/customer-chat",
+        "/api/public/booking-enquiry",
         "/api/driver/login",
         "/api/driver/action",
         "/api/driver/status",
@@ -2624,6 +2626,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             response, status = customer_chat.handle(payload)
             if status == 200 and payload.get("action") == "send":
                 dispatch_push.notify("New message from the customer")
+                broadcast_event("customer_chat", {"code": response.get("code")})
             self.send_json(response, status)
             return
 
@@ -6282,6 +6285,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "payment_status": "UNPAID_ENQUIRY",
             "total_fare": total_fare,
             "email_sent": ok_team,
+            "chat_token": customer_chat.access_token(code, customer_email),
             "manage_url": customer_manage_url(code, customer_email)
         }
         broadcast_event("booking_enquiry", result)
