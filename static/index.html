@@ -259,7 +259,7 @@
               </div>
               <div class="field">
                 <label>Mobile Phone (for chauffeur SMS) *</label>
-                <input type="tel" id="f-phone" required placeholder="+44 7886 622082">
+                <input type="tel" id="f-phone" placeholder="+44 7886 622082">
               </div>
             </div>
 
@@ -350,6 +350,7 @@
                 <label>Number of Passengers *</label>
                 <select id="f-passengers" style="max-width:12rem">
                   <option value="1">1 Passenger</option>
+                  <option value="0">To be confirmed</option>
                   <option value="2">2 Passengers</option>
                   <option value="3">3 Passengers</option>
                   <option value="4">4 Passengers</option>
@@ -419,12 +420,18 @@
               </div>
               <label style="display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; color: #edf0ea; cursor: pointer;">
                 <input type="checkbox" id="f-test-no-charge" checked style="width: 16px; height: 16px; accent-color: #c9b894;">
-                <span><strong>Mark Card Pre-Authorised without charging card</strong> (Sends full confirmation email to customer &amp; dispatch alert to enquiries@gachauffeurs.co.uk)</span>
+                <span><strong>Mark Card Pre-Authorised without charging card</strong></span>
               </label>
             </div>
 
+            <div class="field">
+              <label for="f-corporate-invoice-name">Corporate invoice name (optional)</label>
+              <input id="f-corporate-invoice-name" maxlength="120" placeholder="e.g. Kengo" autocomplete="off">
+              <small>Adds the job to the matching corporate draft for the pickup month.</small>
+            </div>
+            <label><input type="checkbox" id="f-send-confirmation"> Email booking confirmation</label>
             <button type="submit" class="btn btn-gold btn-block" id="btn-submit-booking">
-              Confirm Booking &amp; Send Email ↗
+              Create booking ↗
             </button>
           </form>
         </div>
@@ -834,6 +841,6 @@
 
   <script src="/journey-stops.js?v=2"></script>
   <script src="/ga-phone-push.js?v=4"></script>
-  <script src="app.js?v=dispatch-last-seen-1"></script>
+  <script src="app.js?v=dispatch-confirmation-invoice-1"></script>
 </body>
 </html>
