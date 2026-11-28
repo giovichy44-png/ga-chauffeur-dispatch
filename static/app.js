@@ -2593,6 +2593,12 @@ async function downloadCustomerChat() {
 
 async function enableDispatchPush(button, restore = false) {
   if (!button) return;
+  const macBridge = window.webkit?.messageHandlers?.dispatchAlerts;
+  if (macBridge) {
+    button.textContent = 'Enable Mac notifications';
+    if (!restore) macBridge.postMessage({enable: true});
+    return;
+  }
   await GAPhonePush[restore ? 'restore' : 'enable'](button, () => fetch('/api/dispatch/push-key'), subscription =>
     fetch('/api/dispatch/push-subscription', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(subscription)
@@ -2603,6 +2609,13 @@ async function testDispatchPush(button) {
   const status = document.getElementById('dispatch-phone-test-status');
   button.disabled = true;
   status.textContent = 'Checking this device…';
+  const macBridge = window.webkit?.messageHandlers?.dispatchAlerts;
+  if (macBridge) {
+    macBridge.postMessage({test: true});
+    status.textContent = 'Check your Mac for a GA Dispatch test banner and sound.';
+    button.disabled = false;
+    return;
+  }
   try {
     const registration = await navigator.serviceWorker?.getRegistration('/');
     const subscription = await registration?.pushManager.getSubscription();
