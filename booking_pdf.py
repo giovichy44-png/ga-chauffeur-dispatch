@@ -14,6 +14,7 @@ ASSETS = Path(__file__).parent / "website" / "assets"
 INK = colors.HexColor("#17211c")
 GOLD = colors.HexColor("#ceba8a")
 PAPER = colors.HexColor("#f4f3ee")
+CHAUFFEUR_NOTIFICATION = "You’ll receive a notification with your chauffeur’s details once your chauffeur has been allocated to your journey."
 
 
 def booking_confirmation(booking, amend_url, fare_rows, vehicle_image):
@@ -76,8 +77,9 @@ def booking_confirmation(booking, amend_url, fare_rows, vehicle_image):
         body.append(para("Final charges are calculated after the journey."))
     link_style = ParagraphStyle("amend", fontName="Helvetica-Bold", fontSize=11, leading=15, textColor=colors.white)
     link = Paragraph(f'<a href="{escape(amend_url, quote=True)}" color="#ffffff">Amend booking</a>', link_style)
-    body += [Spacer(1, 17), table([[link]], [138], INK), Spacer(1, 12),
-             para("Online cancellation is unavailable within two hours of pickup. Please contact Dispatch on +44 7886 622082 to request cancellation and arrange any applicable cancellation payment.", 9), Spacer(1, 8),
-             para("GA Chauffeur Services Limited · enquiries@gachauffeurs.co.uk", 9)]
+    body += [Spacer(1, 17), table([[link]], [138], INK), Spacer(1, 12)]
+    if not booking.get("chauffeur_name"):
+        body += [para(CHAUFFEUR_NOTIFICATION, 9), Spacer(1, 8)]
+    body.append(para("GA Chauffeur Services Limited · enquiries@gachauffeurs.co.uk", 9))
     document.build(body)
     return output.getvalue()
