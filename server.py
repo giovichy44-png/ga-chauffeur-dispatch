@@ -155,7 +155,7 @@ def stripe_create_payment_method_from_card(card_number, exp_str, cvc, name):
     }
     return stripe_api_request("payment_methods", method="POST", data=data)
 
-def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, customer_name, description, binding="", existing_intent=None):
+def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, customer_name, description, binding="", existing_intent=None, confirmation_token=None):
     """Places a manual capture pre-authorisation hold on a card via Stripe PaymentIntent."""
     amount_pence = int(round(amount_gbp * 100))
     data = {
@@ -173,6 +173,13 @@ def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, cu
         "metadata[service]": "GA Chauffeur Services Pre-Auth Hold",
         "metadata[booking_binding]": binding
     }
+    if confirmation_token:
+        data.pop("payment_method")
+        data.pop("automatic_payment_methods[enabled]")
+        data.pop("automatic_payment_methods[allow_redirects]")
+        data["payment_method_types[]"] = "card"
+        data["confirmation_token"] = confirmation_token
+        data["use_stripe_sdk"] = "true"
     if existing_intent:
         if not re.fullmatch(r'pi_[A-Za-z0-9]+',existing_intent):return {'error':'Invalid payment reference.'}
         res=stripe_api_request('payment_intents/'+existing_intent,method='GET')
@@ -397,6 +404,7 @@ PUBLIC_PATHS = {
     "/api/forms-config",
     "/api/postcode",
     "/api/enquiry",
+    "/api/public/booking-enquiry",
     "/embed-booking-widget.js",
     "/api/stripe-config",
     "/api/corporate-check",
@@ -1085,6 +1093,7 @@ def generate_confirmation_code():
 def broadcast_event(event_type, data):
     pushes = {
         "booking_created": "New booking",
+        "booking_enquiry": "Customer booking enquiry (not paid yet)",
         "booking_updated": "Booking details changed",
         "amendment_requested": "Customer requested a booking amendment",
     }
@@ -2884,6 +2893,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_create_enquiry(payload)
             return
 
+        if path == "/api/public/booking-enquiry":
+            self.handle_create_booking_enquiry(payload)
+            return
+
         if path == "/api/settings/email":
             self.handle_update_email_settings(payload)
             return
@@ -3467,6 +3480,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         # Credit Card Payment Pre-Authorization Processing (Strict Stripe Verification)
         payment_method_id = payload.get("payment_method_id")
+        confirmation_token = payload.get("confirmation_token")
+        if confirmation_token and (
+            not isinstance(confirmation_token, str)
+            or not re.fullmatch(r"ctoken_[A-Za-z0-9]+", confirmation_token)
+        ):
+            conn.close()
+            self.send_json({"error": "Invalid wallet payment reference."}, 400)
+            return
         stripe_intent_id = None
         card_num_raw = str(payload.get("card_number") or payload.get("cardNumber") or "").replace(" ", "").replace("-", "")
         card_holder = payload.get("cardholder_name") or payload.get("cardholderName") or payload.get("customer_name") or ""
@@ -3504,7 +3525,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             card_auth_code = f"TEST-HOLD-{code}"
             preauth_amount = total_fare
             preauth_at = now_str
-        elif STRIPE_SECRET_KEY and (payment_method_id or existing_intent or (card_num_raw and len(card_num_raw) >= 12)):
+        elif STRIPE_SECRET_KEY and (payment_method_id or confirmation_token or existing_intent or (card_num_raw and len(card_num_raw) >= 12)):
             if existing_intent:
                 prior=cursor.execute('SELECT id,confirmation_code,total_fare,payment_status FROM bookings WHERE stripe_payment_intent_id=?',(existing_intent,)).fetchone()
                 if prior:
@@ -3523,7 +3544,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 payment_method_id=pm_id,
                 customer_email=payload.get("customer_email"),
                 customer_name=payload.get("customer_name"),
-                description=f"GA Chauffeur Booking {code}", binding=binding, existing_intent=existing_intent
+                description=f"GA Chauffeur Booking {code}", binding=binding, existing_intent=existing_intent,
+                **({"confirmation_token": confirmation_token} if confirmation_token else {})
             )
             if stripe_res.get('requires_action'):
                 conn.close();self.send_json(stripe_res);return
@@ -6078,6 +6100,192 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         ack_html = f"<p>Dear {name},</p><p>Thank you for contacting <strong>{COMPANY_NAME}</strong>. We have received your enquiry and a member of our dispatch team will respond shortly.</p><p>Warm regards,<br><strong>{COMPANY_NAME}</strong><br>{COMPANY_PHONE}</p>"
         send_smtp_email(email, f"Enquiry Received | {COMPANY_NAME}", ack_html, ack_text)
         self.send_json({"ok": True})
+
+    def handle_create_booking_enquiry(self, payload):
+        import html as _html
+        from zoneinfo import ZoneInfo
+
+        customer_name = str(payload.get("customer_name") or payload.get("name") or "").strip()[:120]
+        customer_email = str(payload.get("customer_email") or payload.get("email") or "").strip()[:160]
+        customer_phone = str(payload.get("customer_phone") or payload.get("phone") or "").strip()[:80] or "Not provided"
+        if not customer_name or not customer_email or "@" not in customer_email:
+            self.send_json({"error": "Please enter your name and a valid email address so Dispatch can reply to your enquiry."}, 400)
+            return
+
+        question = str(payload.get("question") or payload.get("enquiry_message") or "").strip()[:1000]
+        pickup_address = str(payload.get("pickup_address") or payload.get("pickup") or "").strip()[:300] or "Not specified"
+        dropoff_address = str(payload.get("dropoff_address") or payload.get("dropoff") or "").strip()[:300] or "Not specified"
+        pickup_datetime = str(payload.get("pickup_datetime") or payload.get("datetime") or "").replace("T", " ").strip()[:64] or "To be confirmed"
+        service_type = str(payload.get("service_type") or "Booking enquiry").strip()[:80]
+        flight_num = str(payload.get("flight_number") or "").strip()[:40] or None
+        raw_stops = payload.get("stops")
+        stops = [str(s).strip()[:200] for s in raw_stops if str(s).strip()][:5] if isinstance(raw_stops, list) else []
+
+        raw_vehicle = str(payload.get("vehicle_class") or payload.get("vehicle") or "mercedes_s_class").strip()
+        vehicle_aliases = {
+            "Mercedes-Benz S-Class": "mercedes_s_class",
+            "Mercedes-Benz V-Class": "mercedes_v_class",
+            "Range Rover Autobiography Long Wheelbase": "range_rover_autobiography",
+        }
+        normalized_vehicle = vehicle_aliases.get(raw_vehicle, raw_vehicle)
+        if normalized_vehicle not in VEHICLE_CONFIGS:
+            normalized_vehicle = "mercedes_s_class"
+        vehicle_name = VEHICLE_CONFIGS[normalized_vehicle]["name"]
+
+        def _num(val, default=0.0):
+            try:
+                out = float(val)
+                return out if out >= 0 else default
+            except (TypeError, ValueError):
+                return default
+
+        def _int(val, default=0):
+            try:
+                out = int(val)
+                return out if out >= 0 else default
+            except (TypeError, ValueError):
+                return default
+
+        hours_booked = _int(payload.get("hours_booked", payload.get("hours", 0)), 0)
+        passenger_count = max(1, _int(payload.get("passenger_count", payload.get("passengers", 1)), 1))
+        large_cases = _int(payload.get("large_cases", 0), 0)
+        medium_cases = _int(payload.get("medium_cases", 0), 0)
+        hand_luggage = _int(payload.get("hand_luggage", 0), 0)
+        luggage_count = max(large_cases + medium_cases, _int(payload.get("luggage_count", 0), 0))
+        net_fare = round(_num(payload.get("fare_amount", 0.0)), 2)
+        vat_amount = round(_num(payload.get("vat_amount", 0.0)), 2)
+        total_fare = round(_num(payload.get("total_fare", 0.0)), 2)
+        parking_fee = round(_num(payload.get("parking_fee", 0.0)), 2)
+        dropoff_fee = round(_num(payload.get("airport_dropoff_fee", 0.0)), 2)
+        congestion_charge = round(_num(payload.get("congestion_charge", 0.0)), 2)
+        distance_mi = round(_num(payload.get("estimated_distance_mi", 0.0)), 1)
+        duration_min = _int(payload.get("estimated_duration_min", 0), 0)
+
+        existing_notes = str(payload.get("special_requests") or payload.get("notes") or "").strip()[:1000]
+        enquiry_banner = "[UNPAID ENQUIRY — NOT PAID YET]"
+        note_parts = [enquiry_banner]
+        if question:
+            note_parts.append(f"Customer question: {question}")
+        else:
+            note_parts.append("Customer enquiring about this booking (has not paid yet and has a question).")
+        if existing_notes:
+            note_parts.append(existing_notes)
+        special_req_str = "\n".join(note_parts)
+
+        now_str = datetime.now(ZoneInfo("Europe/London")).isoformat(timespec="seconds")
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            for _ in range(20):
+                booking_id = f"BK-{random.randint(1000, 9999)}"
+                code = generate_confirmation_code()
+                exists = cursor.execute(
+                    "SELECT 1 FROM bookings WHERE id = ? OR confirmation_code = ?",
+                    (booking_id, code)
+                ).fetchone()
+                if not exists:
+                    break
+
+            cursor.execute("""
+            INSERT INTO bookings (
+                id, confirmation_code, customer_name, customer_phone, customer_email, vip_level,
+                service_type, pickup_address, pickup_unit, pickup_lat, pickup_lng,
+                dropoff_address, dropoff_unit, dropoff_lat, dropoff_lng,
+                pickup_datetime, hours_booked, flight_number, flight_status, vehicle_class,
+                passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
+                special_requests, estimated_distance_mi, estimated_duration_min,
+                fare_amount, vat_amount, total_fare, currency, source, status, chauffeur_id,
+                parking_fee, congestion_charge, payment_status, payment_method,
+                card_brand, card_last4, card_auth_code, preauth_amount, preauth_at,
+                stripe_payment_intent_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                booking_id, code, customer_name, customer_phone, customer_email,
+                "Executive", service_type, pickup_address, "",
+                51.5074, -0.1278, dropoff_address, "", 51.5074, -0.1278,
+                pickup_datetime, hours_booked, flight_num, None, normalized_vehicle,
+                passenger_count, luggage_count, large_cases, medium_cases, hand_luggage,
+                special_req_str, distance_mi, duration_min,
+                net_fare, vat_amount, total_fare, "GBP", "WEBSITE_ENQUIRY", "PENDING", None,
+                parking_fee, congestion_charge, "UNPAID_ENQUIRY", "UNPAID_ENQUIRY",
+                None, None, None, 0.0, None,
+                None, now_str, now_str
+            ))
+            cursor.execute("UPDATE bookings SET dropoff_fee=?, stops=? WHERE id=?", (dropoff_fee, json.dumps(stops), booking_id))
+
+            chat_msg = question if question else "Customer enquired about this booking before paying and has a question."
+            cursor.execute("""
+            INSERT INTO customer_chat_messages (booking_id, sender, message, sent_at, dispatch_read)
+            VALUES (?, 'customer', ?, ?, 0)
+            """, (booking_id, chat_msg[:1000], now_str))
+
+            details_summary = f"Unpaid booking enquiry (not paid yet): {chat_msg[:180]}"
+            self.log_booking_action(conn, booking_id, None, "BOOKING_ENQUIRY", f"Customer · {customer_name}", details_summary)
+            conn.commit()
+        finally:
+            conn.close()
+
+        owner_inbox = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
+        fare_label = f"£{total_fare:.2f}" if total_fare > 0 else "Quote unavailable / custom quote requested"
+        stops_line = " → ".join(stops) if stops else "None"
+        owner_subject = f"❓ UNPAID BOOKING ENQUIRY {code}: {customer_name} — Not paid yet"
+        owner_text = (
+            f"UNPAID BOOKING ENQUIRY — {code}\n"
+            f"STATUS: Customer is enquiring about this booking — HAS NOT PAID YET — and has a question.\n\n"
+            f"Customer Name: {customer_name}\n"
+            f"Email: {customer_email}\n"
+            f"Phone: {customer_phone}\n\n"
+            f"Customer Question:\n{chat_msg}\n\n"
+            f"Journey Details:\n"
+            f"Service: {service_type}\n"
+            f"Date & Time: {pickup_datetime}\n"
+            f"Pickup: {pickup_address}\n"
+            f"Stops: {stops_line}\n"
+            f"Drop-off: {dropoff_address}\n"
+            f"Vehicle: {vehicle_name}\n"
+            f"Passengers: {passenger_count} | Cases: {large_cases} large, {medium_cases} medium\n"
+            f"Flight: {flight_num or 'None'}\n"
+            f"Estimated / Quoted Total: {fare_label} (UNPAID)\n"
+        )
+        owner_html = (
+            f"<div style='font-family:sans-serif;max-width:640px;color:#171c1c;'>"
+            f"<div style='background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px;'>"
+            f"<strong style='color:#92400e;'>❓ Unpaid Booking Enquiry ({_html.escape(code)}) — Customer Has Not Paid Yet</strong><br>"
+            f"<span style='color:#78350f;font-size:13px;'>There is a customer inquiring about this booking who hasn't paid yet and has a question.</span>"
+            f"</div>"
+            f"<p><strong>Customer:</strong> {_html.escape(customer_name)}<br>"
+            f"<strong>Email:</strong> {_html.escape(customer_email)}<br>"
+            f"<strong>Phone:</strong> {_html.escape(customer_phone)}</p>"
+            f"<div style='background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:12px 14px;margin:12px 0;'>"
+            f"<strong>Customer Question:</strong><br><pre style='white-space:pre-wrap;font-family:sans-serif;margin:6px 0 0;'>{_html.escape(chat_msg)}</pre></div>"
+            f"<p><strong>Journey Details (Unpaid):</strong><br>"
+            f"Service: {_html.escape(service_type)}<br>"
+            f"Date &amp; Time: {_html.escape(pickup_datetime)}<br>"
+            f"Pickup: {_html.escape(pickup_address)}<br>"
+            f"Stops: {_html.escape(stops_line)}<br>"
+            f"Drop-off: {_html.escape(dropoff_address)}<br>"
+            f"Vehicle: {_html.escape(vehicle_name)}<br>"
+            f"Passengers: {passenger_count} | Luggage: {large_cases} large, {medium_cases} medium<br>"
+            f"Flight: {_html.escape(flight_num or 'None')}<br>"
+            f"Estimated / Quoted Total: <strong>{_html.escape(fare_label)} (NOT PAID YET)</strong></p>"
+            f"</div>"
+        )
+        ok_team, _ = send_smtp_email(owner_inbox, owner_subject, owner_html, owner_text, reply_to=customer_email)
+
+        result = {
+            "id": booking_id,
+            "booking_id": booking_id,
+            "confirmation_code": code,
+            "reference": code,
+            "customer_name": customer_name,
+            "status": "PENDING",
+            "payment_status": "UNPAID_ENQUIRY",
+            "total_fare": total_fare,
+            "email_sent": ok_team,
+            "manage_url": customer_manage_url(code, customer_email)
+        }
+        broadcast_event("booking_enquiry", result)
+        self.send_json({"success": True, **result}, 201)
 
     def handle_update_email_settings(self, payload):
         resend_key = str(payload.get("resend_api_key") or "").strip()

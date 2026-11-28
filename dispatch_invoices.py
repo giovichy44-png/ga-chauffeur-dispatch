@@ -9,7 +9,7 @@ import re
 from zoneinfo import ZoneInfo
 from urllib.parse import urlsplit
 
-TABLES = ("invoice_clients", "invoice_items", "invoices", "invoice_payments", "invoice_preferences")
+TABLES = ("invoice_clients", "invoice_items", "invoices", "invoice_payments", "invoice_preferences", "corporate_invoice_groups", "corporate_invoice_bookings")
 ENQUIRIES_EMAIL = "enquiries@gachauffeurs.co.uk"
 REVIEW_COMMENT = "Final charges require review in Dispatch."
 EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")

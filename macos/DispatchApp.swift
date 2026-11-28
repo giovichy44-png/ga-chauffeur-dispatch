@@ -52,13 +52,30 @@ final class DispatchApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         mainMenu.addItem(editItem)
         NSApplication.shared.mainMenu = mainMenu
 
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            if settings.authorizationStatus == .notDetermined { self.requestNotifications() }
+        }
         webView.load(URLRequest(url: dispatchURL))
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
     @objc private func enableNotifications() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard !granted else { return }
+        requestNotifications()
+    }
+
+    private func requestNotifications(playTest: Bool = false) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            if granted {
+                if playTest {
+                    let content = UNMutableNotificationContent()
+                    content.title = "GA Dispatch test notification"
+                    content.body = "New booking alerts use this banner and sound."
+                    content.sound = .default
+                    center.add(UNNotificationRequest(identifier: "dispatch-test", content: content, trigger: nil))
+                }
+                return
+            }
             DispatchQueue.main.async {
                 let alert = NSAlert()
                 alert.messageText = "Allow GA Dispatch notifications in System Settings"
@@ -73,6 +90,11 @@ final class DispatchApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard message.name == "dispatchAlerts", message.frameInfo.isMainFrame,
               origin.protocol == "https", origin.host == dispatchURL.host,
               let body = message.body as? [String: Bool] else { return }
+
+        if body["enable"] == true || body["test"] == true {
+            requestNotifications(playTest: body["test"] == true)
+            return
+        }
 
         let alerts = [
             ("booking", "Booking update", "Open GA Dispatch to review the booking."),
