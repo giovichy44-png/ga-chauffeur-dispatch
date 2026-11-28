@@ -108,7 +108,7 @@ COMPANY_ADDRESS = "1 Glebe Road, Stanmore, Greater London, HA7 4EJ"
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "").strip()
 
-def stripe_api_request(endpoint, method="POST", data=None):
+def stripe_api_request(endpoint, method="POST", data=None, *, idempotency_key=None):
     """Call Stripe REST API securely without third-party pip dependencies."""
     if not STRIPE_SECRET_KEY:
         return {"error": "STRIPE_SECRET_KEY not configured"}
@@ -117,6 +117,8 @@ def stripe_api_request(endpoint, method="POST", data=None):
         "Authorization": f"Bearer {STRIPE_SECRET_KEY}",
         "Content-Type": "application/x-www-form-urlencoded"
     }
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
     encoded = None
     if data:
         encoded = urllib.parse.urlencode(data).encode("utf-8")
@@ -225,6 +227,29 @@ def stripe_capture_hold(payment_intent_id, amount_gbp=None):
         "status": res["status"],
         "amount_received": float(res.get("amount_received", 0)) / 100.0
     }
+
+def cancel_stripe_booking_payment(intent_id):
+    intent = stripe_api_request(f"payment_intents/{intent_id}", method="GET")
+    if intent.get("id") != intent_id:
+        return None, "Stripe payment could not be verified."
+    status = intent.get("status")
+    if status == "canceled":
+        return "HOLD_RELEASED", "Stripe card authorisation was already released."
+    if status == "succeeded":
+        refund = stripe_api_request("refunds", data={"payment_intent": intent_id},
+                                    idempotency_key=f"ga-booking-refund-{intent_id}")
+        result = refund.get("status")
+        if refund.get("id", "").startswith("re_") and result in ("succeeded", "pending", "requires_action"):
+            return ("REFUNDED" if result == "succeeded" else "REFUND_PENDING",
+                    f"Stripe refund {refund['id']} is {result.replace('_', ' ')}.")
+        return None, "Stripe did not accept the refund. Check the payment in Stripe before retrying."
+    if status in ("requires_capture", "requires_payment_method", "requires_confirmation", "requires_action", "processing"):
+        cancelled = stripe_api_request(f"payment_intents/{intent_id}/cancel",
+                                       idempotency_key=f"ga-booking-cancel-{intent_id}")
+        if cancelled.get("status") == "canceled":
+            return "HOLD_RELEASED", "Stripe payment cancelled. Any uncaptured authorisation was released."
+    return None, "Stripe did not release the payment. Check the payment in Stripe before retrying."
+
 
 def stripe_create_checkout_session(amount_gbp, booking_ref, customer_email, customer_name, description):
     """Creates a Stripe Checkout Session link to email or WhatsApp directly to a client."""
@@ -982,13 +1007,14 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
         heathrow_city_kws = ["heathrow", "lhr", "t5", "t2", "t3", "t4", "city airport", "lcy", "london city"]
         outer_airports_kws = ["gatwick", "lgw", "luton", "ltn", "stansted", "stn", "farnborough", "fab", "biggin hill", "bqh"]
 
-        if any(kw in text for kw in heathrow_city_kws) or "lhr" in text or "heathrow" in text:
+        route_priced = quote_service.requires_base_to_base_airport_pricing(pickup, dropoff)
+        if not route_priced and any(kw in text for kw in heathrow_city_kws):
             net_fare = cfg["heathrow_rate"]
             service_label = "Heathrow / London City Airport Transfer"
-        elif any(kw in text for kw in outer_airports_kws):
+        elif not route_priced and any(kw in text for kw in outer_airports_kws):
             net_fare = cfg["outer_airports_rate"]
             service_label = "Gatwick / Luton / Stansted / Farnborough Transfer"
-        elif "airport" in text or "terminal" in text or "fbo" in text:
+        elif not route_priced and any(kw in text for kw in ("airport", "terminal", "fbo")):
             net_fare = cfg["heathrow_rate"]
             service_label = "Airport Transfer"
         else:
@@ -998,7 +1024,7 @@ def calculate_fare(vehicle_class, service_type=None, pickup="", dropoff="", hour
             included_miles = round(billable_hours * 10.0, 2)
             excess_miles = round(max(0.0, b2b_miles - included_miles), 2)
             net_fare = (billable_hours * cfg["hourly_rate"]) + (excess_miles * cfg["excess_mile_rate"])
-            service_label = "Point-to-Point Transfer"
+            service_label = "Airport Transfer · Time and Mileage" if route_priced else "Point-to-Point Transfer"
 
     net_fare = round(net_fare, 2)
 
@@ -1356,7 +1382,7 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
     flight_details = f'<p style="margin:12px 0 0;"><strong style="color:#c9b894;">Flight number</strong><br>{esc(flight)}</p>' if flight else ""
     notes = f'<p style="margin:12px 0 0;"><strong style="color:#c9b894;">Special requests</strong><br>{esc(special_requests)}</p>' if special_requests else ""
     if payment_status == "CORPORATE_INVOICE" or "CORPORATE" in str(card_brand or "").upper():
-        payment = "Corporate account confirmed"
+        payment = ""
     elif card_last4:
         payment = f"{card_brand or 'Card'} ending in {card_last4} · {str(payment_status or 'Pre-authorised').replace('_', ' ').title()}"
     else:
@@ -1388,8 +1414,8 @@ def build_luxury_email_html(booking_ref, customer_name, pickup_addr, dropoff_add
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:12px;background:#121715;border:1px solid #49564d;border-radius:6px;">
         {fare_table or '<tr><td>Open hours · Final fare billed after the journey</td></tr>'}
       </table>
-      {f'<p style="margin:8px 0 14px;color:#cfd6d1;">{esc(payment)}</p>' if not deferred else ''}
-      <p>Online cancellation is unavailable within two hours of pickup. Please contact Dispatch on +44 7886 622082 to request cancellation and arrange any applicable cancellation payment.</p>
+      {f'<p style="margin:8px 0 14px;color:#cfd6d1;">{esc(payment)}</p>' if not deferred and payment else ''}
+      {f'<p>{esc(booking_pdf.CHAUFFEUR_NOTIFICATION)}</p>' if not chauffeur else ''}
       <p style="margin:0 0 16px;text-align:center;"><a href="{esc(customer_manage_url(booking_ref, customer_email))}" style="display:inline-block;color:#121715;background:#c9b894;border-radius:4px;padding:12px 20px;font-weight:700;text-decoration:none;">Amend booking</a></p>
     </td></tr>
     <tr><td style="padding:14px 16px;text-align:center;border-top:1px solid #49564d;color:#cfd6d1;font-size:12px;">
@@ -1430,7 +1456,9 @@ def build_luxury_email_text(booking_ref, customer_name, pickup_addr, dropoff_add
             net_fare, parking_fee, dropoff_fee, congestion_charge, vat_amt, total_fare,
             service_type=service_type, hours_booked=hours_booked, vehicle_tier=vehicle_name
         ))])
-    lines.extend(["", "Online cancellation is unavailable within two hours of pickup. Please contact Dispatch on +44 7886 622082 to request cancellation and arrange any applicable cancellation payment.", "", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
+    if not chauffeur:
+        lines.extend(["", booking_pdf.CHAUFFEUR_NOTIFICATION])
+    lines.extend(["", f"Amend booking: {customer_manage_url(booking_ref, customer_email)}", "",
                   "GA Chauffeur Services Limited", COMPANY_PHONE, FROM_EMAIL, COMPANY_WEBSITE])
     return "\n".join(lines)
 
@@ -2916,9 +2944,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     result = conn.execute("""UPDATE bookings SET status_before_delete=status, status='DELETED'
                         WHERE id=? AND chauffeur_id IS NULL AND status IN ('PENDING','CONFIRMED','CANCELLED')
                         AND COALESCE(stripe_payment_intent_id,'')=''
-                        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.booking_id=bookings.id
+                        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE (i.booking_id=bookings.id OR i.id=(
+                            SELECT l.invoice_id FROM corporate_invoice_bookings l WHERE l.booking_id=bookings.id))
                             AND (i.delivery NOT IN ('draft','review','failed') OR i.checkout_session IS NOT NULL
                                 OR EXISTS (SELECT 1 FROM invoice_payments WHERE invoice_id=i.id)))""", (booking_id,))
+                if result.rowcount:
+                    grouped = conn.execute("SELECT invoice_id FROM corporate_invoice_bookings WHERE booking_id=?", (booking_id,)).fetchone()
+                    if grouped:
+                        dispatch_invoices.refresh_corporate_invoice(conn, grouped["invoice_id"])
+                    self.log_booking_action(conn, booking_id, None, "BOOKING_RESTORED" if restoring else "BOOKING_DELETED",
+                                            "Dispatch account", "Booking restored." if restoring else "Booking moved to Deleted jobs.")
             if result.rowcount:
                 self.send_json({"success": True})
             else:
@@ -3283,14 +3318,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                c.lat as chauffeur_lat, c.lng as chauffeur_lng
         FROM bookings b
         LEFT JOIN chauffeurs c ON b.chauffeur_id = c.id
-        WHERE b.id = ?
-        """, (booking_id,))
+        WHERE b.id = ? OR REPLACE(UPPER(b.confirmation_code), '-', '') = ?
+        """, (booking_id, re.sub(r"[\s-]+", "", booking_id.upper())))
         row = cursor.fetchone()
         if not row:
             conn.close()
             self.send_json({"error": "Booking not found"}, 404)
             return
 
+        booking_id = row["id"]
         booking = dict(row)
 
         cursor.execute("SELECT * FROM confirmations WHERE booking_id = ? ORDER BY sent_at DESC", (booking_id,))
@@ -3303,6 +3339,15 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         self.send_json({"booking": booking, "confirmations": confirmations, "actions": logs})
 
     def handle_create_booking(self, payload):
+        dispatch = payload.get("source") == "DISPATCH_PORTAL"
+        if dispatch and not check_auth(self.headers):
+            self.send_json({"error": "Sign in to create a dispatch booking."}, 401)
+            return
+        send_confirmation = not dispatch or payload.get("send_confirmation") is True
+        corporate_name = str(payload.get("corporate_invoice_name") or "").strip() if dispatch else ""
+        if len(corporate_name) > 120:
+            self.send_json({"error": "Corporate invoice name must be 120 characters or fewer."}, 400)
+            return
         # Normalize field names to accept both dispatch schema and website form submissions
         if "customer_name" not in payload and "name" in payload:
             payload["customer_name"] = payload["name"]
@@ -3324,6 +3369,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             payload["passenger_count"] = payload["passengers"]
 
         required = ["customer_name", "customer_phone", "customer_email", "pickup_address", "dropoff_address", "pickup_datetime", "vehicle_class"]
+        if dispatch:
+            required.remove("customer_phone")
+            payload["customer_phone"] = payload.get("customer_phone") or ""
         for field in required:
             if not payload.get(field):
                 self.send_json({"error": f"Missing required field: {field}"}, 400)
@@ -3335,7 +3383,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": str(error)}, 400)
             return
         verified_quote = None
-        if quote_service.enabled() or stops or payload.get("service_type") == "Open hours chauffeur service":
+        route_priced = quote_service.requires_base_to_base_airport_pricing(payload["pickup_address"], payload["dropoff_address"])
+        if quote_service.enabled() or route_priced or stops or payload.get("service_type") == "Open hours chauffeur service":
             try:
                 verified_quote = quote_service.accept(payload, normalize_vehicle_tier)
             except QuoteUnavailable as error:
@@ -3353,7 +3402,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         booking_id = f"BK-{random.randint(1000, 9999)}"
         code = generate_confirmation_code()
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        source = payload.get("source", "WEBSITE_GACHAUFFEURS" if "website" in str(payload.get("source", "")).lower() else "DISPATCH_PORTAL")
+        source = "DISPATCH_PORTAL" if dispatch else "WEBSITE_GACHAUFFEURS"
 
         normalized_vehicle = normalize_vehicle_tier(payload["vehicle_class"])
         detected_service = detect_service_type(payload["pickup_address"], payload["dropoff_address"], payload.get("service_type"))
@@ -3434,7 +3483,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         existing_intent=payload.get('payment_intent_id')
         test_no_charge = bool(payload.get("test_no_charge") or str(payload.get("payment_mode", "")).upper() == "TEST_PREAUTH")
-        is_corporate_booking = is_corporate_account_email(payload.get("customer_email"))
+        is_corporate_booking = bool(corporate_name) or is_corporate_account_email(payload.get("customer_email"))
         binding_fields=['stops','customer_name','customer_email','customer_phone','pickup_address','dropoff_address','pickup_datetime','vehicle_class','service_type','hours','passenger_count','large_cases','medium_cases','hand_luggage']
         binding=hashlib.sha256(json.dumps({k:payload.get(k) for k in binding_fields},sort_keys=True).encode()).hexdigest()
         if is_corporate_booking:
@@ -3527,7 +3576,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             large_cases = min(large_cases, 1)
             medium_cases = 0
             hand_luggage = min(hand_luggage, 1)
-        passenger_count = int(payload.get("passenger_count", payload.get("passengers", 1)) or 1)
+        raw_passengers = payload.get("passenger_count", payload.get("passengers", 1))
+        passenger_count = int(1 if raw_passengers in (None, "") else raw_passengers)
+        if not dispatch and passenger_count < 1:
+            passenger_count = 1
         luggage_count = int(payload.get("luggage_count", large_cases + medium_cases) if "luggage_count" in payload else (large_cases + medium_cases))
         if normalized_vehicle == "mercedes_s_class":
             luggage_count = min(max(luggage_count, large_cases), 1)
@@ -3627,7 +3679,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             stops=stops,
         )
 
-        send_success, delivery_note = self.send_customer_confirmation(conn, booking_id, payload["customer_email"], email_subject, html_email, plain_text_email)
+        send_success, delivery_note = (False, "Confirmation not requested.")
+        if send_confirmation:
+            send_success, delivery_note = self.send_customer_confirmation(conn, booking_id, payload["customer_email"], email_subject, html_email, plain_text_email)
         owner_inbox = (os.environ.get("FROM_EMAIL", FROM_EMAIL).strip() or db.get_setting("from_email", "")).strip() or "enquiries@gachauffeurs.co.uk"
         owner_subject = f"🚨 NEW BOOKING {code}: {payload['customer_name']} — {payload['pickup_datetime']} ({vehicle_name}) [£{total_fare:.2f}]"
         owner_html = build_owner_booking_alert_html(
@@ -3669,39 +3723,43 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             f"Email: {payload['customer_email']}\n\n"
             + plain_text_email
         )
-        send_smtp_email(owner_inbox, owner_subject, owner_html, owner_text, reply_to=payload["customer_email"])
-        cnf_email_id = f"CNF-{random.randint(1000, 9999)}"
-        email_status = "DELIVERED" if send_success else "FAILED"
+        confirmation_ids = []
+        if send_confirmation:
+            send_smtp_email(owner_inbox, owner_subject, owner_html, owner_text, reply_to=payload["customer_email"])
+            cnf_email_id = f"CNF-{random.randint(1000, 9999)}"
+            email_status = "DELIVERED" if send_success else "FAILED"
 
-        cursor.execute("""
-        INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            cnf_email_id, booking_id, "EMAIL", payload["customer_email"],
-            email_subject, plain_text_email, email_status, now_str
-        ))
+            cursor.execute("""
+            INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                cnf_email_id, booking_id, "EMAIL", payload["customer_email"],
+                email_subject, plain_text_email, email_status, now_str
+            ))
 
-        cnf_sms_id = f"CNF-{random.randint(1000, 9999)}"
-        sms_content = (
-            f"GA Chauffeurs: Confirmed booking {code} for {payload['customer_name']}. "
-            f"Vehicle: {vehicle_name}. Pickup: {payload['pickup_datetime']} at {payload['pickup_address']}. "
-            f"Track & Details: https://gachauffeurs.co.uk/track/{code}"
-        )
+            cnf_sms_id = f"CNF-{random.randint(1000, 9999)}"
+            sms_content = (
+                f"GA Chauffeurs: Confirmed booking {code} for {payload['customer_name']}. "
+                f"Vehicle: {vehicle_name}. Pickup: {payload['pickup_datetime']} at {payload['pickup_address']}. "
+                f"Track & Details: https://gachauffeurs.co.uk/track/{code}"
+            )
 
-        cursor.execute("""
-        INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            cnf_sms_id, booking_id, "SMS", payload["customer_phone"],
-            f"GA Chauffeurs Booking {code}", sms_content, "DELIVERED", now_str
-        ))
+            cursor.execute("""
+            INSERT INTO confirmations (id, booking_id, channel, recipient, subject, content, status, sent_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                cnf_sms_id, booking_id, "SMS", payload["customer_phone"],
+                f"GA Chauffeurs Booking {code}", sms_content, "DELIVERED", now_str
+            ))
+
+            confirmation_ids.extend((cnf_email_id, cnf_sms_id))
 
         self.log_booking_action(conn, booking_id, None, "BOOKING_CREATED",
                                 "Customer · " + payload["customer_name"] if source == "WEBSITE_GACHAUFFEURS" else "Dispatch account",
-                                "Booking created and confirmation email processed.")
+                                "Booking created and confirmation email processed." if send_confirmation else "Booking created without sending confirmation.")
 
         saved_booking = dict(cursor.execute("SELECT * FROM bookings WHERE id=?", (booking_id,)).fetchone())
-        dispatch_invoices.from_booking(conn, saved_booking)
+        invoice_id, _ = dispatch_invoices.from_booking(conn, saved_booking, corporate_name=corporate_name)
 
         conn.commit()
         conn.close()
@@ -3732,14 +3790,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             "card_last4": card_last4,
             "card_auth_code": card_auth_code,
             "preauth_amount": preauth_amount,
-            "email_dispatched_to": payload["customer_email"],
-            "confirmations": [cnf_email_id, cnf_sms_id],
+            "email_dispatched_to": payload["customer_email"] if send_success else None,
+            "confirmation_sent": send_success,
+            "confirmations": confirmation_ids,
+            "invoice_id": invoice_id,
             "delivery_note": delivery_note
         }
 
         broadcast_event("booking_created", result)
         result = {**result, "manage_url": customer_manage_url(code, payload["customer_email"])}
-        self.send_json({"success": True, "booking": result, "message": f"Job {code} created and confirmation email sent to {payload['customer_email']}."}, 201)
+        self.send_json({"success": True, "booking": result, "message": f"Job {code} created. {delivery_note}"}, 201)
 
     def handle_allocate_chauffeur(self, booking_id, payload):
         chauffeur_id = payload.get("chauffeur_id")
@@ -4847,6 +4907,9 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
     def handle_live_action(self, booking_id, payload, *, acting_driver_id=None):
         action = payload.get("action", "").upper()
+        refund_requested = action == "CANCEL_AND_REFUND"
+        if refund_requested:
+            action = "CANCEL"
         allowed = ["CONFIRMED", "ACCEPT", "EN_ROUTE_PICKUP", "ARRIVED", "ON_BOARD", "NEXT_STOP", "DROPPED_OFF", "COMPLETED", "CANCEL"]
         if action not in allowed:
             self.send_json({"error": f"Invalid action: {action}. Allowed: {allowed}"}, 400)
@@ -4854,7 +4917,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         conn = db.get_connection()
         cursor = conn.cursor()
-        if acting_driver_id or action in ("ARRIVED", "COMPLETED"):
+        if acting_driver_id or action in ("ARRIVED", "COMPLETED", "CANCEL"):
             cursor.execute("BEGIN IMMEDIATE")
 
         cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
@@ -4868,6 +4931,16 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
         if action == "COMPLETED" and booking["status"] == "COMPLETED":
             conn.close()
             self.send_json({"success": True, "booking_status": "COMPLETED"})
+            return
+        if action == "CANCEL" and acting_driver_id:
+            conn.close()
+            self.send_json({"error": "Only Dispatch can cancel bookings."}, 403)
+            return
+        if action == "CANCEL" and booking["status"] == "CANCELLED" and booking.get("payment_status") in (
+            "HOLD_RELEASED", "REFUNDED", "REFUND_PENDING"
+        ):
+            conn.close()
+            self.send_json({"success": True, "booking_status": "CANCELLED", "payment_status": booking["payment_status"]})
             return
         chauffeur_id = booking["chauffeur_id"]
         if acting_driver_id and chauffeur_id != acting_driver_id:
@@ -4991,13 +5064,37 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                     details += " Card pre-authorisation recorded. Payment still due."
 
         elif action == "CANCEL":
+            intent_id = booking.get("stripe_payment_intent_id") or booking.get("card_auth_code") or ""
+            payment_note = ""
+            if re.fullmatch(r"pi_[A-Za-z0-9_]+", intent_id):
+                if not refund_requested:
+                    conn.close()
+                    self.send_json({"error": "Use Cancel booking and refund/release Stripe payment."}, 409)
+                    return
+                payment_status, payment_note = cancel_stripe_booking_payment(intent_id)
+                if payment_status is None:
+                    conn.close()
+                    self.send_json({"error": payment_note}, 409)
+                    return
+                cursor.execute("UPDATE bookings SET payment_status=? WHERE id=?", (payment_status, booking_id))
+            elif refund_requested and booking.get("payment_status") == "PAID":
+                conn.close()
+                self.send_json({"error": "No Stripe booking payment is linked. Verify and reverse the payment separately."}, 409)
+                return
             new_booking_status = "CANCELLED"
             if chauffeur_id:
-                cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ?", (chauffeur_id,))
-            details = f"Booking {booking['confirmation_code']} cancelled. Vehicle returned to dispatch pool."
+                cursor.execute("UPDATE chauffeurs SET status = 'AVAILABLE', active_booking_id = NULL WHERE id = ? AND active_booking_id = ?", (chauffeur_id, booking_id))
+            details = f"Booking {booking['confirmation_code']} cancelled." + (f" {payment_note}" if payment_note else "")
             actor = "Dispatcher"
+            cursor.execute("""UPDATE invoices SET delivery='review'
+                WHERE booking_id=? AND delivery IN ('draft','failed','queued') AND archived_at IS NULL""", (booking_id,))
 
         cursor.execute("UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?", (new_booking_status, now_str, booking_id))
+
+        if action == "CANCEL":
+            group = cursor.execute("SELECT invoice_id FROM corporate_invoice_bookings WHERE booking_id=?", (booking_id,)).fetchone()
+            if group:
+                dispatch_invoices.refresh_corporate_invoice(conn, group["invoice_id"])
 
         if sms_alert:
             sms_id = f"CNF-{random.randint(1000, 9999)}"
@@ -5062,6 +5159,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
     def handle_capture_payment(self, booking_id, payload):
         conn = db.get_connection()
         cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")
         cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
         b_row = cursor.fetchone()
         if not b_row:
@@ -5070,6 +5168,10 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             return
 
         booking = dict(b_row)
+        if booking["status"] in ("CANCELLED", "DELETED") or booking.get("payment_status") in ("PAID", "REFUNDED", "REFUND_PENDING", "HOLD_RELEASED"):
+            conn.close()
+            self.send_json({"error": "This booking is not available for payment capture."}, 409)
+            return
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         card_code = booking.get("card_auth_code") or ""
         amount = float(payload.get("amount", booking.get("total_fare", 0.0)))

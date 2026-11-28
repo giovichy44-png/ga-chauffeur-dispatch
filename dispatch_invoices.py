@@ -34,6 +34,12 @@ def init(conn):
             id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER NOT NULL REFERENCES invoices(id),
             kind TEXT NOT NULL, amount_pence INTEGER NOT NULL, noted_on TEXT NOT NULL, memo TEXT NOT NULL DEFAULT '',
             external_ref TEXT UNIQUE)""",
+        """CREATE TABLE IF NOT EXISTS corporate_invoice_groups (
+            invoice_id INTEGER PRIMARY KEY REFERENCES invoices(id), group_name TEXT NOT NULL,
+            email TEXT NOT NULL, period TEXT NOT NULL)""",
+        """CREATE TABLE IF NOT EXISTS corporate_invoice_bookings (
+            booking_id TEXT PRIMARY KEY REFERENCES bookings(id),
+            invoice_id INTEGER NOT NULL REFERENCES corporate_invoice_groups(invoice_id))""",
         """CREATE TABLE IF NOT EXISTS invoice_preferences (
             key TEXT PRIMARY KEY, value TEXT NOT NULL)""",
     ):
@@ -310,7 +316,7 @@ def journey_description(booking):
     return " · ".join(filter(None, [when, booking.get("customer_name"), label])) + "\n" + route
 
 
-def from_booking(conn, booking, *, completed=False):
+def booking_invoice_items(booking):
     items = []
     for description, key in (
         (journey_description(booking), "fare_amount"),
@@ -320,6 +326,67 @@ def from_booking(conn, booking, *, completed=False):
         amount = pence(booking.get(key) or 0)
         if amount or key == "fare_amount":
             items.append(dict(description=description, quantity="1", unit_pence=amount, amount_pence=amount))
+    return items
+
+
+def refresh_corporate_invoice(conn, invoice_id):
+    rows = conn.execute("""SELECT b.* FROM bookings b JOIN corporate_invoice_bookings l ON l.booking_id=b.id
+        WHERE l.invoice_id=? AND b.status NOT IN ('DELETED','CANCELLED') ORDER BY b.pickup_datetime,b.id""", (invoice_id,)).fetchall()
+    bookings = [dict(row) for row in rows]
+    items = []
+    for booking in bookings:
+        for item in booking_invoice_items(booking):
+            items.append({**item, "description": f"{booking['confirmation_code']} · {item['description']}"})
+    subtotal = sum(item["amount_pence"] for item in items)
+    vat = sum(pence(booking.get("vat_amount") or 0) for booking in bookings)
+    total = subtotal + vat
+    needs_review = not total or any(
+        sum(item["amount_pence"] for item in booking_invoice_items(booking)) + pence(booking.get("vat_amount") or 0)
+        != pence(booking.get("total_fare") or 0) for booking in bookings
+    )
+    conn.execute("""UPDATE invoices SET items=?,subtotal_pence=?,vat_pence=?,total_pence=?,delivery=?
+        WHERE id=? AND archived_at IS NULL AND delivery IN ('draft','review') AND manually_edited=0
+        AND checkout_session IS NULL AND NOT EXISTS (SELECT 1 FROM invoice_payments WHERE invoice_id=?)""",
+        (json.dumps(items), subtotal, vat, total, "review" if needs_review else "draft", invoice_id, invoice_id))
+
+
+def corporate_invoice_for_booking(conn, booking, name):
+    email = (booking.get("customer_email") or "").strip()
+    period = booking["pickup_datetime"][:7]
+    client = conn.execute("""SELECT * FROM invoice_clients WHERE archived_at IS NULL
+        AND lower(trim(name))=lower(?) ORDER BY id LIMIT 1""", (name,)).fetchone()
+    if not client:
+        client_id = conn.execute("INSERT INTO invoice_clients(name,email) VALUES (?,?)",
+                                 (name, email)).lastrowid
+        client = conn.execute("SELECT * FROM invoice_clients WHERE id=?", (client_id,)).fetchone()
+    draft = conn.execute("""SELECT i.id FROM invoices i JOIN corporate_invoice_groups g ON g.invoice_id=i.id
+        WHERE i.client_id=? AND g.email=? AND g.period=? AND i.archived_at IS NULL
+        AND i.delivery IN ('draft','review') AND i.manually_edited=0 AND i.checkout_session IS NULL
+        AND NOT EXISTS (SELECT 1 FROM invoice_payments WHERE invoice_id=i.id) ORDER BY i.id DESC LIMIT 1""",
+        (client["id"], email.casefold(), period)).fetchone()
+    if draft:
+        invoice_id = draft["id"]
+    else:
+        issued = today()
+        invoice_id = conn.execute("""INSERT INTO invoices(client_id,client_name,client_email,client_address,
+            issued,due,items,comments,discount_pence,vat_percent,vat_pence,subtotal_pence,total_pence,delivery)
+            VALUES (?,?,?,?,?,?,'[]','',0,'',0,0,0,'draft')""", (client["id"], client["name"], email,
+            client["address"], issued.isoformat(), (issued + timedelta(days=7)).isoformat())).lastrowid
+        conn.execute("INSERT INTO corporate_invoice_groups VALUES (?,?,?,?)", (invoice_id, name, email.casefold(), period))
+    conn.execute("INSERT INTO corporate_invoice_bookings VALUES (?,?)", (booking["id"], invoice_id))
+    refresh_corporate_invoice(conn, invoice_id)
+    return invoice_id, False
+
+
+def from_booking(conn, booking, *, completed=False, corporate_name=""):
+    grouped = conn.execute("SELECT invoice_id FROM corporate_invoice_bookings WHERE booking_id=?", (booking["id"],)).fetchone()
+    if grouped:
+        if completed:
+            refresh_corporate_invoice(conn, grouped["invoice_id"])
+        return grouped["invoice_id"], False
+    if corporate_name:
+        return corporate_invoice_for_booking(conn, booking, corporate_name)
+    items = booking_invoice_items(booking)
     subtotal = sum(row["amount_pence"] for row in items)
     vat = pence(booking.get("vat_amount") or 0)
     total = subtotal + vat
@@ -366,6 +433,7 @@ def from_booking(conn, booking, *, completed=False):
 def backfill_completed(conn):
     rows = conn.execute("""SELECT b.* FROM bookings b WHERE b.status='COMPLETED'
         AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.booking_id=b.id)
+        AND NOT EXISTS (SELECT 1 FROM corporate_invoice_bookings l WHERE l.booking_id=b.id)
         ORDER BY b.pickup_datetime, b.id""").fetchall()
     for row in rows:
         from_booking(conn, dict(row), completed=True)

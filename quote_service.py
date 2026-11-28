@@ -49,6 +49,17 @@ def inputs(data,normalize):
         raise zone.QuoteUnavailable('Choose hourly service to leave the final destination open.')
     return dict(pickup=pickup,dropoff=dropoff,vehicle=vehicle,service=service,hours=hours,stops=stops)
 
+def requires_base_to_base_airport_pricing(pickup, dropoff):
+    """Use verified round-trip pricing for Gatwick-area journeys to or from another airport."""
+    def gatwick_area(address):
+        return bool(re.search(r"\b(?:gatwick|lgw|rh(?:6|10|11)(?:\s*\d[a-z]{2})?)\b", address, re.I))
+
+    def other_airport(address):
+        return bool(re.search(r"\b(?:heathrow|lhr|london city airport|lcy|luton|ltn|stansted|stn|farnborough|fab|biggin hill|bqh|northolt)\b", address, re.I))
+
+    return (gatwick_area(pickup) and other_airport(dropoff)) or (gatwick_area(dropoff) and other_airport(pickup))
+
+
 def issue(data,normalize,tariff,client, *, preview=False):
     if (not enabled() and not preview) or not ready(): raise zone.QuoteUnavailable('Verified journey quotes are not available yet.')
     spec=inputs(data,normalize);now=time.time()
@@ -79,6 +90,8 @@ def issue(data,normalize,tariff,client, *, preview=False):
         with _lock:
             _cache[cache_key]=(now+300,route)
             while len(_cache)>200: _cache.popitem(last=False)
+    if route.get('base_to_base_verified') is False and requires_base_to_base_airport_pricing(spec['pickup'], spec['dropoff']):
+        raise zone.QuoteUnavailable('Could not verify the drive from Central London and back. Refresh the route to quote this journey.')
     if spec['service'] == 'Point-to-point transfer' and spec['hours'] == 2 and route['duration_minutes'] > 120:
         raise zone.QuoteUnavailable('This route takes over two hours. Choose a longer service.')
     try:

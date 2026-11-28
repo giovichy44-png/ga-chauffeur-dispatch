@@ -177,15 +177,17 @@ def driving_route(pickup,dropoff,key,*,stops=(),tracking=False):
         return dict(path=path, pickup_location=p, dropoff_location=d, stop_locations=locations)
     if len(path) < 3:
         raise QuoteUnavailable("A complete road route could not be verified. Check the addresses or try again.")
+    base_verified = False
     b2b_miles = oneway_miles * 2.0
     b2b_minutes = oneway_minutes * 2.0
     try:
         _, base_miles, base_minutes = totals_for([HYDE_PARK_CORNER, *points, HYDE_PARK_CORNER], geometry=False)
         if base_miles:
             b2b_miles, b2b_minutes = base_miles, base_minutes
+            base_verified = True
     except (OSError, KeyError, ValueError, QuoteUnavailable):
         pass
-    return {'path':path,'distance_miles':oneway_miles,'duration_minutes':oneway_minutes,'base_to_base_miles':b2b_miles,'base_to_base_minutes':b2b_minutes,'pickup_location':p,'dropoff_location':d,'congestion_charge':18 if any(in_zone(point) for point in (p,*locations,d)) else 0}
+    return {'path':path,'distance_miles':oneway_miles,'duration_minutes':oneway_minutes,'base_to_base_miles':b2b_miles,'base_to_base_minutes':b2b_minutes,'base_to_base_verified':base_verified,'pickup_location':p,'dropoff_location':d,'congestion_charge':18 if any(in_zone(point) for point in (p,*locations,d)) else 0}
 
 def totals(base,parking,dropoff,zone_charge):
     """Requested £18 added once to final bill. Existing tax on other fares retained."""

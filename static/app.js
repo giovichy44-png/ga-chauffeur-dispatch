@@ -140,11 +140,36 @@ function toggleAudioAlerts() {
 
 function filterJobsUrgent() {
   switchTab('jobs');
+  const search = document.getElementById('jobs-search-input');
+  if (search) search.value = '';
   App.activeFilter = 'URGENT';
   document.querySelectorAll('.pill-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-filter') === 'URGENT');
   });
   renderJobsList();
+  document.getElementById(App.viewMode === 'GRID' ? 'cds-table-container' : 'jobs-list-container')?.scrollIntoView({block: 'start'});
+}
+
+function showUrgentBooking(booking) {
+  if (!App.bookings.some(row => row.id === booking.id)) {
+    return openBookingLog(booking.id || booking.confirmation_code);
+  }
+  switchTab('jobs');
+  const filter = booking.status === 'DELETED' ? 'DELETED' : 'ALL';
+  document.querySelector(`.pill-btn[data-filter="${filter}"]`)?.click();
+  const search = document.getElementById('jobs-search-input');
+  if (search) search.value = booking.confirmation_code || booking.id;
+  setJobsViewMode('GRID');
+  App.expandedBookingIds.add(booking.id);
+  renderJobsList();
+  const control = Array.from(document.querySelectorAll('.dispatch-expand-button'))
+    .find(button => button.textContent.includes(booking.confirmation_code || booking.id));
+  if (control) {
+    control.scrollIntoView({block: 'center'});
+    control.focus({preventScroll: true});
+  } else {
+    return openBookingLog(booking.id || booking.confirmation_code);
+  }
 }
 
 function parsePickupDate(dtStr) {
@@ -163,7 +188,7 @@ function getMinutesUntilPickup(dtStr) {
 }
 
 function isBookingUnallocated(b) {
-  if (!b || b.status === 'COMPLETED' || b.status === 'CANCELLED') return false;
+  if (!b || ['COMPLETED', 'CANCELLED', 'DELETED'].includes(b.status)) return false;
   return !b.chauffeur_id;
 }
 
@@ -218,9 +243,14 @@ function checkLiveNotificationsAndUrgency(newBookings) {
     if (allUrgent.length > 0) {
       banner.style.display = 'flex';
       titleEl.textContent = `Urgent allocation required · ${allUrgent.length} ${allUrgent.length === 1 ? "booking" : "bookings"}`;
-      detailsEl.textContent = allUrgent
-        .map(x => `${x.b.confirmation_code} (${x.b.customer_name} • ${x.mins >= 0 ? 'in ' + x.mins + 'm' : Math.abs(x.mins) + 'm overdue'})`)
-        .join('   •   ');
+      detailsEl.replaceChildren(...allUrgent.map(({b, mins}) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-secondary';
+        button.textContent = `${b.confirmation_code} (${b.customer_name} · ${mins >= 0 ? 'in ' + mins + 'm' : Math.abs(mins) + 'm overdue'})`;
+        button.addEventListener('click', () => showUrgentBooking(b));
+        return button;
+      }));
     } else {
       banner.style.display = 'none';
     }
@@ -495,8 +525,11 @@ function renderJobsList() {
   const queryClean = query.replace(/[\s\-]/g, '');
 
   const filtered = App.bookings.filter(b => {
-    if (App.activeFilter === 'DELETED') return b.status === 'DELETED';
-    if (b.status === 'DELETED') return false;
+    if (App.activeFilter === 'DELETED' && b.status !== 'DELETED') return false;
+    if (b.status === 'DELETED' && App.activeFilter !== 'DELETED') {
+      return Boolean(queryClean && [b.confirmation_code, b.id]
+        .some(ref => String(ref || '').toLowerCase().replace(/[\s-]/g, '') === queryClean));
+    }
     // When typing in the search bar, search across ALL bookings including History automatically!
     if (query) {
       const refClean = (b.confirmation_code || '').toLowerCase().replace(/[\s\-]/g, '');
@@ -814,11 +847,11 @@ function renderCdsDispatchTable(filtered) {
       { status: 'NEXT_STOP', action: 'NEXT_STOP', label: '➡️ Next Stop' },
       { status: 'DROPPED_OFF', action: 'DROPPED_OFF', label: '🛬 Dropped Off' },
       { status: 'COMPLETED', action: 'COMPLETED', label: '🏁 Completed' },
-      { status: 'CANCELLED', action: 'CANCEL', label: '✖️ Cancelled' }
+      { status: 'CANCELLED', action: 'CANCEL', label: '✖️ Cancel booking and refund/release card' }
     ];
 
     const normalizedStatus = b.status;
-    const statusLabel = normalizedStatus === 'ON_BOARD' ? 'POB' : normalizedStatus === 'ACCEPTED' ? 'Accepted' :
+    const statusLabel = b.status === 'DELETED' ? 'Deleted' : normalizedStatus === 'ON_BOARD' ? 'POB' : normalizedStatus === 'ACCEPTED' ? 'Accepted' :
       statusChoices.find(choice => choice.status === normalizedStatus)?.label.split(' ').slice(1).join(' ') || (b.chauffeur_id ? 'Confirmed' : 'Unallocated');
     const vehicleLabel = formatVehTierLabel(b.vehicle_class).replace(/^Mercedes(?:-Benz)? /, '').replace(/^Range Rover.*$/, 'Range Rover');
     const statusColour = ['COMPLETED', 'CANCELLED'].includes(b.status) ? b.status
@@ -1520,6 +1553,13 @@ async function deleteFleetChauffeur(chId) {
 
 // Live Action execution
 async function triggerAction(bookingId, action) {
+  if (action === 'CANCEL') {
+    if (!confirm('Cancel this booking? Any captured Stripe booking payment will be refunded. An uncaptured hold will be released.')) {
+      renderJobsList();
+      return;
+    }
+    action = 'CANCEL_AND_REFUND';
+  }
   try {
     const res = await fetch(`/api/bookings/${bookingId}/action`, {
       method: 'POST',
@@ -1528,11 +1568,15 @@ async function triggerAction(bookingId, action) {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`Status updated: ${action}`);
+      showToast(data.details || `Status updated: ${action}`);
       loadData();
+    } else {
+      showToast(data.error || 'Action failed');
+      renderJobsList();
     }
   } catch (err) {
     showToast('Action failed');
+    renderJobsList();
   }
 }
 
@@ -2140,7 +2184,9 @@ function initForm() {
       if (!response.ok) throw Error(quote.error);
       if (id !== previewRequest) return;
       total.textContent = `£${quote.total_fare.toFixed(2)}`;
-      sub.textContent = `Includes £${quote.vat_amount.toFixed(2)} VAT`;
+      sub.textContent = quote.billable_hours
+        ? `${quote.billable_hours} billable hours · ${quote.included_miles} miles included · ${quote.excess_miles} excess miles · includes £${quote.vat_amount.toFixed(2)} VAT`
+        : `Includes £${quote.vat_amount.toFixed(2)} VAT`;
       title.textContent = quote.service_label;
     } catch (error) {
       if (id !== previewRequest) return;
@@ -2161,7 +2207,7 @@ function initForm() {
       }
       const submitBtn = document.getElementById('btn-submit-booking');
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Creating Job & Sending Email...';
+      submitBtn.textContent = 'Creating booking…';
 
       const payload = {
         customer_name: document.getElementById('f-name').value,
@@ -2184,6 +2230,8 @@ function initForm() {
         hand_luggage: parseInt(handLug ? handLug.value : 0),
         special_requests: document.getElementById('f-notes').value || '',
         test_no_charge: document.getElementById('f-test-no-charge') ? document.getElementById('f-test-no-charge').checked : false,
+        send_confirmation: document.getElementById('f-send-confirmation').checked,
+        corporate_invoice_name: document.getElementById('f-corporate-invoice-name').value.trim(),
         source: 'DISPATCH_PORTAL'
       };
 
@@ -2193,7 +2241,7 @@ function initForm() {
           const spec={pickup:payload.pickup_address,dropoff:payload.dropoff_address,vehicle:payload.vehicle_class,service:payload.service_type,hours:payload.hours_booked,stops:JSON.stringify(payload.stops)};
           const qr=await fetch('/api/route-quote?'+new URLSearchParams(spec));const q=await qr.json();
           if(!qr.ok)throw Error(q.error||'Unable to verify route.');
-          if(!confirm(payload.service_type.startsWith('Open hours') ? 'Create this open-hours booking with billing after the journey?' : 'Verified journey total: £'+q.total_fare.toFixed(2)+'. Create this booking?')){submitBtn.disabled=false;submitBtn.textContent='Confirm Booking & Send Email ↗';return;}
+          if(!confirm(payload.service_type.startsWith('Open hours') ? 'Create this open-hours booking with billing after the journey?' : 'Verified journey total: £'+q.total_fare.toFixed(2)+'. Create this booking?')){submitBtn.disabled=false;submitBtn.textContent='Create booking ↗';return;}
           payload.quote_token=q.quote_token;
         }
         const res = await fetch('/api/bookings', {
@@ -2203,22 +2251,25 @@ function initForm() {
         });
         const data = await res.json();
         if (data.success) {
-          showToast(`Job ${data.booking.confirmation_code} created! Email sent.`);
+          const delivery = payload.send_confirmation
+            ? (data.booking.confirmation_sent ? ' Confirmation sent.' : ' Confirmation could not be sent.')
+            : ' No confirmation sent.';
+          showToast(`Job ${data.booking.confirmation_code} created.${delivery}`);
           form.reset();
           intakeStops.set([]);
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Confirm Booking & Send Email ↗';
+          submitBtn.textContent = 'Create booking ↗';
           switchTab('jobs');
           loadData();
         } else {
           alert(data.error || 'Failed to create job');
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Confirm Booking & Send Email ↗';
+          submitBtn.textContent = 'Create booking ↗';
         }
       } catch (err) {
         alert((err && err.message) || 'Network error submitting job');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Confirm Booking & Send Email ↗';
+        submitBtn.textContent = 'Create booking ↗';
       }
     });
   }
@@ -2597,7 +2648,7 @@ function updateDispatchAlarm() {
     booking: updates.map(update => update.key),
     chauffeur: unreadChauffeurMessages.map(message => message.id),
     customer: Array.from({length: customers}, (_, index) => index),
-    urgent: App.urgentBookings.map(job => job.confirmation_code || job.id)
+    urgent: App.urgentBookings.map(({b}) => b.confirmation_code || b.id)
   });
   banner.hidden = !(updates.length || driverMessages || customers);
   const latest = updates[0];
@@ -2636,19 +2687,7 @@ async function reviewDispatchAlert() {
   const alert = App.pendingAlerts[0];
   if (!alert) return;
   const job = App.bookings.find(row => row.id === alert.booking_id);
-  if (job) {
-    switchTab('jobs');
-    const search = document.getElementById('jobs-search-input');
-    if (search) search.value = '';
-    document.querySelector('.pill-btn[data-filter="ALL"]')?.click();
-    setJobsViewMode('GRID');
-    App.expandedBookingIds.add(job.id);
-    renderJobsList();
-    const control = Array.from(document.querySelectorAll('.dispatch-expand-button'))
-      .find(button => button.textContent.includes(job.confirmation_code));
-    control?.scrollIntoView({block:'center'});
-    control?.focus({preventScroll:true});
-  }
+  await showUrgentBooking(job || {id: alert.booking_id, confirmation_code: alert.confirmation_code});
   const keys = [alert.key];
   try {
     const response = await fetch('/api/dispatch/ack-alerts', {
@@ -2718,7 +2757,7 @@ async function openBookingLog(id) {
     const response = await fetch(`/api/bookings/${encodeURIComponent(id)}`);
     const result = await response.json();
     if (!response.ok) throw Error(result.error || 'Could not load booking history.');
-    title.textContent = `Booking log · ${result.booking.confirmation_code}`;
+    title.textContent = `Booking log · ${result.booking.confirmation_code}${result.booking.status === "DELETED" ? " · Deleted" : ""}`;
     if (!result.actions?.length) {
       history.textContent = 'No actions are recorded for this booking.';
       return true;
