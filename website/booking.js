@@ -1367,67 +1367,171 @@
 
   const enquiryBtn = document.querySelector('#booking-enquiry-btn');
   const enquiryQuestionInput = document.querySelector('#booking-enquiry-question');
-  if (enquiryBtn) {
-    enquiryBtn.addEventListener('click', async () => {
-      if (sending) return;
-      const data = Object.fromEntries(new FormData(form));
-      const name = (data.name || '').trim();
-      const email = (data.email || '').trim();
+  const sideChatLauncher = document.querySelector('#ga-side-chat-launcher');
+  const sideChatPopup = document.querySelector('#ga-side-chat-popup');
+  const sideChatClose = document.querySelector('#ga-side-chat-close');
+  const sideChatSubtitle = document.querySelector('#ga-side-chat-subtitle');
+  const sideChatContact = document.querySelector('#ga-side-chat-contact');
+  const sideChatName = document.querySelector('#ga-side-chat-name');
+  const sideChatEmail = document.querySelector('#ga-side-chat-email');
+  const sideChatPhone = document.querySelector('#ga-side-chat-phone');
+  const sideChatMessages = document.querySelector('#ga-side-chat-messages');
+  const sideChatStatus = document.querySelector('#ga-side-chat-status');
+  const sideChatForm = document.querySelector('#ga-side-chat-form');
+  const sideChatInput = document.querySelector('#ga-side-chat-input');
+  const sideChatSend = document.querySelector('#ga-side-chat-send');
+
+  let sideChatRef = '';
+  let sideChatToken = '';
+  let sideChatPollTimer = null;
+  let sideChatBusy = false;
+  let sideChatLastTranscript = '';
+
+  function setSideChatStatus(msg, isError = false) {
+    if (!sideChatStatus) return;
+    if (!msg) { sideChatStatus.style.display = 'none'; sideChatStatus.textContent = ''; return; }
+    sideChatStatus.style.display = 'block';
+    sideChatStatus.style.background = isError ? '#fef2f2' : '#fffbeb';
+    sideChatStatus.style.color = isError ? '#991b1b' : '#92400e';
+    sideChatStatus.style.borderTopColor = isError ? '#fecaca' : '#fde68a';
+    sideChatStatus.textContent = msg;
+  }
+
+  function renderSideChatMessages(messages) {
+    if (!sideChatMessages) return;
+    const list = messages && messages.length ? messages : [{
+      sender: 'dispatch',
+      message: 'Welcome to GA Chauffeurs Dispatch. Send your question below — we see your current booking details automatically and no payment is required to enquire.'
+    }];
+    const sig = JSON.stringify(list);
+    if (sig === sideChatLastTranscript) return;
+    sideChatLastTranscript = sig;
+    sideChatMessages.replaceChildren(...list.map(row => {
+      const wrap = document.createElement('div');
+      const isDispatch = row.sender === 'dispatch';
+      wrap.style.cssText = isDispatch
+        ? 'align-self:flex-start;max-width:86%;background:#ffffff;border:1px solid #d6cbb2;color:#171c1c;padding:9px 12px;border-radius:10px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-break:break-word;'
+        : 'align-self:flex-end;max-width:86%;background:#17201b;color:#ffffff;padding:9px 12px;border-radius:10px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-break:break-word;';
+      const label = document.createElement('div');
+      label.style.cssText = 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:3px;';
+      label.textContent = isDispatch ? 'GA Dispatch' : 'You';
+      const body = document.createElement('div');
+      body.textContent = row.message || '';
+      wrap.append(label, body);
+      return wrap;
+    }));
+    sideChatMessages.scrollTop = sideChatMessages.scrollHeight;
+  }
+
+  function syncSideChatContactFromForm() {
+    const data = Object.fromEntries(new FormData(form));
+    if (sideChatName && !sideChatName.value.trim() && data.name) sideChatName.value = String(data.name).trim();
+    if (sideChatEmail && !sideChatEmail.value.trim() && data.email) sideChatEmail.value = String(data.email).trim();
+    if (sideChatPhone && !sideChatPhone.value.trim() && data.phone) sideChatPhone.value = String(data.phone).trim();
+    if (sideChatContact) {
+      sideChatContact.style.display = sideChatRef ? 'none' : 'grid';
+    }
+  }
+
+  function openSideChatPopup() {
+    if (!sideChatPopup) return;
+    syncSideChatContactFromForm();
+    sideChatPopup.hidden = false;
+    sideChatPopup.style.display = 'flex';
+    if (sideChatLauncher) sideChatLauncher.style.display = 'none';
+    if (!sideChatLastTranscript) renderSideChatMessages([]);
+    if (sideChatRef && sideChatToken) {
+      pollSideChatMessages();
+      if (!sideChatPollTimer) sideChatPollTimer = setInterval(pollSideChatMessages, 4000);
+    }
+    setTimeout(() => {
+      if (!sideChatRef && sideChatName && !sideChatName.value.trim()) sideChatName.focus();
+      else if (!sideChatRef && sideChatEmail && !sideChatEmail.value.trim()) sideChatEmail.focus();
+      else sideChatInput?.focus();
+    }, 50);
+  }
+
+  function closeSideChatPopup() {
+    if (!sideChatPopup) return;
+    sideChatPopup.hidden = true;
+    sideChatPopup.style.display = 'none';
+    if (sideChatLauncher) sideChatLauncher.style.display = 'inline-flex';
+    if (sideChatPollTimer) { clearInterval(sideChatPollTimer); sideChatPollTimer = null; }
+  }
+
+  async function pollSideChatMessages() {
+    if (!sideChatRef || !sideChatToken || sideChatPopup?.hidden) return;
+    try {
+      const res = await fetch('/api/public/customer-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: sideChatRef, token: sideChatToken, action: 'read' })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(json.messages)) {
+        renderSideChatMessages(json.messages);
+      }
+    } catch (_) {}
+  }
+
+  async function sendSideChatMessage(textOverride) {
+    if (sideChatBusy) return;
+    syncSideChatContactFromForm();
+    const messageText = (textOverride !== undefined ? textOverride : (sideChatInput?.value || '')).trim();
+    const data = Object.fromEntries(new FormData(form));
+    const name = (sideChatName?.value || data.name || '').trim();
+    const email = (sideChatEmail?.value || data.email || '').trim();
+    const phone = (sideChatPhone?.value || data.phone || '').trim();
+
+    if (!sideChatRef) {
       if (!name || !email || !email.includes('@')) {
-        status.style.display = 'block';
-        status.style.background = '#fff5f5';
-        status.style.border = '1px solid #feb2b2';
-        status.style.color = '#9b2c2c';
-        status.textContent = 'Please enter your name and email address in Passenger Details so Dispatch can reply to your enquiry.';
-        setStep(3);
+        setSideChatStatus('Enter your name and email above so Dispatch can reply directly.', true);
+        if (!name) sideChatName?.focus(); else sideChatEmail?.focus();
         return;
       }
+    } else if (!messageText) {
+      return;
+    }
 
-      const pVal = getAddressVal('booking-pickup');
-      const dVal = getAddressVal('booking-destination');
-      const isHourly = data.serviceType === 'Hourly chauffeur service';
-      const flightNo = form.querySelector('#booking-flight')?.value || '';
-      const q = currentQuote();
-      const question = (enquiryQuestionInput?.value || '').trim();
+    sideChatBusy = true;
+    if (sideChatSend) sideChatSend.disabled = true;
+    if (enquiryBtn) enquiryBtn.disabled = true;
+    setSideChatStatus(sideChatRef ? 'Sending message to Dispatch…' : 'Connecting your booking enquiry to Dispatch (no payment taken)…');
 
-      const enquiryPayload = {
-        customer_name: name,
-        customer_email: email,
-        customer_phone: (data.phone || '').trim(),
-        service_type: quoteSpec().service,
-        hours: Number(quoteSpec().hours || 0),
-        stops: stops.values(),
-        pickup_address: pVal || 'Not specified',
-        dropoff_address: dVal || (isHourly ? 'As directed' : 'Not specified'),
-        pickup_datetime: (data.datetime || '').replace('T', ' '),
-        vehicle_class: data.vehicle === 'Mercedes-Benz S-Class' ? 'mercedes_s_class' : data.vehicle === 'Mercedes-Benz V-Class' ? 'mercedes_v_class' : data.vehicle === 'Range Rover Autobiography Long Wheelbase' ? 'range_rover_autobiography' : (data.vehicle || 'mercedes_s_class'),
-        vehicle: data.vehicle || '',
-        passenger_count: parseInt(data.passengers, 10) || 1,
-        large_cases: parseInt(data.largeCases || 0, 10) || 0,
-        medium_cases: 0,
-        flight_number: flightNo,
-        special_requests: bookingRequests(),
-        question,
-        fare_amount: q ? Number(q.base_fare || 0) : 0,
-        vat_amount: q ? Number(q.vat_amount || 0) : 0,
-        total_fare: q ? Number(q.total_fare || 0) : 0,
-        parking_fee: q ? Number(q.parking_fee || 0) : 0,
-        airport_dropoff_fee: q ? Number(q.dropoff_fee || 0) : 0,
-        congestion_charge: q ? Number(q.congestion_charge || 0) : 0,
-        estimated_distance_mi: journeyDistanceMiles || 0,
-        estimated_duration_min: journeyDurationMinutes || 0
-      };
-
-      sending = true;
-      enquiryBtn.disabled = true;
-      if (submitBtn) submitBtn.disabled = true;
-      status.style.display = 'block';
-      status.style.background = '#f8fafc';
-      status.style.border = '1px solid #cbd5e1';
-      status.style.color = '#1e293b';
-      status.textContent = 'Sending your unpaid enquiry straight to GA Dispatch…';
-
-      try {
+    try {
+      if (!sideChatRef) {
+        const pVal = getAddressVal('booking-pickup');
+        const dVal = getAddressVal('booking-destination');
+        const isHourly = data.serviceType === 'Hourly chauffeur service';
+        const flightNo = form.querySelector('#booking-flight')?.value || '';
+        const q = currentQuote();
+        const enquiryPayload = {
+          customer_name: name,
+          customer_email: email,
+          customer_phone: phone,
+          service_type: quoteSpec().service,
+          hours: Number(quoteSpec().hours || 0),
+          stops: stops.values(),
+          pickup_address: pVal || 'Not specified',
+          dropoff_address: dVal || (isHourly ? 'As directed' : 'Not specified'),
+          pickup_datetime: (data.datetime || '').replace('T', ' '),
+          vehicle_class: data.vehicle === 'Mercedes-Benz S-Class' ? 'mercedes_s_class' : data.vehicle === 'Mercedes-Benz V-Class' ? 'mercedes_v_class' : data.vehicle === 'Range Rover Autobiography Long Wheelbase' ? 'range_rover_autobiography' : (data.vehicle || 'mercedes_s_class'),
+          vehicle: data.vehicle || '',
+          passenger_count: parseInt(data.passengers, 10) || 1,
+          large_cases: parseInt(data.largeCases || 0, 10) || 0,
+          medium_cases: 0,
+          flight_number: flightNo,
+          special_requests: bookingRequests(),
+          question: messageText,
+          fare_amount: q ? Number(q.base_fare || 0) : 0,
+          vat_amount: q ? Number(q.vat_amount || 0) : 0,
+          total_fare: q ? Number(q.total_fare || 0) : 0,
+          parking_fee: q ? Number(q.parking_fee || 0) : 0,
+          airport_dropoff_fee: q ? Number(q.dropoff_fee || 0) : 0,
+          congestion_charge: q ? Number(q.congestion_charge || 0) : 0,
+          estimated_distance_mi: journeyDistanceMiles || 0,
+          estimated_duration_min: journeyDurationMinutes || 0
+        };
         const res = await fetch('/api/public/booking-enquiry', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1436,78 +1540,59 @@
         });
         const jsonRes = await res.json().catch(() => ({}));
         if (!res.ok || !jsonRes.success) {
-          throw Error(jsonRes.error || 'Could not send your enquiry right now. Please try again or call +44 7886 622082.');
+          throw Error(jsonRes.error || 'Could not send your enquiry right now.');
         }
-        renderEnquiryConfirmation(jsonRes.reference || 'GA-ENQUIRY', enquiryPayload, data, jsonRes.manage_url);
-      } catch (err) {
-        status.style.display = 'block';
-        status.style.background = '#fff5f5';
-        status.style.border = '1px solid #feb2b2';
-        status.style.color = '#9b2c2c';
-        status.textContent = err.message || 'Could not send your enquiry right now.';
-      } finally {
-        sending = false;
-        enquiryBtn.disabled = false;
-        if (submitBtn) submitBtn.disabled = false;
+        sideChatRef = jsonRes.reference || '';
+        sideChatToken = jsonRes.chat_token || '';
+        if (sideChatSubtitle) sideChatSubtitle.textContent = `Ref ${sideChatRef} · Unpaid enquiry — live chat active`;
+        if (sideChatContact) sideChatContact.style.display = 'none';
+        if (sideChatInput) sideChatInput.value = '';
+        if (enquiryQuestionInput) enquiryQuestionInput.value = '';
+        setSideChatStatus(`Enquiry ${sideChatRef} sent to Dispatch (no payment taken). Stay right here for live replies.`);
+        await pollSideChatMessages();
+        if (!sideChatPollTimer) sideChatPollTimer = setInterval(pollSideChatMessages, 4000);
+      } else {
+        const res = await fetch('/api/public/customer-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: sideChatRef, token: sideChatToken, action: 'send', message: messageText }),
+          signal: AbortSignal.timeout(15000)
+        });
+        const jsonRes = await res.json().catch(() => ({}));
+        if (!res.ok) throw Error(jsonRes.error || 'Could not send your message right now.');
+        if (sideChatInput) sideChatInput.value = '';
+        if (Array.isArray(jsonRes.messages)) renderSideChatMessages(jsonRes.messages);
+        setSideChatStatus(`Message sent to Dispatch (${sideChatRef}).`);
       }
-    });
+    } catch (err) {
+      setSideChatStatus(err.message || 'Could not send message right now.', true);
+    } finally {
+      sideChatBusy = false;
+      if (sideChatSend) sideChatSend.disabled = false;
+      if (enquiryBtn) enquiryBtn.disabled = false;
+    }
   }
 
-  function renderEnquiryConfirmation(ref, payload, data, manageUrl = null) {
-    const root = document.querySelector('#ga-chauffeur-booking-widget');
-    if (!root) return;
-    const esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-    const fareText = payload.total_fare > 0 ? `£${Number(payload.total_fare).toFixed(2)} (Not paid yet)` : 'Custom quote requested (Not paid yet)';
-    const whatsappSummary = `https://wa.me/447886622082?text=${encodeURIComponent(
-      `Hello GA Chauffeurs, I sent an unpaid booking enquiry (${ref}):\n• Passenger: ${payload.customer_name}\n• Date & Time: ${payload.pickup_datetime}\n• Route: ${payload.pickup_address} to ${payload.dropoff_address}\n• Vehicle: ${data.vehicle || 'Not selected'}\n• Question: ${payload.question || 'Booking quote enquiry'}`
-    )}`;
-    root.innerHTML = `
-      <div style="background: #ffffff; border: 1px solid #c9b894; border-radius: 8px; padding: 40px 32px; color: #171c1c; text-align: left; max-width: 760px; margin: 0 auto; box-shadow: 0 20px 45px rgba(0,0,0,0.08);">
-        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 24px; gap: 12px; flex-wrap: wrap;">
-          <div>
-            <span style="font-family: Georgia, serif; font-size: 32px; letter-spacing: -3px; color: #171c1c;">GA</span>
-            <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #cbd5e1; padding-left: 12px; margin-left: 10px; color: #64748b;">Chauffeur Services</span>
-          </div>
-          <div style="background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; font-size: 12px; font-weight: bold; padding: 6px 16px; border-radius: 20px; text-transform: uppercase; letter-spacing: .06em;">
-            ❓ Enquiry Sent — Not Paid Yet
-          </div>
-        </div>
-        <h2 style="font-family: Georgia, serif; font-size: 28px; font-weight: normal; color: #171c1c; margin: 0 0 10px 0;">
-          Enquiry Sent to Dispatch: <span style="color: #854d0e; font-weight: 600;">${esc(ref)}</span>
-        </h2>
-        <p style="color: #475569; font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
-          Your journey details and question have been sent straight to GA Dispatch. <strong>No card hold or payment has been taken.</strong> Our dispatch team will contact you at <strong>${esc(payload.customer_email)}</strong> shortly.
-        </p>
-        ${payload.question ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:16px 18px;margin-bottom:20px;font-size:14px;"><strong style="display:block;font-size:11px;text-transform:uppercase;color:#92400e;margin-bottom:6px;">Your Question</strong>${esc(payload.question)}</div>` : ''}
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 22px; margin-bottom: 24px;">
-          <h3 style="font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: #854d0e; margin: 0 0 14px 0; font-weight: 700;">Enquiry Summary</h3>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; font-size: 14px;">
-            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Passenger</span><strong>${esc(payload.customer_name)}</strong></div>
-            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Contact Phone</span><strong>${esc(payload.customer_phone || 'Not provided')}</strong></div>
-            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Pickup Date &amp; Time</span><strong>${esc(payload.pickup_datetime || 'To be confirmed')}</strong></div>
-            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Vehicle</span><strong>${esc(data.vehicle || 'Not selected')}</strong></div>
-            <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Pickup Address</span><strong>${esc(payload.pickup_address)}</strong></div>
-            <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Drop-off Address</span><strong>${esc(payload.dropoff_address)}</strong></div>
-            <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Payment Status</span><strong style="color: #854d0e;">${esc(fareText)}</strong></div>
-          </div>
-        </div>
-        <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px;">
-          <a href="${whatsappSummary}" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #25D366; color: #fff; font-weight: 700; font-size: 14px; padding: 14px 22px; border-radius: 4px; text-decoration: none;">
-            📱 Follow up on WhatsApp (+44 7886 622082) ↗
-          </a>
-          <span id="booking-enquiry-chat"></span>
-        </div>
-      </div>
-    `;
-    if (typeof manageUrl === 'string' && manageUrl.startsWith('https://dispatch.gachauffeurs.co.uk/manage-booking?')) {
-      const chatLink = document.createElement('a');
-      chatLink.className = 'button dark';
-      chatLink.href = manageUrl + '#mb-chat';
-      chatLink.textContent = 'Chat with Dispatch';
-      root.querySelector('#booking-enquiry-chat').replaceWith(chatLink);
-    } else {
-      root.querySelector('#booking-enquiry-chat').remove();
-    }
+  if (sideChatLauncher) sideChatLauncher.addEventListener('click', openSideChatPopup);
+  if (sideChatClose) sideChatClose.addEventListener('click', closeSideChatPopup);
+  if (sideChatForm) {
+    sideChatForm.addEventListener('submit', e => {
+      e.preventDefault();
+      sendSideChatMessage();
+    });
+  }
+  if (enquiryBtn) {
+    enquiryBtn.addEventListener('click', async () => {
+      const prefill = (enquiryQuestionInput?.value || '').trim();
+      openSideChatPopup();
+      const data = Object.fromEntries(new FormData(form));
+      const hasContact = Boolean((sideChatName?.value || data.name || '').trim() && (sideChatEmail?.value || data.email || '').includes('@'));
+      if (prefill || hasContact) {
+        await sendSideChatMessage(prefill);
+      } else {
+        setSideChatStatus('Enter your name and email above, then send your question to Dispatch.');
+      }
+    });
   }
 
   // Render Luxury Light On-Screen Confirmation Screen
