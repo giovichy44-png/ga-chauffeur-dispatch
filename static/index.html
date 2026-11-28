@@ -785,24 +785,51 @@
   </div>
 
   <div class="modal-backdrop" id="modal-customer-chat" style="display:none;">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width:1080px;width:95vw;">
       <div class="modal-head">
-        <h3>Customer Messages</h3>
+        <h3>Customer Messages &amp; Booking Details</h3>
         <button type="button" class="modal-x" onclick="closeModal('modal-customer-chat')">Close</button>
       </div>
+      <style>
+        .customer-chat-split { display:grid; grid-template-columns: minmax(290px, 1fr) minmax(340px, 1.15fr); gap:18px; align-items:start; margin-top:12px; }
+        @media (max-width: 820px) { .customer-chat-split { grid-template-columns: 1fr; } }
+        .customer-chat-details-card { background: rgba(15, 23, 20, 0.72); border: 1px solid rgba(201, 184, 148, 0.28); border-radius: 10px; padding: 16px; font-size: 13px; color: #e2e8f0; max-height: 62vh; overflow-y: auto; }
+        .customer-chat-details-card h4 { margin: 0 0 10px; font-size: 15px; color: #f8fafc; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+        .customer-chat-detail-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px 12px; margin-top:10px; }
+        .customer-chat-detail-item span { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#94a3b8; margin-bottom:2px; }
+        .customer-chat-detail-item strong { color:#f8fafc; font-weight:600; word-break:break-word; }
+        .customer-chat-detail-full { grid-column: 1 / -1; }
+        .customer-chat-thread-pane { display:flex; flex-direction:column; gap:10px; background: rgba(15, 23, 20, 0.55); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; padding: 14px; }
+        #customer-chat-history { list-style:none; margin:0; padding:10px; min-height:240px; max-height:38vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; background: rgba(9, 14, 12, 0.65); border-radius:8px; border:1px solid rgba(255,255,255,0.08); }
+        #customer-chat-history li { padding:9px 12px; border-radius:10px; max-width:88%; font-size:13px; line-height:1.45; white-space:pre-wrap; word-break:break-word; }
+        #customer-chat-history li.chat-msg-customer { align-self:flex-start; background: rgba(251, 191, 36, 0.14); border:1px solid rgba(251, 191, 36, 0.35); color:#fef3c7; }
+        #customer-chat-history li.chat-msg-dispatch { align-self:flex-end; background: rgba(52, 211, 153, 0.16); border:1px solid rgba(52, 211, 153, 0.35); color:#ecfdf5; }
+        #customer-chat-history li .chat-msg-meta { display:block; font-size:10px; opacity:0.75; margin-bottom:3px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+      </style>
       <div class="modal-body customer-chat-body">
-        <label for="customer-chat-select">Booking</label>
-        <select id="customer-chat-select" onchange="refreshCustomerChat()">
-          <option value="">Select a conversation</option>
-        </select>
-        <p id="customer-chat-status" role="status"></p>
-        <ol id="customer-chat-history" aria-label="Conversation"></ol>
-        <form id="customer-chat-form" onsubmit="sendCustomerChatReply(event)" hidden>
-          <label for="customer-chat-reply">Reply to the customer</label>
-          <textarea id="customer-chat-reply" maxlength="1000" required></textarea>
-          <button class="btn btn-gold" type="submit">Send reply</button>
-        </form>
-        <button class="btn btn-secondary" id="customer-chat-export" type="button" onclick="downloadCustomerChat()" hidden>Download transcript</button>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label for="customer-chat-select" style="margin:0;white-space:nowrap;">Conversation</label>
+          <select id="customer-chat-select" onchange="refreshCustomerChat()" style="flex:1;min-width:220px;">
+            <option value="">Select a conversation</option>
+          </select>
+        </div>
+        <div class="customer-chat-split">
+          <div id="customer-chat-details-pane" class="customer-chat-details-card">
+            <p style="margin:0;color:#94a3b8;">Select a booking conversation to view its full journey &amp; enquiry details alongside the messages.</p>
+          </div>
+          <div id="customer-chat-thread-pane" class="customer-chat-thread-pane">
+            <p id="customer-chat-status" role="status" style="margin:0;font-size:12px;color:#cbd5e1;"></p>
+            <ol id="customer-chat-history" aria-label="Conversation"></ol>
+            <form id="customer-chat-form" onsubmit="sendCustomerChatReply(event)" hidden style="display:flex;flex-direction:column;gap:8px;">
+              <label for="customer-chat-reply" style="margin:0;font-size:12px;">Reply to the customer</label>
+              <textarea id="customer-chat-reply" rows="3" maxlength="1000" placeholder="Type your reply to the customer..." required></textarea>
+              <div style="display:flex;justify-content:flex-end;gap:8px;">
+                <button class="btn btn-gold" type="submit">Send reply →</button>
+              </div>
+            </form>
+            <button class="btn btn-secondary" id="customer-chat-export" type="button" onclick="downloadCustomerChat()" hidden>Download transcript</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -841,6 +868,6 @@
 
   <script src="/journey-stops.js?v=2"></script>
   <script src="/ga-phone-push.js?v=4"></script>
-  <script src="app.js?v=dispatch-mac-notifications-2"></script>
+  <script src="app.js?v=dispatch-split-chat-1"></script>
 </body>
 </html>

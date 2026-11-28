@@ -2494,17 +2494,115 @@ function openCustomerChat(reference) {
   refreshCustomerChat();
 }
 
+function renderCustomerChatBookingDetails(reference) {
+  const pane = document.getElementById('customer-chat-details-pane');
+  if (!pane) return;
+  if (!reference) {
+    pane.innerHTML = '<p style="margin:0;color:#94a3b8;">Select a booking conversation to view its full journey &amp; enquiry details alongside the messages.</p>';
+    return;
+  }
+  const b = (App.bookings || []).find(row => row.confirmation_code === reference);
+  if (!b) {
+    pane.innerHTML = `<p style="margin:0;color:#94a3b8;">Loading details for <strong>${escapeHtml(reference)}</strong>…</p>`;
+    return;
+  }
+  const isUnpaidEnquiry = b.payment_status === 'UNPAID_ENQUIRY';
+  const paymentBadge = isUnpaidEnquiry
+    ? '<span style="background:rgba(251,191,36,0.2);border:1px solid rgba(251,191,36,0.6);color:#fbbf24;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;">❓ UNPAID ENQUIRY (Not Paid)</span>'
+    : b.payment_status === 'PRE_AUTHORIZED'
+      ? `<span style="background:rgba(74,222,128,0.16);border:1px solid rgba(74,222,128,0.45);color:#4ade80;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;">💳 PRE-AUTH</span>`
+      : b.payment_status === 'CORPORATE_INVOICE'
+        ? '<span style="background:rgba(201,184,148,0.2);border:1px solid #c9b894;color:#c9b894;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;">🏢 CORPORATE</span>'
+        : b.payment_status === 'PAID'
+          ? '<span style="background:rgba(52,211,153,0.18);border:1px solid rgba(52,211,153,0.45);color:#34d399;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;">✓ PAID</span>'
+          : `<span style="background:rgba(148,163,184,0.18);border:1px solid rgba(148,163,184,0.4);color:#cbd5e1;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;">${escapeHtml((b.payment_status || b.status || 'PENDING').replace(/_/g, ' '))}</span>`;
+  let stopsText = '';
+  try {
+    const parsedStops = Array.isArray(b.stops) ? b.stops : (b.stops ? JSON.parse(b.stops) : []);
+    if (Array.isArray(parsedStops) && parsedStops.length) stopsText = parsedStops.join(' → ');
+  } catch (_) {}
+  const fareNum = parseFloat(b.total_fare || b.fare_amount || 0);
+  const fareDisplay = fareNum > 0
+    ? `£${fareNum.toFixed(2)}${isUnpaidEnquiry ? ' (Not Paid Yet)' : ''}`
+    : (isUnpaidEnquiry ? 'Custom quote requested (Not Paid Yet)' : '£0.00');
+  const vehicleNames = {
+    mercedes_s_class: 'Mercedes-Benz S-Class',
+    mercedes_v_class: 'Mercedes-Benz V-Class',
+    range_rover_autobiography: 'Range Rover Autobiography LWB'
+  };
+  const vehicleLabel = vehicleNames[b.vehicle_class] || b.vehicle_class || 'Not selected';
+  const chauffeurLabel = b.chauffeur_name ? `${b.chauffeur_name}${b.license_plate ? ` [${b.license_plate}]` : ''}` : 'Unallocated';
+  pane.innerHTML = `
+    <h4>
+      <span>${escapeHtml(b.confirmation_code)} · ${escapeHtml(b.customer_name || 'Customer')}</span>
+      ${paymentBadge}
+    </h4>
+    <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">
+      Status: <strong style="color:#f8fafc;">${escapeHtml(b.status || 'PENDING')}</strong> · Chauffeur: <strong style="color:#f8fafc;">${escapeHtml(chauffeurLabel)}</strong>
+    </div>
+    <div class="customer-chat-detail-grid">
+      <div class="customer-chat-detail-item">
+        <span>Phone</span>
+        <strong>${b.customer_phone ? `<a href="tel:${escapeHtml(b.customer_phone)}" style="color:#c9b894;text-decoration:none;">${escapeHtml(b.customer_phone)}</a>` : 'Not provided'}</strong>
+      </div>
+      <div class="customer-chat-detail-item">
+        <span>Email</span>
+        <strong>${b.customer_email ? `<a href="mailto:${escapeHtml(b.customer_email)}" style="color:#c9b894;text-decoration:none;">${escapeHtml(b.customer_email)}</a>` : 'Not provided'}</strong>
+      </div>
+      <div class="customer-chat-detail-item">
+        <span>Pickup Date &amp; Time</span>
+        <strong>${escapeHtml(b.pickup_datetime || 'To be confirmed')}</strong>
+      </div>
+      <div class="customer-chat-detail-item">
+        <span>Service &amp; Vehicle</span>
+        <strong>${escapeHtml(b.service_type || 'Chauffeur service')} · ${escapeHtml(vehicleLabel)}</strong>
+      </div>
+      <div class="customer-chat-detail-item customer-chat-detail-full">
+        <span>Pickup Address</span>
+        <strong>${escapeHtml(b.pickup_address || 'Not specified')}</strong>
+      </div>
+      ${stopsText ? `<div class="customer-chat-detail-item customer-chat-detail-full"><span>Intermediate Stops</span><strong>${escapeHtml(stopsText)}</strong></div>` : ''}
+      <div class="customer-chat-detail-item customer-chat-detail-full">
+        <span>Drop-off Address</span>
+        <strong>${escapeHtml(b.dropoff_address || 'Not specified')}</strong>
+      </div>
+      <div class="customer-chat-detail-item">
+        <span>Passengers &amp; Luggage</span>
+        <strong>${escapeHtml(String(b.passenger_count || 1))} pax · ${escapeHtml(String(b.large_cases || 0))} large, ${escapeHtml(String(b.medium_cases || 0))} med</strong>
+      </div>
+      <div class="customer-chat-detail-item">
+        <span>Flight</span>
+        <strong>${escapeHtml(b.flight_number || 'None')}</strong>
+      </div>
+      <div class="customer-chat-detail-item customer-chat-detail-full" style="background:rgba(201,184,148,0.1);border:1px solid rgba(201,184,148,0.28);border-radius:8px;padding:10px 12px;">
+        <span>Estimated / Quoted Total</span>
+        <strong style="color:#c9b894;font-size:15px;">${escapeHtml(fareDisplay)}</strong>
+      </div>
+      ${b.special_requests ? `<div class="customer-chat-detail-item customer-chat-detail-full" style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px 12px;"><span>Enquiry &amp; Special Requests</span><div style="white-space:pre-wrap;color:#e2e8f0;margin-top:3px;line-height:1.45;">${escapeHtml(b.special_requests)}</div></div>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);">
+      <button type="button" class="btn btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="closeModal('modal-customer-chat'); openEditBookingModal('${escapeHtml(b.id)}')">✏️ Edit Booking</button>
+      <button type="button" class="btn btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="closeModal('modal-customer-chat'); openAllocateModal('${escapeHtml(b.id)}')">🚗 ${b.chauffeur_id ? 'Change Car' : 'Allocate Car'}</button>
+      <button type="button" class="btn btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="sendBookingConfirmationEmail('${escapeHtml(b.id)}')">✉️ Send Confirmation</button>
+    </div>
+  `;
+}
+
 async function refreshCustomerChat() {
   const select = document.getElementById('customer-chat-select');
   const status = document.getElementById('customer-chat-status');
   const history = document.getElementById('customer-chat-history');
   const form = document.getElementById('customer-chat-form');
   const download = document.getElementById('customer-chat-export');
-  const reference = select.value;
+  let reference = select.value;
 
   try {
     const inbox = await customerChatRequest('inbox');
     if (select.value !== reference) return;
+    if (!reference && inbox.threads.length) {
+      const preferred = inbox.threads.find(t => Number(t.unread || 0) > 0) || inbox.threads[0];
+      if (preferred?.confirmation_code) reference = preferred.confirmation_code;
+    }
     const active = document.createElement('optgroup');
     active.label = 'Active';
     const archive = document.createElement('optgroup');
@@ -2525,7 +2623,10 @@ async function refreshCustomerChat() {
       select.replaceChildren(new Option('Select a conversation', ''), active, archive);
       select.value = reference;
       select.dataset.options = optionsSignature;
+    } else if (reference && select.value !== reference) {
+      select.value = reference;
     }
+    renderCustomerChatBookingDetails(reference);
     if (!reference) {
       history.replaceChildren();
       status.textContent = inbox.threads.length ? 'Select a booking to open its messages.' : 'No customer messages yet.';
@@ -2539,14 +2640,22 @@ async function refreshCustomerChat() {
     if (history.dataset.transcript !== transcript) {
       history.replaceChildren(...conversation.messages.map(row => {
         const item = document.createElement('li');
-        item.textContent = `${row.sender === 'customer' ? 'Customer' : 'Dispatch'}: ${row.message}`;
+        const isCustomer = row.sender === 'customer';
+        item.className = isCustomer ? 'chat-msg-customer' : 'chat-msg-dispatch';
+        const meta = document.createElement('span');
+        meta.className = 'chat-msg-meta';
+        const stamp = row.sent_at ? String(row.sent_at).replace('T', ' ').slice(0, 16) : '';
+        meta.textContent = `${isCustomer ? 'Customer' : 'Dispatch'}${stamp ? ' · ' + stamp : ''}`;
+        const body = document.createElement('div');
+        body.textContent = row.message;
+        item.append(meta, body);
         return item;
       }));
       history.scrollTop = history.scrollHeight;
       history.dataset.transcript = transcript;
     }
     status.textContent = conversation.closed ? 'Booking closed. Download the transcript to keep a copy.'
-      : 'Live chat is open.';
+      : 'Live chat is open — customer sees your replies instantly.';
     form.hidden = conversation.closed;
     download.hidden = !conversation.closed || !conversation.messages.length;
     updateCustomerUnread(inbox.threads.reduce((count, thread) =>
@@ -2704,8 +2813,12 @@ function shortBookingAlert(alert) {
 async function reviewDispatchAlert() {
   const alert = App.pendingAlerts[0];
   if (!alert) return;
-  const job = App.bookings.find(row => row.id === alert.booking_id);
-  await showUrgentBooking(job || {id: alert.booking_id, confirmation_code: alert.confirmation_code});
+  if (alert.action === 'BOOKING_ENQUIRY' && alert.confirmation_code) {
+    openCustomerChat(alert.confirmation_code);
+  } else {
+    const job = App.bookings.find(row => row.id === alert.booking_id);
+    await showUrgentBooking(job || {id: alert.booking_id, confirmation_code: alert.confirmation_code});
+  }
   const keys = [alert.key];
   try {
     const response = await fetch('/api/dispatch/ack-alerts', {
