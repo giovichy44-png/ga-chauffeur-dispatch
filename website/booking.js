@@ -850,6 +850,7 @@
     }
 
     updateCorporateUI();
+    updateWalletCheckout();
     if (submitBtn) {
       submitBtn.textContent = deferred ? 'Confirm Open Hours Booking ↗' : isCorporateAccount()
         ? `Confirm Corporate Booking (£${total.toFixed(2)}) ↗`
@@ -1028,6 +1029,7 @@
   document.querySelectorAll('.btn-prev-step').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
+      if (sending) return;
       const prevStep = parseInt(btn.dataset.prev, 10);
       setStep(prevStep);
     });
@@ -1043,6 +1045,43 @@
     stripeCard.mount('#booking-secure-card');
   })();
   secureCardReady.catch(()=>{});
+
+  const walletPanel = document.querySelector('#booking-wallets');
+  let walletElement, walletQuoteToken;
+  function updateWalletCheckout() {
+    const quote = currentStep === totalSteps && serverQuotes && !isCorporateAccount()
+      && quoteSpec().service !== 'Open hours chauffeur service' ? currentQuote() : null;
+    const amount = Math.round(Number(quote?.total_fare) * 100);
+    const token = amount > 0 ? quote?.quote_token : undefined;
+    if (!walletPanel || token === walletQuoteToken) return;
+    walletElement?.destroy();
+    walletElement = undefined;
+    walletPanel.hidden = true;
+    walletQuoteToken = token;
+    if (!token) return;
+
+    secureCardReady.then(() => {
+      if (walletQuoteToken !== token || walletElement) return;
+      const elements = stripeClient.elements({
+        mode: 'payment', amount, currency: 'gbp', captureMethod: 'manual',
+        paymentMethodTypes: ['card']
+      });
+      const element = elements.create('expressCheckout', {
+        paymentMethods: {link: 'never', amazonPay: 'never', paypal: 'never', klarna: 'never'}
+      });
+      walletElement = element;
+      element.on('ready', ({availablePaymentMethods}) => {
+        if (walletElement === element) {
+          walletPanel.hidden = !(availablePaymentMethods?.applePay || availablePaymentMethods?.googlePay);
+        }
+      });
+      element.on('confirm', async event => {
+        const success = await submitBooking({elements, token}).catch(() => false);
+        if (!success) event.paymentFailed({reason: 'fail'});
+      });
+      element.mount('#booking-wallet-buttons');
+    }).catch(() => {});
+  }
 
   // Real-time Event Listeners
   ['input', 'change'].forEach(ev => {
@@ -1091,11 +1130,26 @@
   let sending = false;
   let requestId = crypto.randomUUID();
 
-  form.addEventListener('submit', async event => {
+  form.addEventListener('submit', event => {
     event.preventDefault();
+    submitBooking();
+  });
+
+  async function submitBooking(wallet) {
     if (sending || currentStep !== totalSteps) return;
 
-    if (!form.reportValidity()) return;
+    const cardholder = form.elements.cardholderName;
+    const required = cardholder.required;
+    if (wallet) cardholder.required = false;
+    const valid = form.reportValidity();
+    cardholder.required = required;
+    if (!valid) return;
+    if (wallet && (isCorporateAccount() || wallet.token !== currentQuote()?.quote_token)) {
+      status.style.display = 'block';
+      status.textContent = 'Your quote has changed. Please review the updated total and try again.';
+      updateRouteAndMetrics();
+      return;
+    }
     if (!checkCapacity()) {
       alert('Selected vehicle capacity exceeded. Please switch to the Mercedes-Benz V-Class.');
       setStep(2);
@@ -1107,6 +1161,8 @@
       serverQuotes=Boolean(config.server_quotes);
       if(serverQuotes&&!currentQuote()){await updateRouteAndMetrics();if(!currentQuote())throw Error(routeError || 'Enter a pickup and destination before requesting a quote.');return;}
     }catch(error){status.style.display='block';status.textContent=error.message;return;}
+    if (sending || currentStep !== totalSteps) return;
+    if (wallet && (isCorporateAccount() || !serverQuotes || wallet.token !== currentQuote()?.quote_token)) return;
     const data = Object.fromEntries(new FormData(form));
     const isHourly = data.serviceType === 'Hourly chauffeur service';
     const flightNo = form.querySelector('#booking-flight')?.value || '';
@@ -1236,14 +1292,30 @@
         }
       } else {
         await secureCardReady;
-        const cardResult=await stripeClient.createPaymentMethod({type:'card',card:stripeCard,billing_details:{name:data.cardholderName||data.name,email:data.email}});
-        if(cardResult.error)throw Error(cardResult.error.message);
-        payload.payment_method_id=cardResult.paymentMethod.id;
+        if (wallet) {
+          const {error: submitError} = await wallet.elements.submit();
+          if (submitError) throw Error(submitError.message);
+          const {error, confirmationToken} = await stripeClient.createConfirmationToken({
+            elements: wallet.elements
+          });
+          if (error) throw Error(error.message);
+          payload.confirmation_token = confirmationToken.id;
+        } else {
+          const cardResult = await stripeClient.createPaymentMethod({
+            type: 'card', card: stripeCard,
+            billing_details: {name: data.cardholderName || data.name, email: data.email}
+          });
+          if (cardResult.error) throw Error(cardResult.error.message);
+          payload.payment_method_id = cardResult.paymentMethod.id;
+        }
         let res=await sendBooking();
         let jsonRes = await res.json().catch(() => ({}));
         if(jsonRes.requires_action){
-          const auth=await stripeClient.confirmCardPayment(jsonRes.client_secret);
+          const auth = wallet
+            ? await stripeClient.handleNextAction({clientSecret: jsonRes.client_secret})
+            : await stripeClient.confirmCardPayment(jsonRes.client_secret);
           if(auth.error)throw Error(auth.error.message);
+          delete payload.confirmation_token;
           payload.payment_intent_id=auth.paymentIntent.id;
           res=await sendBooking(); jsonRes=await res.json();
         }
@@ -1273,7 +1345,7 @@
     if (dispatchSuccess && (paymentPreAuthorized || corporateConfirmed)) {
       const ref = dispatchRef || 'GA-CONFIRMED';
       renderSuccessConfirmation(ref, payload.total_fare, data, payload, true, corporateConfirmed, manageUrl);
-      return;
+      return true;
     }
 
     // Simplified polite error message as requested by user
@@ -1284,13 +1356,14 @@
       status.style.color = '#9b2c2c';
       status.style.lineHeight = '1.6';
       if (isOpen) { status.textContent = dispatchError; return; }
+      if (wallet) { status.textContent = 'Wallet authorisation could not be verified. Please try again or pay by card.'; return; }
       status.innerHTML = `We couldn't authorize your credit card right now. Kindly use a different one or get in touch with GA Chauffeurs: <a href="tel:+447886622082" style="font-weight:700;color:#9b2c2c;text-decoration:underline;">+44 7886 622082</a> | <a href="mailto:enquiries@gachauffeurs.co.uk" style="font-weight:700;color:#9b2c2c;text-decoration:underline;">enquiries@gachauffeurs.co.uk</a>`;
       return;
     }
 
     const ref = dispatchRef || 'GA-REQUEST';
     renderSuccessConfirmation(ref, total, data, payload, false);
-  });
+  }
 
   // Render Luxury Light On-Screen Confirmation Screen
   function renderSuccessConfirmation(ref, total, data, payload, preauthSuccess = true, corporateBooking = false, manageUrl = null) {
