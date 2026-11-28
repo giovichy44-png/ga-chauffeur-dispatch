@@ -691,6 +691,10 @@ function renderJobsList() {
               <span style="background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.4); color: #34d399; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px;">
                 ✓ PAID
               </span>
+            ` : b.payment_status === 'UNPAID_ENQUIRY' ? `
+              <span style="background: rgba(251, 191, 36, 0.18); border: 1px solid rgba(251, 191, 36, 0.55); color: #fbbf24; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px;">
+                ❓ UNPAID ENQUIRY (Not Paid)
+              </span>
             ` : ''}
           </div>
 
@@ -2686,6 +2690,7 @@ function updateDispatchAlarm() {
 function shortBookingAlert(alert) {
   const labels = {
     BOOKING_CREATED: 'New booking',
+    BOOKING_ENQUIRY: 'Unpaid booking enquiry',
     ALLOCATION_DUE: 'Allocation reminder',
     CHAUFFEUR_LATE: 'Chauffeur may be late',
     AMENDMENT_REQUESTED_2H: 'Amendment needs approval',
