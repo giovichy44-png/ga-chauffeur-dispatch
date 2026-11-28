@@ -155,7 +155,7 @@ def stripe_create_payment_method_from_card(card_number, exp_str, cvc, name):
     }
     return stripe_api_request("payment_methods", method="POST", data=data)
 
-def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, customer_name, description, binding="", existing_intent=None):
+def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, customer_name, description, binding="", existing_intent=None, confirmation_token=None):
     """Places a manual capture pre-authorisation hold on a card via Stripe PaymentIntent."""
     amount_pence = int(round(amount_gbp * 100))
     data = {
@@ -173,6 +173,13 @@ def stripe_create_preauth_hold(amount_gbp, payment_method_id, customer_email, cu
         "metadata[service]": "GA Chauffeur Services Pre-Auth Hold",
         "metadata[booking_binding]": binding
     }
+    if confirmation_token:
+        data.pop("payment_method")
+        data.pop("automatic_payment_methods[enabled]")
+        data.pop("automatic_payment_methods[allow_redirects]")
+        data["payment_method_types[]"] = "card"
+        data["confirmation_token"] = confirmation_token
+        data["use_stripe_sdk"] = "true"
     if existing_intent:
         if not re.fullmatch(r'pi_[A-Za-z0-9]+',existing_intent):return {'error':'Invalid payment reference.'}
         res=stripe_api_request('payment_intents/'+existing_intent,method='GET')
@@ -3467,6 +3474,14 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
 
         # Credit Card Payment Pre-Authorization Processing (Strict Stripe Verification)
         payment_method_id = payload.get("payment_method_id")
+        confirmation_token = payload.get("confirmation_token")
+        if confirmation_token and (
+            not isinstance(confirmation_token, str)
+            or not re.fullmatch(r"ctoken_[A-Za-z0-9]+", confirmation_token)
+        ):
+            conn.close()
+            self.send_json({"error": "Invalid wallet payment reference."}, 400)
+            return
         stripe_intent_id = None
         card_num_raw = str(payload.get("card_number") or payload.get("cardNumber") or "").replace(" ", "").replace("-", "")
         card_holder = payload.get("cardholder_name") or payload.get("cardholderName") or payload.get("customer_name") or ""
@@ -3504,7 +3519,7 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
             card_auth_code = f"TEST-HOLD-{code}"
             preauth_amount = total_fare
             preauth_at = now_str
-        elif STRIPE_SECRET_KEY and (payment_method_id or existing_intent or (card_num_raw and len(card_num_raw) >= 12)):
+        elif STRIPE_SECRET_KEY and (payment_method_id or confirmation_token or existing_intent or (card_num_raw and len(card_num_raw) >= 12)):
             if existing_intent:
                 prior=cursor.execute('SELECT id,confirmation_code,total_fare,payment_status FROM bookings WHERE stripe_payment_intent_id=?',(existing_intent,)).fetchone()
                 if prior:
@@ -3523,7 +3538,8 @@ class DispatchRequestHandler(SimpleHTTPRequestHandler):
                 payment_method_id=pm_id,
                 customer_email=payload.get("customer_email"),
                 customer_name=payload.get("customer_name"),
-                description=f"GA Chauffeur Booking {code}", binding=binding, existing_intent=existing_intent
+                description=f"GA Chauffeur Booking {code}", binding=binding, existing_intent=existing_intent,
+                **({"confirmation_token": confirmation_token} if confirmation_token else {})
             )
             if stripe_res.get('requires_action'):
                 conn.close();self.send_json(stripe_res);return
