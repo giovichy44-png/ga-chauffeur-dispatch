@@ -1365,6 +1365,151 @@
     renderSuccessConfirmation(ref, total, data, payload, false);
   }
 
+  const enquiryBtn = document.querySelector('#booking-enquiry-btn');
+  const enquiryQuestionInput = document.querySelector('#booking-enquiry-question');
+  if (enquiryBtn) {
+    enquiryBtn.addEventListener('click', async () => {
+      if (sending) return;
+      const data = Object.fromEntries(new FormData(form));
+      const name = (data.name || '').trim();
+      const email = (data.email || '').trim();
+      if (!name || !email || !email.includes('@')) {
+        status.style.display = 'block';
+        status.style.background = '#fff5f5';
+        status.style.border = '1px solid #feb2b2';
+        status.style.color = '#9b2c2c';
+        status.textContent = 'Please enter your name and email address in Passenger Details so Dispatch can reply to your enquiry.';
+        setStep(3);
+        return;
+      }
+
+      const pVal = getAddressVal('booking-pickup');
+      const dVal = getAddressVal('booking-destination');
+      const isHourly = data.serviceType === 'Hourly chauffeur service';
+      const flightNo = form.querySelector('#booking-flight')?.value || '';
+      const q = currentQuote();
+      const question = (enquiryQuestionInput?.value || '').trim();
+
+      const enquiryPayload = {
+        customer_name: name,
+        customer_email: email,
+        customer_phone: (data.phone || '').trim(),
+        service_type: quoteSpec().service,
+        hours: Number(quoteSpec().hours || 0),
+        stops: stops.values(),
+        pickup_address: pVal || 'Not specified',
+        dropoff_address: dVal || (isHourly ? 'As directed' : 'Not specified'),
+        pickup_datetime: (data.datetime || '').replace('T', ' '),
+        vehicle_class: data.vehicle === 'Mercedes-Benz S-Class' ? 'mercedes_s_class' : data.vehicle === 'Mercedes-Benz V-Class' ? 'mercedes_v_class' : data.vehicle === 'Range Rover Autobiography Long Wheelbase' ? 'range_rover_autobiography' : (data.vehicle || 'mercedes_s_class'),
+        vehicle: data.vehicle || '',
+        passenger_count: parseInt(data.passengers, 10) || 1,
+        large_cases: parseInt(data.largeCases || 0, 10) || 0,
+        medium_cases: 0,
+        flight_number: flightNo,
+        special_requests: bookingRequests(),
+        question,
+        fare_amount: q ? Number(q.base_fare || 0) : 0,
+        vat_amount: q ? Number(q.vat_amount || 0) : 0,
+        total_fare: q ? Number(q.total_fare || 0) : 0,
+        parking_fee: q ? Number(q.parking_fee || 0) : 0,
+        airport_dropoff_fee: q ? Number(q.dropoff_fee || 0) : 0,
+        congestion_charge: q ? Number(q.congestion_charge || 0) : 0,
+        estimated_distance_mi: journeyDistanceMiles || 0,
+        estimated_duration_min: journeyDurationMinutes || 0
+      };
+
+      sending = true;
+      enquiryBtn.disabled = true;
+      if (submitBtn) submitBtn.disabled = true;
+      status.style.display = 'block';
+      status.style.background = '#f8fafc';
+      status.style.border = '1px solid #cbd5e1';
+      status.style.color = '#1e293b';
+      status.textContent = 'Sending your unpaid enquiry straight to GA Dispatch…';
+
+      try {
+        const res = await fetch('/api/public/booking-enquiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(enquiryPayload),
+          signal: AbortSignal.timeout(18000)
+        });
+        const jsonRes = await res.json().catch(() => ({}));
+        if (!res.ok || !jsonRes.success) {
+          throw Error(jsonRes.error || 'Could not send your enquiry right now. Please try again or call +44 7886 622082.');
+        }
+        renderEnquiryConfirmation(jsonRes.reference || 'GA-ENQUIRY', enquiryPayload, data, jsonRes.manage_url);
+      } catch (err) {
+        status.style.display = 'block';
+        status.style.background = '#fff5f5';
+        status.style.border = '1px solid #feb2b2';
+        status.style.color = '#9b2c2c';
+        status.textContent = err.message || 'Could not send your enquiry right now.';
+      } finally {
+        sending = false;
+        enquiryBtn.disabled = false;
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+  }
+
+  function renderEnquiryConfirmation(ref, payload, data, manageUrl = null) {
+    const root = document.querySelector('#ga-chauffeur-booking-widget');
+    if (!root) return;
+    const esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    const fareText = payload.total_fare > 0 ? `£${Number(payload.total_fare).toFixed(2)} (Not paid yet)` : 'Custom quote requested (Not paid yet)';
+    const whatsappSummary = `https://wa.me/447886622082?text=${encodeURIComponent(
+      `Hello GA Chauffeurs, I sent an unpaid booking enquiry (${ref}):\n• Passenger: ${payload.customer_name}\n• Date & Time: ${payload.pickup_datetime}\n• Route: ${payload.pickup_address} to ${payload.dropoff_address}\n• Vehicle: ${data.vehicle || 'Not selected'}\n• Question: ${payload.question || 'Booking quote enquiry'}`
+    )}`;
+    root.innerHTML = `
+      <div style="background: #ffffff; border: 1px solid #c9b894; border-radius: 8px; padding: 40px 32px; color: #171c1c; text-align: left; max-width: 760px; margin: 0 auto; box-shadow: 0 20px 45px rgba(0,0,0,0.08);">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 24px; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <span style="font-family: Georgia, serif; font-size: 32px; letter-spacing: -3px; color: #171c1c;">GA</span>
+            <span style="font-size: 11px; letter-spacing: .18em; text-transform: uppercase; border-left: 1px solid #cbd5e1; padding-left: 12px; margin-left: 10px; color: #64748b;">Chauffeur Services</span>
+          </div>
+          <div style="background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; font-size: 12px; font-weight: bold; padding: 6px 16px; border-radius: 20px; text-transform: uppercase; letter-spacing: .06em;">
+            ❓ Enquiry Sent — Not Paid Yet
+          </div>
+        </div>
+        <h2 style="font-family: Georgia, serif; font-size: 28px; font-weight: normal; color: #171c1c; margin: 0 0 10px 0;">
+          Enquiry Sent to Dispatch: <span style="color: #854d0e; font-weight: 600;">${esc(ref)}</span>
+        </h2>
+        <p style="color: #475569; font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
+          Your journey details and question have been sent straight to GA Dispatch. <strong>No card hold or payment has been taken.</strong> Our dispatch team will contact you at <strong>${esc(payload.customer_email)}</strong> shortly.
+        </p>
+        ${payload.question ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:16px 18px;margin-bottom:20px;font-size:14px;"><strong style="display:block;font-size:11px;text-transform:uppercase;color:#92400e;margin-bottom:6px;">Your Question</strong>${esc(payload.question)}</div>` : ''}
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 22px; margin-bottom: 24px;">
+          <h3 style="font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: #854d0e; margin: 0 0 14px 0; font-weight: 700;">Enquiry Summary</h3>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; font-size: 14px;">
+            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Passenger</span><strong>${esc(payload.customer_name)}</strong></div>
+            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Contact Phone</span><strong>${esc(payload.customer_phone || 'Not provided')}</strong></div>
+            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Pickup Date &amp; Time</span><strong>${esc(payload.pickup_datetime || 'To be confirmed')}</strong></div>
+            <div><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Vehicle</span><strong>${esc(data.vehicle || 'Not selected')}</strong></div>
+            <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Pickup Address</span><strong>${esc(payload.pickup_address)}</strong></div>
+            <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Drop-off Address</span><strong>${esc(payload.dropoff_address)}</strong></div>
+            <div style="grid-column: span 2;"><span style="color: #64748b; display: block; font-size: 11px; text-transform: uppercase;">Payment Status</span><strong style="color: #854d0e;">${esc(fareText)}</strong></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px;">
+          <a href="${whatsappSummary}" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #25D366; color: #fff; font-weight: 700; font-size: 14px; padding: 14px 22px; border-radius: 4px; text-decoration: none;">
+            📱 Follow up on WhatsApp (+44 7886 622082) ↗
+          </a>
+          <span id="booking-enquiry-chat"></span>
+        </div>
+      </div>
+    `;
+    if (typeof manageUrl === 'string' && manageUrl.startsWith('https://dispatch.gachauffeurs.co.uk/manage-booking?')) {
+      const chatLink = document.createElement('a');
+      chatLink.className = 'button dark';
+      chatLink.href = manageUrl + '#mb-chat';
+      chatLink.textContent = 'Chat with Dispatch';
+      root.querySelector('#booking-enquiry-chat').replaceWith(chatLink);
+    } else {
+      root.querySelector('#booking-enquiry-chat').remove();
+    }
+  }
+
   // Render Luxury Light On-Screen Confirmation Screen
   function renderSuccessConfirmation(ref, total, data, payload, preauthSuccess = true, corporateBooking = false, manageUrl = null) {
     const root = document.querySelector('#ga-chauffeur-booking-widget');
